@@ -1,0 +1,139 @@
+package com.example.gateway;
+
+import com.example.common.backend.protocol.BackendEnvelope;
+import com.example.common.backend.protocol.SessionDisconnectedEvent;
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.protocol.ClientEnvelopeCodec;
+import com.example.common.protocol.MessageType;
+import com.example.common.protocol.ProtocolConstants;
+import com.example.config.DemoProperties;
+import com.example.gateway.session.ClientSession;
+import com.example.gateway.session.SessionIdGenerator;
+import io.micronaut.context.annotation.Context;
+import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.*;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioDatagramChannel;
+import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.codec.LengthFieldPrepender;
+import io.netty.handler.ssl.util.SelfSignedCertificate;
+import io.netty.incubator.codec.quic.*;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
+
+@Slf4j
+@Context
+@RequiredArgsConstructor
+public class QuicGateway {
+
+  @Getter
+  private final DemoProperties properties;
+  @Getter
+  private final BackendConnectionManager connectionManager;
+
+  private EventLoopGroup group;
+  private Channel inboundDatagramChannel;
+  private SessionIdGenerator sessionIdGenerator;
+
+  @PostConstruct
+  public void start() throws Exception {
+    int nodeId = properties.getGateway().getNodeId();
+    sessionIdGenerator = new SessionIdGenerator(nodeId);
+    group = new NioEventLoopGroup(2);
+
+    connectionManager.init(group);
+
+    SelfSignedCertificate cert = new SelfSignedCertificate();
+    QuicSslContext serverSslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
+      .applicationProtocols(ProtocolConstants.ALPN_PROTOCOL)
+      .build();
+
+    ChannelHandler serverCodec = new QuicServerCodecBuilder()
+      .sslContext(serverSslContext)
+      .maxIdleTimeout(30, TimeUnit.SECONDS)
+      .initialMaxData(10000000)
+      .initialMaxStreamDataBidirectionalLocal(1000000)
+      .initialMaxStreamDataBidirectionalRemote(1000000)
+      .initialMaxStreamsBidirectional(100)
+      .tokenHandler(InsecureQuicTokenHandler.INSTANCE)
+      .handler(new ChannelInitializer<QuicChannel>() {
+        @Override
+        protected void initChannel(QuicChannel quicChannel) {
+          long sid = sessionIdGenerator.nextSessionId();
+          ClientSession session = new ClientSession(sid, quicChannel);
+          quicChannel.attr(ClientSession.KEY).set(session);
+          log.info("[GATEWAY] Assigned new ClientSession #{} to QuicChannel {}", sid, quicChannel);
+
+          quicChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelInactive(ChannelHandlerContext ctx) {
+              handleSessionDisconnect(session);
+              ctx.fireChannelInactive();
+            }
+          });
+        }
+      })
+      .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
+        @Override
+        protected void initChannel(QuicStreamChannel ch) {
+          ch.pipeline().addLast(
+            new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
+            new LengthFieldPrepender(4),
+            new ClientEnvelopeCodec(),
+            new GatewayInboundStreamHandler(QuicGateway.this)
+          );
+        }
+      })
+      .build();
+
+    int gatewayPort = properties.getGateway().getPort();
+    inboundDatagramChannel = new Bootstrap()
+      .group(group)
+      .channel(NioDatagramChannel.class)
+      .handler(serverCodec)
+      .bind(new InetSocketAddress(gatewayPort))
+      .sync()
+      .channel();
+
+    log.info("[GATEWAY] Listening on UDP port {}", gatewayPort);
+  }
+
+  private void handleSessionDisconnect(ClientSession session) {
+    long sessionId = session.getSessionId();
+    int streamCount = session.getBackendStreams().size();
+
+    if (streamCount == 0) {
+      return; // No backend streams opened; clean disconnect with zero broadcast needed
+    }
+
+    log.info("[GATEWAY] Client disconnected: Session #{}. Broadcasting teardown to {} active backend streams...",
+      sessionId, streamCount);
+
+    SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(sessionId, System.currentTimeMillis());
+    byte[] disconnectBytes = ForySerializationProvider.get().serialize(disconnectEvent);
+
+    session.getBackendStreams().forEach((svcId, backendStream) -> {
+      if (backendStream.isActive()) {
+        ByteBuf payloadBuf = backendStream.alloc().buffer(disconnectBytes.length).writeBytes(disconnectBytes);
+        BackendEnvelope envelope = new BackendEnvelope(sessionId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
+        backendStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> backendStream.close());
+      }
+    });
+
+    session.getBackendStreams().clear();
+  }
+
+  @PreDestroy
+  public void stop() {
+    log.info("shutting down QUIC gateway...");
+    if (inboundDatagramChannel != null) inboundDatagramChannel.close();
+    if (group != null) group.shutdownGracefully();
+  }
+}

@@ -1,0 +1,33 @@
+package com.example.server;
+
+import com.example.common.backend.protocol.BackendEnvelope;
+import com.example.common.codec.ForySerializationProvider;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.MessageToMessageDecoder;
+
+import java.util.List;
+
+public class ServerEnvelopePayloadDecoder extends MessageToMessageDecoder<BackendEnvelope> {
+
+  @Override
+  protected void decode(ChannelHandlerContext ctx, BackendEnvelope env, List<Object> out) {
+    try {
+      ctx.channel().attr(SessionContext.SESSION_ID).set(env.sessionId());
+      ctx.channel().attr(SessionContext.SERVICE_ID).set(env.serviceId());
+
+      if (env.payload() != null && env.payload().isReadable()) {
+        byte[] bytes = new byte[env.payload().readableBytes()];
+        env.payload().readBytes(bytes);
+
+        Object pojo = ForySerializationProvider.get().deserialize(bytes);
+        if (pojo != null) {
+          out.add(pojo);
+        }
+      }
+    } finally {
+      if (env.payload() != null) {
+        env.payload().release();
+      }
+    }
+  }
+}

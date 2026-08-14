@@ -1,0 +1,13 @@
+com:
+  example:
+    demo:
+      gateway:
+        port: 8888
+        hostname: localhost
+        nodeId: 1
+      login:
+        port: 9998
+        hostname: localhost
+      lobby:
+        port: 9999
+        hostname: localhost

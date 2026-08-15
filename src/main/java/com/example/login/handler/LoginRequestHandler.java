@@ -2,51 +2,39 @@ package com.example.login.handler;
 
 import com.example.common.backend.protocol.SetSessionAuthStateControlMessage;
 import com.example.common.handler.PacketHandler;
+import com.example.login.auth.JwtTokenIssuer;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
 import com.example.server.SessionContext;
-import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
-import com.example.login.state.AuthSessionRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.UUID;
 
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
 public class LoginRequestHandler implements PacketHandler<LoginRequest> {
 
-  private final AuthSessionRegistry sessionRegistry;
+  private final JwtTokenIssuer tokenIssuer;
 
   @Override
   public void handle(ChannelHandlerContext ctx, LoginRequest packet) {
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
     log.info("[LOGIN-SERVER] Auth attempt from Session #{}: user='{}'", sessionId, packet.username());
 
-    boolean authSuccess = "admin".equalsIgnoreCase(packet.username()) || "player1".equalsIgnoreCase(packet.username());
-    long accountId = authSuccess ? Math.abs(packet.username().hashCode()) : 0L;
-    String token = authSuccess ? UUID.randomUUID().toString() : "";
-    String err = authSuccess ? "" : "Invalid credentials";
+    boolean success = "admin".equals(packet.username()) && "secret123".equals(packet.password());
+    long accountId = success ? 92668751L : 0L;
+    String token = success ? tokenIssuer.issueToken(accountId, packet.username(), 15) : "";
+    String error = success ? "" : "Invalid credentials";
 
-    // 1. Send control packet to Gateway to mark authenticated
-    if (authSuccess) {
-      sessionRegistry.registerSession(accountId, token);
+    if (success) {
+      // 1. Send Gateway Control Message to mark this Session as Authenticated
       ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
     }
 
-    // 2. Send public response for client
-    log.info("[LOGIN-SERVER] Auth result for Session #{}: success={}, accountId={}", sessionId, authSuccess, accountId);
-    ctx.writeAndFlush(new LoginResponse(authSuccess, accountId, token, err))
-      .addListener((ChannelFutureListener) future -> {
-        if (future.isSuccess()) {
-          log.info("[LOGIN-SERVER] LoginResponse sent to Session #{}", sessionId);
-        } else {
-          log.error("[LOGIN-SERVER] Failed to send LoginResponse to Session #{}: {}",
-            sessionId, future.cause().getMessage(), future.cause());
-        }
-      });
+    // 2. Respond to Client
+    ctx.writeAndFlush(new LoginResponse(success, accountId, token, error));
+    log.info("[LOGIN-SERVER] LoginResponse sent to Session #{}", sessionId);
   }
 }

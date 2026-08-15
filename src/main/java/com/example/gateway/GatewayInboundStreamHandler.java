@@ -3,13 +3,10 @@ package com.example.gateway;
 import com.example.common.backend.protocol.BackendEnvelope;
 import com.example.common.backend.protocol.BackendEnvelopeCodec;
 import com.example.common.protocol.ClientEnvelope;
+import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
 import com.example.gateway.session.ClientSession;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.channel.WriteBufferWaterMark;
+import io.netty.channel.*;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.incubator.codec.quic.QuicChannel;
@@ -110,7 +107,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
 
             ch.pipeline().addLast(
-              new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
+              new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
               new LengthFieldPrepender(4),
               new BackendEnvelopeCodec(),
               new GatewayBackendRelayHandler(ctx.channel(), session, gateway.getControlRouter())

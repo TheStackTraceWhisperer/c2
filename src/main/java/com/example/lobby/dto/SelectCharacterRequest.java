@@ -5,7 +5,6 @@ import com.example.common.protocol.PacketMessage;
 import com.example.common.protocol.ServiceType;
 
 public record SelectCharacterRequest(
-  long accountId,
   String authToken,
   long characterId
 ) implements PacketMessage {

@@ -33,7 +33,6 @@ public final class ForySerializationProvider {
     FORY.register(SessionDisconnectedEvent.class, 99);
 
     // Auth Service (100 - 199)
-// Auth Service (100 - 199)
     FORY.register(LoginRequest.class, 100);
     FORY.register(LoginResponse.class, 101);
     FORY.register(ReconnectRequest.class, 102);

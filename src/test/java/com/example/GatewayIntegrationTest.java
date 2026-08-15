@@ -11,13 +11,13 @@ import com.example.lobby.dto.CharacterListRequest;
 import com.example.lobby.dto.CharacterListResponse;
 import com.example.lobby.dto.SelectCharacterRequest;
 import com.example.login.dto.LoginRequest;
+import com.example.login.dto.ReconnectRequest;
 import com.example.server.handler.SessionDisconnectedHandler;
 import com.example.world.dto.PlayerMovementRequest;
 import com.example.world.dto.PlayerMovementResponse;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -131,7 +131,6 @@ public class GatewayIntegrationTest {
       // 2. Select Character (Stream 2: LobbyServer)
       // Example in GatewayIntegrationTest
       client.send(new SelectCharacterRequest(
-        client.getState().getAccountId(),
         client.getState().getAuthToken(),
         1001L
       ));
@@ -183,7 +182,6 @@ public class GatewayIntegrationTest {
 
     // 2. Select Character
     client.send(new SelectCharacterRequest(
-      client.getState().getAccountId(),
       client.getState().getAuthToken(),
       1001L
     ));
@@ -236,7 +234,6 @@ public class GatewayIntegrationTest {
 
     // Example in GatewayIntegrationTest
     client.send(new SelectCharacterRequest(
-      client.getState().getAccountId(),
       client.getState().getAuthToken(),
       1001L
     ));
@@ -295,9 +292,8 @@ public class GatewayIntegrationTest {
 
     assertThat(client.isConnected()).isFalse();
   }
-
   @Test
-  @DisplayName("Resumption: Disconnected client should reconnect and resume in-world session")
+  @DisplayName("Resumption: Disconnected client should reconnect with JWT and re-enter world")
   void testSessionReconnectionAndResumption() throws Exception {
     // 1. Initial login & character selection
     client.send(new LoginRequest("admin", "secret123"));
@@ -305,34 +301,34 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    long accountId = client.getState().getAccountId();
     String authToken = client.getState().getAuthToken();
 
-    // Example in GatewayIntegrationTest
-    client.send(new SelectCharacterRequest(
-      client.getState().getAccountId(),
-      client.getState().getAuthToken(),
-      1001L
-    ));
+    client.send(new SelectCharacterRequest(authToken, 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    // 2. Abrupt disconnect (simulating network blip)
+    // 2. Abrupt disconnect (simulating connection loss)
     client.close();
     assertThat(client.isConnected()).isFalse();
 
-    // 3. Connect a new QUIC connection (new snowflake session ID allocated at gateway)
+    // 3. Connect a new QUIC connection
     client.connect().sync();
     assertThat(client.isConnected()).isTrue();
 
-    // 4. Send ReconnectRequest with bearer token
-    client.reconnect(accountId, authToken);
+    // 4. Send ReconnectRequest with stateless JWT token
+    client.send(new ReconnectRequest(authToken));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    // 5. Select character to bind characterId to the new session
+    client.send(new SelectCharacterRequest(authToken, 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    // 5. Send World movement on the restored session to verify Gateway permissions are active
+    // 6. Send World movement on the restored session to verify Gateway permissions are active
     CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
       moveFuture.complete((PlayerMovementResponse) packet)

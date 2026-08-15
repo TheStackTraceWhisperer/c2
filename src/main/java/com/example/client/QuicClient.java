@@ -192,8 +192,8 @@ public class QuicClient implements AutoCloseable {
       && quicChannel != null && quicChannel.isActive();
   }
 
-  public ChannelFuture reconnect(long accountId, String authToken) {
-    return send(new ReconnectRequest(accountId, authToken));
+  public ChannelFuture reconnect(String authToken) {
+    return send(new ReconnectRequest(authToken));
   }
 
   @Override

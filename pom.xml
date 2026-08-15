@@ -116,6 +116,11 @@
       <version>4.3.0</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.nimbusds</groupId>
+      <artifactId>nimbus-jose-jwt</artifactId>
+      <version>9.48</version>
+    </dependency>
   </dependencies>
 
   <build>

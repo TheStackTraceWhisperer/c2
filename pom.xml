@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -12,120 +11,96 @@
   </parent>
 
   <groupId>com.example</groupId>
-  <artifactId>micronaut-netty-quic-pingpong</artifactId>
+  <artifactId>netty-quic-gateway-demo</artifactId>
   <version>1.0.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>common-protocol</module>
+    <module>client-sdk</module>
+    <module>platform-modulith</module>
+    <module>integration-tests</module>
+  </modules>
 
   <properties>
-    <packaging>jar</packaging>
     <jdk.version>25</jdk.version>
     <release.version>25</release.version>
     <micronaut.version>5.1.0</micronaut.version>
     <netty.quic.version>0.0.75.Final</netty.quic.version>
     <fory.version>1.6.0</fory.version>
-    <exec.mainClass>com.example.Application</exec.mainClass>
+    <nimbus.version>9.48</nimbus.version>
+    <archunit.version>1.4.1</archunit.version>
+    <assertj.version>3.27.3</assertj.version>
+    <awaitility.version>4.3.0</awaitility.version>
   </properties>
 
-  <dependencies>
-    <!-- Micronaut Core -->
-    <dependency>
-      <groupId>io.micronaut</groupId>
-      <artifactId>micronaut-inject</artifactId>
-      <scope>compile</scope>
-    </dependency>
-    <dependency>
-      <groupId>io.micronaut</groupId>
-      <artifactId>micronaut-runtime</artifactId>
-      <scope>compile</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.yaml</groupId>
-      <artifactId>snakeyaml</artifactId>
-    </dependency>
+  <dependencyManagement>
+    <dependencies>
+      <!-- Internal Modules -->
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>common-protocol</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>client-sdk</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>platform-modulith</artifactId>
+        <version>${project.version}</version>
+      </dependency>
 
-    <!-- Replace netty-all with core Netty dependencies -->
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-transport</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-codec</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.netty</groupId>
-      <artifactId>netty-handler</artifactId>
-    </dependency>
+      <!-- Networking & Serialization -->
+      <dependency>
+        <groupId>io.netty.incubator</groupId>
+        <artifactId>netty-incubator-codec-classes-quic</artifactId>
+        <version>${netty.quic.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.netty.incubator</groupId>
+        <artifactId>netty-incubator-codec-native-quic</artifactId>
+        <version>${netty.quic.version}</version>
+        <classifier>${os.detected.classifier}</classifier>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.fory</groupId>
+        <artifactId>fory-core</artifactId>
+        <version>${fory.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.nimbusds</groupId>
+        <artifactId>nimbus-jose-jwt</artifactId>
+        <version>${nimbus.version}</version>
+      </dependency>
 
-    <!-- Netty Incubator QUIC -->
-    <dependency>
-      <groupId>io.netty.incubator</groupId>
-      <artifactId>netty-incubator-codec-classes-quic</artifactId>
-      <version>${netty.quic.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.netty.incubator</groupId>
-      <artifactId>netty-incubator-codec-native-quic</artifactId>
-      <version>${netty.quic.version}</version>
-      <classifier>${os.detected.classifier}</classifier>
-    </dependency>
-
-    <dependency>
-      <groupId>org.apache.fory</groupId>
-      <artifactId>fory-core</artifactId>
-      <version>${fory.version}</version>
-    </dependency>
-
-    <!-- Logging -->
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-classic</artifactId>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <scope>provided</scope>
-    </dependency>
-
-    <!-- Micronaut & JUnit 5 Test Suite -->
-    <dependency>
-      <groupId>io.micronaut.test</groupId>
-      <artifactId>micronaut-test-junit5</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <version>3.27.3</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.awaitility</groupId>
-      <artifactId>awaitility</artifactId>
-      <version>4.3.0</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.nimbusds</groupId>
-      <artifactId>nimbus-jose-jwt</artifactId>
-      <version>9.48</version>
-    </dependency>
-  </dependencies>
+      <!-- Testing & Architectural Validation -->
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.awaitility</groupId>
+        <artifactId>awaitility</artifactId>
+        <version>${awaitility.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <build>
     <extensions>
-      <!-- Detects OS and Arch to automatically set ${os.detected.classifier} -->
+      <!-- Detects OS & Architecture to populate ${os.detected.classifier} for Netty QUIC & LWJGL -->
       <extension>
         <groupId>kr.motd.maven</groupId>
         <artifactId>os-maven-plugin</artifactId>
@@ -133,31 +108,29 @@
       </extension>
     </extensions>
 
-    <plugins>
-      <plugin>
-        <groupId>io.micronaut.maven</groupId>
-        <artifactId>micronaut-maven-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <configuration>
-          <release>${release.version}</release>
-          <parameters>true</parameters>
-          <annotationProcessorPaths combine.children="override">
-            <path>
-              <groupId>org.projectlombok</groupId>
-              <artifactId>lombok</artifactId>
-              <version>${lombok.version}</version>
-            </path>
-            <path>
-              <groupId>io.micronaut</groupId>
-              <artifactId>micronaut-inject-java</artifactId>
-              <version>${micronaut.core.version}</version>
-            </path>
-          </annotationProcessorPaths>
-        </configuration>
-      </plugin>
-    </plugins>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <configuration>
+            <release>${release.version}</release>
+            <parameters>true</parameters>
+            <annotationProcessorPaths combine.children="override">
+              <path>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+              </path>
+              <path>
+                <groupId>io.micronaut</groupId>
+                <artifactId>micronaut-inject-java</artifactId>
+                <version>${micronaut.core.version}</version>
+              </path>
+            </annotationProcessorPaths>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
   </build>
 </project>

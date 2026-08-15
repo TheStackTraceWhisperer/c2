@@ -9,6 +9,7 @@ import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.WriteBufferWaterMark;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.incubator.codec.quic.QuicChannel;
@@ -37,14 +38,21 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
     long sessionId = (session != null) ? session.getSessionId() : 0L;
 
-    // Security Gate 1: Reject unauthenticated access to LOBBY or WORLD
+    // Defense 1: Rate Limiter (Token Bucket)
+    if (session != null && !session.getRateLimiter().tryConsume()) {
+      log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded)",
+        msg.serviceId(), msg.messageId(), sessionId);
+      return;
+    }
+
+    // Defense 2: Security Gate (Auth)
     if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD)
       && (session == null || !session.isAuthenticated())) {
       log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
       return;
     }
 
-    // Security Gate 2: Reject access to WORLD if character is not selected
+    // Defense 3: Security Gate (Character Selection)
     if (msg.serviceId() == ServiceType.WORLD && (session == null || session.getCharacterId() == 0L)) {
       log.warn("[GATEWAY-SECURITY] Blocked unselected character access to WORLD from Session #{}", sessionId);
       return;
@@ -69,6 +77,11 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
           log.error("[GATEWAY] Failed to forward to backend stream for svc {}: {}", serviceId, future.cause().getMessage());
         }
       });
+
+      // Flow Control: If backend write buffer is congested, pause reading from client
+      if (!backendStream.isWritable()) {
+        clientStream.config().setAutoRead(false);
+      }
     } else {
       enqueueAndConnect(ctx, session, serviceId, backendEnvelope);
     }
@@ -94,6 +107,8 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         backendQuicChannel.createStream(QuicStreamType.BIDIRECTIONAL, new ChannelInitializer<QuicStreamChannel>() {
           @Override
           protected void initChannel(QuicStreamChannel ch) {
+            ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
+
             ch.pipeline().addLast(
               new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
               new LengthFieldPrepender(4),
@@ -137,6 +152,23 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
           }
         });
       });
+  }
+
+  @Override
+  public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+    QuicStreamChannel clientStream = (QuicStreamChannel) ctx.channel();
+    ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
+
+    // If client stream writable state changed, resume/pause all backend streams
+    if (session != null) {
+      boolean writable = clientStream.isWritable();
+      session.getBackendStreams().values().forEach(stream -> {
+        if (stream.isActive()) {
+          stream.config().setAutoRead(writable);
+        }
+      });
+    }
+    super.channelWritabilityChanged(ctx);
   }
 
   private void drainAndRelease(short serviceId) {

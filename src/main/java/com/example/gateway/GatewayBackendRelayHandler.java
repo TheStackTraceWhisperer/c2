@@ -24,7 +24,7 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, BackendEnvelope msg) throws Exception {
-    // 1. Gateway Control Plane Message -> Consume & Drop (Do NOT forward to client)
+    // 1. Gateway Control Plane Message -> Consume & Drop
     if (msg.serviceId() == ServiceType.GATEWAY) {
       log.info("[GATEWAY-RELAY] Consuming control message ID: {} for Session #{}", msg.messageId(), msg.sessionId());
 
@@ -34,7 +34,6 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
         Object controlMsg = ForySerializationProvider.get().deserialize(bytes);
 
         if (controlMsg instanceof PacketMessage packetMessage) {
-          // Attach session context to the channel context for the control handler
           ctx.channel().attr(ClientSession.KEY).set(session);
           controlRouter.route(ctx, packetMessage);
         }
@@ -42,7 +41,7 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
       return;
     }
 
-    // 2. Pure Blind Proxy -> Forward payload unmodified and uninspected to client
+    // 2. Pure Blind Proxy Pass-Through
     log.info("[GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: {}, msg: {} (Session #{})",
       msg.serviceId(), msg.messageId(), msg.sessionId());
 
@@ -57,6 +56,20 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
         log.error("[GATEWAY-RELAY] Failed to relay to client stream: {}", future.cause().getMessage());
       }
     });
+
+    // Flow Control: If client socket is congested, pause reading from this backend stream
+    if (!clientStreamChannel.isWritable()) {
+      ctx.channel().config().setAutoRead(false);
+    }
+  }
+
+  @Override
+  public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
+    // When this backend stream flushes below low watermark, resume reading on client stream
+    if (ctx.channel().isWritable() && clientStreamChannel.isActive()) {
+      clientStreamChannel.config().setAutoRead(true);
+    }
+    super.channelWritabilityChanged(ctx);
   }
 
   @Override

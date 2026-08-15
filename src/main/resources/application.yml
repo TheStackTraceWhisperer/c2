@@ -5,6 +5,9 @@ com:
         port: 8888
         hostname: localhost
         nodeId: 1
+        rate-limit:
+          capacity: 50
+          refill-rate: 20
       login:
         port: 9998
         hostname: localhost

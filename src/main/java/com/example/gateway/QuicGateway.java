@@ -53,11 +53,13 @@ public class QuicGateway {
 
   @PostConstruct
   public void start() throws Exception {
-    // Register Gateway Control Plane Handlers
     controlRouter.register(MessageType.CTRL_SET_AUTH_STATE, authStateHandler);
     controlRouter.register(MessageType.CTRL_SET_CHARACTER, characterHandler);
 
     int nodeId = properties.getGateway().getNodeId();
+    long rateCapacity = properties.getGateway().getRateLimit().getCapacity();
+    long rateRefill = properties.getGateway().getRateLimit().getRefillRate();
+
     sessionIdGenerator = new SessionIdGenerator(nodeId);
     group = new NioEventLoopGroup(2);
 
@@ -80,7 +82,7 @@ public class QuicGateway {
         @Override
         protected void initChannel(QuicChannel quicChannel) {
           long sid = sessionIdGenerator.nextSessionId();
-          ClientSession session = new ClientSession(sid, quicChannel);
+          ClientSession session = new ClientSession(sid, quicChannel, rateCapacity, rateRefill);
           quicChannel.attr(ClientSession.KEY).set(session);
           log.info("[GATEWAY] Assigned new ClientSession #{} to QuicChannel {}", sid, quicChannel);
 
@@ -96,6 +98,9 @@ public class QuicGateway {
       .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
         @Override
         protected void initChannel(QuicStreamChannel ch) {
+          // Set watermarks: 32KB Low, 64KB High
+          ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
+
           ch.pipeline().addLast(
             new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
             new LengthFieldPrepender(4),

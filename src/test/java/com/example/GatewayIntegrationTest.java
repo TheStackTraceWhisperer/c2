@@ -211,4 +211,42 @@ public class GatewayIntegrationTest {
       .atMost(3, TimeUnit.SECONDS)
       .until(() -> !movementFuture.isDone());
   }
+
+  @Test
+  @DisplayName("Rate Limiter: Should drop packet bursts exceeding token bucket capacity")
+  void testRateLimiterDropsExcessiveBursts() throws Exception {
+    // 1. Authenticate & Select Character
+    client.send(new LoginRequest("admin", "secret123"));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    client.send(new SelectCharacterRequest(1001L));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
+    );
+
+    // 2. Count acknowledged responses
+    java.util.concurrent.atomic.AtomicInteger acknowledgedMoves = new java.util.concurrent.atomic.AtomicInteger(0);
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
+      acknowledgedMoves.incrementAndGet()
+    );
+
+    // 3. Blast 100 packets instantly (Capacity is configured to 50 in application.yml)
+    int packetsSent = 100;
+    for (int i = 0; i < packetsSent; i++) {
+      client.send(new PlayerMovementRequest(i, 0, 0, 0, 0));
+    }
+
+    // 4. Await processing
+    await()
+      .during(1, TimeUnit.SECONDS)
+      .atMost(2, TimeUnit.SECONDS)
+      .until(() -> true);
+
+    // Acknowledged packets must be capped at capacity (<= 50)
+    assertThat(acknowledgedMoves.get())
+      .isGreaterThan(0)
+      .isLessThanOrEqualTo(50);
+  }
 }

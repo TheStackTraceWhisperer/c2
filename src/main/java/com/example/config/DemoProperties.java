@@ -36,12 +36,28 @@ public class DemoProperties {
   @Introspected
   public static class GatewayProperties extends EndpointProperties {
     private int nodeId = 1;
+    private RateLimitProperties rateLimit = new RateLimitProperties(50, 20);
 
     public GatewayProperties() {}
 
     public GatewayProperties(int port, String hostname, int nodeId) {
       super(port, hostname);
       this.nodeId = nodeId;
+    }
+  }
+
+  @Getter
+  @Setter
+  @Introspected
+  public static class RateLimitProperties {
+    private long capacity = 50;
+    private long refillRate = 20;
+
+    public RateLimitProperties() {}
+
+    public RateLimitProperties(long capacity, long refillRate) {
+      this.capacity = capacity;
+      this.refillRate = refillRate;
     }
   }
 }

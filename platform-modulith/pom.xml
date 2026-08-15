@@ -11,6 +11,7 @@
   </parent>
 
   <artifactId>platform-modulith</artifactId>
+  <packaging>${packaging}</packaging>
 
   <properties>
     <exec.mainClass>com.example.Application</exec.mainClass>
@@ -56,11 +57,22 @@
       <artifactId>lombok</artifactId>
       <scope>provided</scope>
     </dependency>
+    <!-- Client SDK (Test Driver Only) -->
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>client-sdk</artifactId>
+      <scope>test</scope>
+    </dependency>
 
-    <!-- Unit Testing & ArchUnit Module Boundary Verification -->
+    <!-- Test Harness & Assertions -->
     <dependency>
       <groupId>com.tngtech.archunit</groupId>
       <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.micronaut.test</groupId>
+      <artifactId>micronaut-test-junit5</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -76,6 +88,11 @@
     <dependency>
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

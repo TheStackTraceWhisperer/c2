@@ -13,6 +13,8 @@ import com.example.gateway.handler.SetSessionCharacterHandler;
 import com.example.gateway.session.ClientSession;
 import com.example.gateway.session.SessionIdGenerator;
 import io.micronaut.context.annotation.Context;
+import io.micronaut.context.annotation.Requires;
+import io.micronaut.context.env.Environment;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -33,6 +35,8 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Context
+@Requires(env = {"gateway", Environment.TEST})
+@Requires(notEnv = {"login", "lobby", "world"})
 @RequiredArgsConstructor
 public class QuicGateway {
 

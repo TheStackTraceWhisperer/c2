@@ -9,11 +9,15 @@ import com.example.login.handler.ReconnectRequestHandler;
 import com.example.server.AbstractBackendServer;
 import com.example.server.handler.SessionDisconnectedHandler;
 import io.micronaut.context.annotation.Context;
+import io.micronaut.context.annotation.Requires;
+import io.micronaut.context.env.Environment;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Context
+@Requires(env = {"login", Environment.TEST})
+@Requires(notEnv = {"gateway", "lobby", "world"})
 public class LoginServer extends AbstractBackendServer {
 
   private final LoginRequestHandler loginHandler;

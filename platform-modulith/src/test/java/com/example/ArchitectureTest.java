@@ -5,7 +5,6 @@ import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 @AnalyzeClasses(packages = "com.example", importOptions = ImportOption.DoNotIncludeTests.class)
@@ -33,6 +32,6 @@ public class ArchitectureTest {
 
   @ArchTest
   static final ArchRule server_must_never_depend_on_client =
-    noClasses().that().resideInAPackage("com.example..")
+    noClasses().that().resideOutsideOfPackage("com.example.client..")
       .should().dependOnClassesThat().resideInAPackage("com.example.client..");
 }

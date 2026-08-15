@@ -1,11 +1,11 @@
 package com.example.gateway;
 
-import com.example.server.protocol.BackendEnvelope;
-import com.example.server.protocol.BackendEnvelopeCodec;
 import com.example.common.protocol.ClientEnvelope;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
 import com.example.gateway.session.ClientSession;
+import com.example.server.protocol.BackendEnvelope;
+import com.example.server.protocol.BackendEnvelopeCodec;
 import io.netty.channel.*;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
@@ -72,6 +72,9 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
         if (!future.isSuccess()) {
           log.error("[GATEWAY] Failed to forward to backend stream for svc {}: {}", serviceId, future.cause().getMessage());
+          if (backendEnvelope.payload() != null && backendEnvelope.payload().refCnt() > 0) {
+            backendEnvelope.payload().release();
+          }
         }
       });
 
@@ -140,7 +143,12 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             Queue<BackendEnvelope> queue = pendingQueues.remove(serviceId);
             if (queue != null) {
               while (!queue.isEmpty()) {
-                ch.writeAndFlush(queue.poll());
+                BackendEnvelope queuedEnvelope = queue.poll();
+                ch.writeAndFlush(queuedEnvelope).addListener((ChannelFutureListener) wf -> {
+                  if (!wf.isSuccess() && queuedEnvelope.payload() != null && queuedEnvelope.payload().refCnt() > 0) {
+                    queuedEnvelope.payload().release();
+                  }
+                });
               }
             }
           } else {
@@ -156,7 +164,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     QuicStreamChannel clientStream = (QuicStreamChannel) ctx.channel();
     ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
 
-    // If client stream writable state changed, resume/pause all backend streams
     if (session != null) {
       boolean writable = clientStream.isWritable();
       session.getBackendStreams().values().forEach(stream -> {
@@ -173,7 +180,9 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     if (queue != null) {
       while (!queue.isEmpty()) {
         BackendEnvelope env = queue.poll();
-        if (env.payload() != null) env.payload().release();
+        if (env.payload() != null && env.payload().refCnt() > 0) {
+          env.payload().release();
+        }
       }
     }
   }
@@ -186,11 +195,8 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     log.error("[GATEWAY] Inbound stream error: {}", cause.getMessage(), cause);
-
-    // Close the stream channel
     ctx.close();
 
-    // Protocol violations (e.g. TooLongFrameException) warrant dropping the entire QUIC connection
     if (cause instanceof io.netty.handler.codec.TooLongFrameException || cause instanceof io.netty.handler.codec.CorruptedFrameException) {
       QuicStreamChannel streamChannel = (QuicStreamChannel) ctx.channel();
       if (streamChannel.parent() != null && streamChannel.parent().isActive()) {

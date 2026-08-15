@@ -19,10 +19,10 @@
     <module>common-protocol</module>
     <module>client-sdk</module>
     <module>platform-modulith</module>
-    <module>integration-tests</module>
   </modules>
 
   <properties>
+    <packaging>jar</packaging>
     <jdk.version>25</jdk.version>
     <release.version>25</release.version>
     <micronaut.version>5.1.0</micronaut.version>

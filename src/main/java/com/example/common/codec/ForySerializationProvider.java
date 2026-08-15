@@ -8,6 +8,8 @@ import com.example.common.dto.PongMessage;
 import com.example.lobby.dto.*;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
+import com.example.login.dto.ReconnectRequest;
+import com.example.login.dto.ReconnectResponse;
 import com.example.world.dto.PlayerMovementRequest;
 import com.example.world.dto.PlayerMovementResponse;
 import org.apache.fory.Fory;
@@ -31,8 +33,11 @@ public final class ForySerializationProvider {
     FORY.register(SessionDisconnectedEvent.class, 99);
 
     // Auth Service (100 - 199)
+// Auth Service (100 - 199)
     FORY.register(LoginRequest.class, 100);
     FORY.register(LoginResponse.class, 101);
+    FORY.register(ReconnectRequest.class, 102);
+    FORY.register(ReconnectResponse.class, 103);
 
     // Lobby Service (200 - 299)
     FORY.register(CharacterListRequest.class, 200);

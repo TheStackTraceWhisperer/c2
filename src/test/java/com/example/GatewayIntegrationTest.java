@@ -6,6 +6,7 @@ import com.example.common.backend.protocol.SessionDisconnectedEvent;
 import com.example.common.dto.PingMessage;
 import com.example.common.dto.PongMessage;
 import com.example.common.protocol.MessageType;
+import com.example.common.protocol.ServiceType;
 import com.example.lobby.dto.CharacterListRequest;
 import com.example.lobby.dto.CharacterListResponse;
 import com.example.lobby.dto.SelectCharacterRequest;
@@ -14,6 +15,9 @@ import com.example.server.handler.SessionDisconnectedHandler;
 import com.example.world.dto.PlayerMovementRequest;
 import com.example.world.dto.PlayerMovementResponse;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -125,7 +129,12 @@ public class GatewayIntegrationTest {
       );
 
       // 2. Select Character (Stream 2: LobbyServer)
-      client.send(new SelectCharacterRequest(1001L));
+      // Example in GatewayIntegrationTest
+      client.send(new SelectCharacterRequest(
+        client.getState().getAccountId(),
+        client.getState().getAuthToken(),
+        1001L
+      ));
       await().atMost(5, TimeUnit.SECONDS).until(() ->
         client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
       );
@@ -173,7 +182,11 @@ public class GatewayIntegrationTest {
     );
 
     // 2. Select Character
-    client.send(new SelectCharacterRequest(1001L));
+    client.send(new SelectCharacterRequest(
+      client.getState().getAccountId(),
+      client.getState().getAuthToken(),
+      1001L
+    ));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
@@ -221,7 +234,12 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    client.send(new SelectCharacterRequest(1001L));
+    // Example in GatewayIntegrationTest
+    client.send(new SelectCharacterRequest(
+      client.getState().getAccountId(),
+      client.getState().getAuthToken(),
+      1001L
+    ));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
@@ -248,5 +266,82 @@ public class GatewayIntegrationTest {
     assertThat(acknowledgedMoves.get())
       .isGreaterThan(0)
       .isLessThanOrEqualTo(50);
+  }
+
+  @Test
+  @DisplayName("Safeguards: Gateway should reject and close connection when receiving oversized frame")
+  void testOversizedPayloadRejectedAtEdge() throws Exception {
+    // 1. Authenticate normally
+    client.send(new LoginRequest("admin", "secret123"));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    // 2. Prepare an oversized framed buffer (20 KB > 16 KB MAX_PAYLOAD_SIZE)
+    byte[] hugePayload = new byte[20 * 1024];
+    ByteBuf rawFrame = Unpooled.buffer(4 + 4 + hugePayload.length);
+
+    int frameLength = 4 + hugePayload.length;
+    rawFrame.writeInt(frameLength);
+    rawFrame.writeShort(ServiceType.AUTH);
+    rawFrame.writeShort(MessageType.PING);
+    rawFrame.writeBytes(hugePayload);
+
+    // 3. Inject raw frame via client
+    client.sendRaw(rawFrame);
+
+    // 4. Assert Gateway detects violation and terminates the client connection
+    await().atMost(3, TimeUnit.SECONDS).until(() -> !client.isConnected());
+
+    assertThat(client.isConnected()).isFalse();
+  }
+
+  @Test
+  @DisplayName("Resumption: Disconnected client should reconnect and resume in-world session")
+  void testSessionReconnectionAndResumption() throws Exception {
+    // 1. Initial login & character selection
+    client.send(new LoginRequest("admin", "secret123"));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    long accountId = client.getState().getAccountId();
+    String authToken = client.getState().getAuthToken();
+
+    // Example in GatewayIntegrationTest
+    client.send(new SelectCharacterRequest(
+      client.getState().getAccountId(),
+      client.getState().getAuthToken(),
+      1001L
+    ));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
+    );
+
+    // 2. Abrupt disconnect (simulating network blip)
+    client.close();
+    assertThat(client.isConnected()).isFalse();
+
+    // 3. Connect a new QUIC connection (new snowflake session ID allocated at gateway)
+    client.connect().sync();
+    assertThat(client.isConnected()).isTrue();
+
+    // 4. Send ReconnectRequest with bearer token
+    client.reconnect(accountId, authToken);
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
+    );
+
+    // 5. Send World movement on the restored session to verify Gateway permissions are active
+    CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
+      moveFuture.complete((PlayerMovementResponse) packet)
+    );
+
+    client.send(new PlayerMovementRequest(50.0f, 10.0f, -100.0f, 0.0f, 0.0f));
+
+    PlayerMovementResponse moveResp = moveFuture.get(5, TimeUnit.SECONDS);
+    assertThat(moveResp).isNotNull();
+    assertThat(moveResp.x()).isEqualTo(50.0f);
   }
 }

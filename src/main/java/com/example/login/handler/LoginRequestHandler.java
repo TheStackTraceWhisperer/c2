@@ -8,13 +8,18 @@ import com.example.server.SessionContext;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
+import com.example.login.state.AuthSessionRegistry;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.UUID;
 
 @Slf4j
 @Singleton
+@RequiredArgsConstructor
 public class LoginRequestHandler implements PacketHandler<LoginRequest> {
+
+  private final AuthSessionRegistry sessionRegistry;
 
   @Override
   public void handle(ChannelHandlerContext ctx, LoginRequest packet) {
@@ -28,6 +33,7 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
 
     // 1. Send control packet to Gateway to mark authenticated
     if (authSuccess) {
+      sessionRegistry.registerSession(accountId, token);
       ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
     }
 

@@ -13,6 +13,8 @@ public final class MessageType {
   // Auth / Login Service (100 - 199)
   public static final short LOGIN_REQUEST = 100;
   public static final short LOGIN_RESPONSE = 101;
+  public static final short RECONNECT_REQUEST = 102;
+  public static final short RECONNECT_RESPONSE = 103;
 
   // Lobby Service (200 - 299)
   public static final short CHARACTER_LIST_REQUEST = 200;

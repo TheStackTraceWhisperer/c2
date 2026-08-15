@@ -1,9 +1,6 @@
 package com.example.client;
 
-import com.example.client.handler.CharacterListResponseHandler;
-import com.example.client.handler.LoginResponseHandler;
-import com.example.client.handler.PongPacketHandler;
-import com.example.client.handler.SelectCharacterResponseHandler;
+import com.example.client.handler.*;
 import com.example.client.state.ClientState;
 import com.example.common.handler.InboundDispatchHandler;
 import com.example.common.handler.IndexedPacketRouter;
@@ -13,7 +10,9 @@ import com.example.common.protocol.MessageType;
 import com.example.common.protocol.PacketMessage;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.config.DemoProperties;
+import com.example.login.dto.ReconnectRequest;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
@@ -43,6 +42,7 @@ public class QuicClient implements AutoCloseable {
   private final CharacterListResponseHandler defaultCharacterListHandler;
   private final PongPacketHandler defaultPongHandler;
   private final SelectCharacterResponseHandler defaultSelectCharacterHandler;
+  private final ReconnectResponseHandler defaultReconnectHandler;
 
   private EventLoopGroup group;
   private Channel datagramChannel;
@@ -55,7 +55,8 @@ public class QuicClient implements AutoCloseable {
     LoginResponseHandler loginHandler,
     CharacterListResponseHandler characterListHandler,
     PongPacketHandler pongHandler,
-    SelectCharacterResponseHandler selectCharacterHandler) {
+    SelectCharacterResponseHandler selectCharacterHandler,
+    ReconnectResponseHandler reconnectHandler) {
     this.properties = properties;
     this.state = state;
     this.router = new IndexedPacketRouter();
@@ -64,6 +65,7 @@ public class QuicClient implements AutoCloseable {
     this.defaultCharacterListHandler = characterListHandler;
     this.defaultPongHandler = pongHandler;
     this.defaultSelectCharacterHandler = selectCharacterHandler;
+    this.defaultReconnectHandler = reconnectHandler;
 
     registerDefaultHandlers();
   }
@@ -76,6 +78,7 @@ public class QuicClient implements AutoCloseable {
     this.router.register(MessageType.CHARACTER_LIST_RESPONSE, defaultCharacterListHandler);
     this.router.register(MessageType.PONG, defaultPongHandler);
     this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
+    this.router.register(MessageType.RECONNECT_RESPONSE, defaultReconnectHandler);
   }
 
   /**
@@ -140,7 +143,7 @@ public class QuicClient implements AutoCloseable {
           @Override
           protected void initChannel(QuicStreamChannel ch) {
             ch.pipeline().addLast(
-              new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
+              new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
               new LengthFieldPrepender(4),
               new ClientEnvelopeCodec(),
               new ClientEnvelopePayloadDecoder(),
@@ -167,6 +170,30 @@ public class QuicClient implements AutoCloseable {
       throw new IllegalStateException("Client is not connected. Call connect() first.");
     }
     return streamChannel.writeAndFlush(message);
+  }
+
+  /**
+   * Directly writes raw bytes into the QUIC stream pipeline.
+   * Useful for security testing, fault injection, and raw frame fuzzing.
+   */
+  public ChannelFuture sendRaw(ByteBuf byteBuf) {
+    if (streamChannel == null || !streamChannel.isActive()) {
+      byteBuf.release();
+      throw new IllegalStateException("Client is not connected. Call connect() first.");
+    }
+    return streamChannel.writeAndFlush(byteBuf);
+  }
+
+  /**
+   * Checks if the bidirectional stream channel is currently active.
+   */
+  public boolean isConnected() {
+    return streamChannel != null && streamChannel.isActive()
+      && quicChannel != null && quicChannel.isActive();
+  }
+
+  public ChannelFuture reconnect(long accountId, String authToken) {
+    return send(new ReconnectRequest(accountId, authToken));
   }
 
   @Override

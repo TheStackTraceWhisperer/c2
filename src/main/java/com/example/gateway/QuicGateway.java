@@ -102,7 +102,7 @@ public class QuicGateway {
           ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
 
           ch.pipeline().addLast(
-            new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
+            new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
             new LengthFieldPrepender(4),
             new ClientEnvelopeCodec(),
             new GatewayInboundStreamHandler(QuicGateway.this)

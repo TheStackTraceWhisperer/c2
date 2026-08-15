@@ -189,6 +189,17 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     log.error("[GATEWAY] Inbound stream error: {}", cause.getMessage(), cause);
+
+    // Close the stream channel
     ctx.close();
+
+    // Protocol violations (e.g. TooLongFrameException) warrant dropping the entire QUIC connection
+    if (cause instanceof io.netty.handler.codec.TooLongFrameException || cause instanceof io.netty.handler.codec.CorruptedFrameException) {
+      QuicStreamChannel streamChannel = (QuicStreamChannel) ctx.channel();
+      if (streamChannel.parent() != null && streamChannel.parent().isActive()) {
+        log.warn("[GATEWAY-SECURITY] Terminating QuicChannel due to protocol violation from stream {}", streamChannel);
+        streamChannel.parent().close();
+      }
+    }
   }
 }

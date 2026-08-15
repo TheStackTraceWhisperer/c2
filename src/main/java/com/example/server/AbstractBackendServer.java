@@ -54,7 +54,7 @@ public abstract class AbstractBackendServer {
         @Override
         protected void initChannel(QuicStreamChannel ch) {
           ch.pipeline().addLast(
-            new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
+            new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
             new LengthFieldPrepender(4),
             new BackendEnvelopeCodec(),
             new ServerEnvelopePayloadDecoder(),

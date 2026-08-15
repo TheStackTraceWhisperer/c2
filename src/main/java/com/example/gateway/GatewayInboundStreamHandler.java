@@ -37,9 +37,16 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
     long sessionId = (session != null) ? session.getSessionId() : 0L;
 
-    // Security Gate: Reject unauthenticated access to Lobby/World
-    if (msg.serviceId() == ServiceType.LOBBY && (session == null || !session.isAuthenticated())) {
-      log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to LOBBY from Session #{}", sessionId);
+    // Security Gate 1: Reject unauthenticated access to LOBBY or WORLD
+    if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD)
+      && (session == null || !session.isAuthenticated())) {
+      log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
+      return;
+    }
+
+    // Security Gate 2: Reject access to WORLD if character is not selected
+    if (msg.serviceId() == ServiceType.WORLD && (session == null || session.getCharacterId() == 0L)) {
+      log.warn("[GATEWAY-SECURITY] Blocked unselected character access to WORLD from Session #{}", sessionId);
       return;
     }
 
@@ -71,7 +78,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     pendingQueues.computeIfAbsent(serviceId, k -> new ArrayDeque<>()).add(envelope);
 
     if (Boolean.TRUE.equals(connectingFlags.putIfAbsent(serviceId, Boolean.TRUE))) {
-      // Stream acquisition already in progress; envelope safely buffered in pending queue
       return;
     }
 
@@ -92,13 +98,12 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
               new LengthFieldBasedFrameDecoder(65535, 0, 4, 0, 4),
               new LengthFieldPrepender(4),
               new BackendEnvelopeCodec(),
-              new GatewayBackendRelayHandler(ctx.channel(), session)
+              new GatewayBackendRelayHandler(ctx.channel(), session, gateway.getControlRouter())
             );
           }
         }).addListener((Future<QuicStreamChannel> streamFuture) -> {
           connectingFlags.remove(serviceId);
 
-          // If client disconnected while backend stream was establishing, close immediately
           if (!ctx.channel().isActive()) {
             if (streamFuture.isSuccess()) streamFuture.getNow().close();
             drainAndRelease(serviceId);
@@ -111,7 +116,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             if (session != null) {
               session.getBackendStreams().put(serviceId, ch);
 
-              // Auto-eviction: remove from session map as soon as this specific stream channel closes
               ch.closeFuture().addListener((ChannelFutureListener) f -> {
                 log.debug("[GATEWAY] Backend stream for svc {} closed. Evicting from Session #{}",
                   serviceId, session.getSessionId());
@@ -147,7 +151,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) {
-    // Drain and release any pending frames if the client stream closes abruptly
     pendingQueues.keySet().forEach(this::drainAndRelease);
   }
 

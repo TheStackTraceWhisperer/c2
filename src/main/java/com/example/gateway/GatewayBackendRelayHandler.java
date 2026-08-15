@@ -1,9 +1,10 @@
 package com.example.gateway;
 
-
 import com.example.common.backend.protocol.BackendEnvelope;
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelope;
-import com.example.common.protocol.MessageType;
+import com.example.common.protocol.PacketMessage;
 import com.example.common.protocol.ServiceType;
 import com.example.gateway.session.ClientSession;
 import io.netty.channel.Channel;
@@ -19,19 +20,31 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
   private final Channel clientStreamChannel;
   private final ClientSession session;
+  private final IndexedPacketRouter controlRouter;
 
   @Override
-  protected void channelRead0(ChannelHandlerContext ctx, BackendEnvelope msg) {
-    log.info("[GATEWAY-RELAY] (Backend -> Client) Relaying svc: {}, msg: {} (Session #{})",
-      msg.serviceId(), msg.messageId(), msg.sessionId());
+  protected void channelRead0(ChannelHandlerContext ctx, BackendEnvelope msg) throws Exception {
+    // 1. Gateway Control Plane Message -> Consume & Drop (Do NOT forward to client)
+    if (msg.serviceId() == ServiceType.GATEWAY) {
+      log.info("[GATEWAY-RELAY] Consuming control message ID: {} for Session #{}", msg.messageId(), msg.sessionId());
 
-    // Update Session State on Login success
-    if (msg.serviceId() == ServiceType.AUTH && msg.messageId() == MessageType.LOGIN_RESPONSE) {
-      if (session != null) {
-        session.setAuthenticated(true);
-        log.info("[GATEWAY-SECURITY] Session #{} marked as AUTHENTICATED", session.getSessionId());
+      if (msg.payload() != null && msg.payload().isReadable()) {
+        byte[] bytes = new byte[msg.payload().readableBytes()];
+        msg.payload().readBytes(bytes);
+        Object controlMsg = ForySerializationProvider.get().deserialize(bytes);
+
+        if (controlMsg instanceof PacketMessage packetMessage) {
+          // Attach session context to the channel context for the control handler
+          ctx.channel().attr(ClientSession.KEY).set(session);
+          controlRouter.route(ctx, packetMessage);
+        }
       }
+      return;
     }
+
+    // 2. Pure Blind Proxy -> Forward payload unmodified and uninspected to client
+    log.info("[GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: {}, msg: {} (Session #{})",
+      msg.serviceId(), msg.messageId(), msg.sessionId());
 
     ClientEnvelope clientEnvelope = new ClientEnvelope(
       msg.serviceId(),

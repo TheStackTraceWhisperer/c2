@@ -11,3 +11,6 @@ com:
       lobby:
         port: 9999
         hostname: localhost
+      world:
+        port: 9997
+        hostname: localhost

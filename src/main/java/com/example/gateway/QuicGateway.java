@@ -3,10 +3,13 @@ package com.example.gateway;
 import com.example.common.backend.protocol.BackendEnvelope;
 import com.example.common.backend.protocol.SessionDisconnectedEvent;
 import com.example.common.codec.ForySerializationProvider;
+import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelopeCodec;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.config.DemoProperties;
+import com.example.gateway.handler.SetSessionAuthStateHandler;
+import com.example.gateway.handler.SetSessionCharacterHandler;
 import com.example.gateway.session.ClientSession;
 import com.example.gateway.session.SessionIdGenerator;
 import io.micronaut.context.annotation.Context;
@@ -38,12 +41,22 @@ public class QuicGateway {
   @Getter
   private final BackendConnectionManager connectionManager;
 
+  private final SetSessionAuthStateHandler authStateHandler;
+  private final SetSessionCharacterHandler characterHandler;
+
+  @Getter
+  private final IndexedPacketRouter controlRouter = new IndexedPacketRouter();
+
   private EventLoopGroup group;
   private Channel inboundDatagramChannel;
   private SessionIdGenerator sessionIdGenerator;
 
   @PostConstruct
   public void start() throws Exception {
+    // Register Gateway Control Plane Handlers
+    controlRouter.register(MessageType.CTRL_SET_AUTH_STATE, authStateHandler);
+    controlRouter.register(MessageType.CTRL_SET_CHARACTER, characterHandler);
+
     int nodeId = properties.getGateway().getNodeId();
     sessionIdGenerator = new SessionIdGenerator(nodeId);
     group = new NioEventLoopGroup(2);
@@ -109,9 +122,7 @@ public class QuicGateway {
     long sessionId = session.getSessionId();
     int streamCount = session.getBackendStreams().size();
 
-    if (streamCount == 0) {
-      return; // No backend streams opened; clean disconnect with zero broadcast needed
-    }
+    if (streamCount == 0) return;
 
     log.info("[GATEWAY] Client disconnected: Session #{}. Broadcasting teardown to {} active backend streams...",
       sessionId, streamCount);

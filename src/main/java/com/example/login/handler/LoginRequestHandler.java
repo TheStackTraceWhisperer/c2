@@ -1,5 +1,6 @@
 package com.example.login.handler;
 
+import com.example.common.backend.protocol.SetSessionAuthStateControlMessage;
 import com.example.common.handler.PacketHandler;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
@@ -25,6 +26,12 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
     String token = authSuccess ? UUID.randomUUID().toString() : "";
     String err = authSuccess ? "" : "Invalid credentials";
 
+    // 1. Send control packet to Gateway to mark authenticated
+    if (authSuccess) {
+      ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
+    }
+
+    // 2. Send public response for client
     log.info("[LOGIN-SERVER] Auth result for Session #{}: success={}, accountId={}", sessionId, authSuccess, accountId);
     ctx.writeAndFlush(new LoginResponse(authSuccess, accountId, token, err))
       .addListener((ChannelFutureListener) future -> {

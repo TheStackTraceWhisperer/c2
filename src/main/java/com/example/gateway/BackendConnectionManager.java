@@ -123,6 +123,7 @@ public class BackendConnectionManager {
     return switch (serviceId) {
       case ServiceType.AUTH -> properties.getLogin();
       case ServiceType.LOBBY -> properties.getLobby();
+      case ServiceType.WORLD -> properties.getWorld();
       default -> null;
     };
   }

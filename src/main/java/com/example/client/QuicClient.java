@@ -3,6 +3,7 @@ package com.example.client;
 import com.example.client.handler.CharacterListResponseHandler;
 import com.example.client.handler.LoginResponseHandler;
 import com.example.client.handler.PongPacketHandler;
+import com.example.client.handler.SelectCharacterResponseHandler;
 import com.example.client.state.ClientState;
 import com.example.common.handler.InboundDispatchHandler;
 import com.example.common.handler.IndexedPacketRouter;
@@ -41,6 +42,7 @@ public class QuicClient implements AutoCloseable {
   private final LoginResponseHandler defaultLoginHandler;
   private final CharacterListResponseHandler defaultCharacterListHandler;
   private final PongPacketHandler defaultPongHandler;
+  private final SelectCharacterResponseHandler defaultSelectCharacterHandler;
 
   private EventLoopGroup group;
   private Channel datagramChannel;
@@ -52,7 +54,8 @@ public class QuicClient implements AutoCloseable {
     ClientState state,
     LoginResponseHandler loginHandler,
     CharacterListResponseHandler characterListHandler,
-    PongPacketHandler pongHandler) {
+    PongPacketHandler pongHandler,
+    SelectCharacterResponseHandler selectCharacterHandler) {
     this.properties = properties;
     this.state = state;
     this.router = new IndexedPacketRouter();
@@ -60,6 +63,7 @@ public class QuicClient implements AutoCloseable {
     this.defaultLoginHandler = loginHandler;
     this.defaultCharacterListHandler = characterListHandler;
     this.defaultPongHandler = pongHandler;
+    this.defaultSelectCharacterHandler = selectCharacterHandler;
 
     registerDefaultHandlers();
   }
@@ -71,6 +75,7 @@ public class QuicClient implements AutoCloseable {
     this.router.register(MessageType.LOGIN_RESPONSE, defaultLoginHandler);
     this.router.register(MessageType.CHARACTER_LIST_RESPONSE, defaultCharacterListHandler);
     this.router.register(MessageType.PONG, defaultPongHandler);
+    this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
   }
 
   /**

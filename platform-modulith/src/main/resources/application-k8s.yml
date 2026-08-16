@@ -22,5 +22,8 @@ com:
         port: 9999
         hostname: lobby-service.game-cluster.svc.cluster.local
       world:
+        port: 9996
+        hostname: world-service.game-cluster.svc.cluster.local
+      zone:
         port: 9997
         hostname: 0.0.0.0

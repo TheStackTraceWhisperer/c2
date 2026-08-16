@@ -1,0 +1,11 @@
+Several areas in the current implementation are ripe for remediation:
+
+    Dual Serialization Providers & ID Drift: We currently maintain two separate registration lists—ForySerializationProvider in common-protocol and BackendForySerializationProvider in platform-modulith. Because wire IDs are registered manually (e.g., 100, 300, 400), there is no compile-time guard preventing ID collisions or missed registrations between client and backend.
+
+    Hardcoded Context & Identity Hacks: Handlers like PlayerMovementRequestHandler still hardcode characterId = 1001L instead of resolving the active character from a validated session context or token header.
+
+    ByteBuf Lifecycle & Leak Hazards: In the gateway relay and codec layers, we use manual .retain() and slice passing across stream boundaries. Even in the test logs, the Netty leak detector flashed once during rapid teardown. We need bulletproof release guarantees on error, unhandled routes, and dropped frames.
+
+    Error Signaling to Clients: When the Gateway blocks or drops a packet (unauthenticated, rate limit exceeded, unselected character, or route missing), it silently drops the packet with a log line. The client receives no structured error code or reject frame, leading to silent UI hangs or polling timeouts.
+
+    Configuration & Magic Strings: Service resolution, fallback defaults, and host lookups still rely on loose string formatting and fallback assumptions in BackendConnectionManager.

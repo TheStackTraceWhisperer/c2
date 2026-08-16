@@ -5,6 +5,7 @@ public final class MessageType {
   public static final short CTRL_SET_AUTH_STATE = 1;
   public static final short CTRL_SET_CHARACTER = 2;
   public static final short CTRL_SET_WORLD = 3;
+  public static final short CTRL_SET_ZONE = 4;
 
   // Diagnostics / System (10 - 99)
   public static final short PING = 10;
@@ -23,9 +24,15 @@ public final class MessageType {
   public static final short SELECT_CHARACTER_REQUEST = 202;
   public static final short SELECT_CHARACTER_RESPONSE = 203;
 
-  // World Service (300 - 399)
-  public static final short PLAYER_MOVEMENT_REQUEST = 300;
-  public static final short PLAYER_MOVEMENT_RESPONSE = 301;
+  // World Service / Realm Orchestration (300 - 399)
+  public static final short JOIN_WORLD_REQUEST = 300;
+  public static final short JOIN_WORLD_RESPONSE = 301;
+  public static final short ZONE_TRANSFER_REQUEST = 302;
+  public static final short ZONE_TRANSFER_RESPONSE = 303;
+
+  // Zone Service / Authoritative Simulation (400 - 499)
+  public static final short PLAYER_MOVEMENT_REQUEST = 400;
+  public static final short PLAYER_MOVEMENT_RESPONSE = 401;
 
   private MessageType() {}
 }

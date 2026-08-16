@@ -3,6 +3,8 @@ package com.example.gateway;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
 import com.example.config.DemoProperties;
+import com.example.config.DemoProperties.EndpointProperties;
+import com.example.gateway.session.ClientSession;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioDatagramChannel;
@@ -34,8 +36,12 @@ public class BackendConnectionManager {
     this.properties = properties;
   }
 
-  public static long makeKey(short serviceId, int instanceId) {
-    return (((long) serviceId) << 32) | (instanceId & 0xFFFFFFFFL);
+  /**
+   * Generates a 64-bit composite key from serviceId, host hash, and port.
+   */
+  public static long makeKey(short serviceId, String host, int port) {
+    int hostHash = (host != null) ? host.hashCode() : 0;
+    return (((long) serviceId) << 48) ^ (((long) (hostHash & 0xFFFF)) << 32) ^ (port & 0xFFFFFFFFL);
   }
 
   public void init(EventLoopGroup group) throws Exception {
@@ -63,8 +69,22 @@ public class BackendConnectionManager {
     log.info("[BACKEND-CONN-MGR] Outbound QUIC datagram channel initialized.");
   }
 
-  public Future<QuicChannel> getConnection(short serviceId, int instanceId, EventLoop eventLoop) {
-    long key = makeKey(serviceId, instanceId);
+  public EndpointProperties resolveEndpoint(short serviceId, ClientSession session) {
+    return switch (serviceId) {
+      case ServiceType.AUTH -> properties.getLogin();
+      case ServiceType.LOBBY -> properties.getLobby();
+      case ServiceType.WORLD -> (session != null && session.getWorldEndpoint() != null)
+        ? session.getWorldEndpoint()
+        : properties.getWorld();
+      case ServiceType.ZONE -> (session != null && session.getZoneEndpoint() != null)
+        ? session.getZoneEndpoint()
+        : properties.getGateway().getWorld(1); // Default initial zone fallback
+      default -> null;
+    };
+  }
+
+  public Future<QuicChannel> getConnection(short serviceId, String host, int port, EventLoop eventLoop) {
+    long key = makeKey(serviceId, host, port);
 
     Future<QuicChannel> existingFuture = connectionFutures.get(key);
     if (existingFuture != null && existingFuture.isSuccess() && existingFuture.getNow().isActive()) {
@@ -75,60 +95,44 @@ public class BackendConnectionManager {
       if (currentFuture != null && (!currentFuture.isDone() || (currentFuture.isSuccess() && currentFuture.getNow().isActive()))) {
         return currentFuture;
       }
-      return initiateConnection(serviceId, instanceId, key, eventLoop);
+      return initiateConnection(serviceId, host, port, key, eventLoop);
     });
   }
 
-  private Future<QuicChannel> initiateConnection(short serviceId, int instanceId, long key, EventLoop eventLoop) {
-    DemoProperties.EndpointProperties endpoint = resolveEndpoint(serviceId, instanceId);
-    if (endpoint == null) {
-      return eventLoop.newFailedFuture(new IllegalArgumentException(
-        "No backend registered for serviceId: " + serviceId + ", instanceId: " + instanceId));
-    }
-
+  private Future<QuicChannel> initiateConnection(short serviceId, String host, int port, long key, EventLoop eventLoop) {
     Promise<QuicChannel> promise = eventLoop.newPromise();
-    log.info("[BACKEND-CONN-MGR] Connecting to service {} (instance {}) at {}:{}...",
-      serviceId, instanceId, endpoint.getHostname(), endpoint.getPort());
+    log.info("[BACKEND-CONN-MGR] Connecting to service {} at {}:{}...", serviceId, host, port);
 
     QuicChannel.newBootstrap(outboundDatagramChannel)
       .handler(new ChannelInboundHandlerAdapter() {
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-          log.info("[BACKEND-CONN-MGR] Connection to service {} (instance {}) closed. Evicting.", serviceId, instanceId);
+          log.info("[BACKEND-CONN-MGR] Connection to service {} ({}:{}) closed. Evicting.", serviceId, host, port);
           connectionFutures.remove(key);
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-          log.error("[BACKEND-CONN-MGR] Error on connection to service {} (instance {}): {}",
-            serviceId, instanceId, cause.getMessage());
+          log.error("[BACKEND-CONN-MGR] Error on connection to service {} ({}:{}): {}",
+            serviceId, host, port, cause.getMessage());
           ctx.close();
         }
       })
-      .remoteAddress(new InetSocketAddress(endpoint.getHostname(), endpoint.getPort()))
+      .remoteAddress(new InetSocketAddress(host, port))
       .connect()
       .addListener((Future<QuicChannel> future) -> {
         if (future.isSuccess()) {
-          log.info("[BACKEND-CONN-MGR] Connected to service {} (instance {}).", serviceId, instanceId);
+          log.info("[BACKEND-CONN-MGR] Connected to service {} at {}:{}", serviceId, host, port);
           promise.setSuccess(future.getNow());
         } else {
-          log.error("[BACKEND-CONN-MGR] Failed connection to service {} (instance {}): {}",
-            serviceId, instanceId, future.cause().getMessage());
+          log.error("[BACKEND-CONN-MGR] Failed connection to service {} ({}:{}): {}",
+            serviceId, host, port, future.cause().getMessage());
           connectionFutures.remove(key);
           promise.setFailure(future.cause());
         }
       });
 
     return promise;
-  }
-
-  private DemoProperties.EndpointProperties resolveEndpoint(short serviceId, int instanceId) {
-    return switch (serviceId) {
-      case ServiceType.AUTH -> properties.getLogin();
-      case ServiceType.LOBBY -> properties.getLobby();
-      case ServiceType.WORLD -> properties.getGateway().getWorld(instanceId);
-      default -> null;
-    };
   }
 
   @PreDestroy

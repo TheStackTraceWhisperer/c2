@@ -18,8 +18,10 @@ public class CharacterListResponseHandler implements PacketHandler<CharacterList
 
   @Override
   public void handle(ChannelHandlerContext ctx, CharacterListResponse packet) {
-    log.info("[CLIENT-HANDLER] Character list received: {} characters", packet.characters().size());
-    clientState.updateCharacters(packet.characters());
+    int count = (packet.characters() != null) ? packet.characters().size() : 0;
+    log.info("[CLIENT-HANDLER] Character list received: {} characters", count);
+
     clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+    clientState.updateCharacters(packet.characters());
   }
 }

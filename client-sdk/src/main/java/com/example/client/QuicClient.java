@@ -42,6 +42,9 @@ public class QuicClient implements AutoCloseable {
   private final PongPacketHandler defaultPongHandler;
   private final SelectCharacterResponseHandler defaultSelectCharacterHandler;
   private final ReconnectResponseHandler defaultReconnectHandler;
+  private final JoinWorldResponseHandler defaultJoinWorldHandler;
+  private final ZoneTransferResponseHandler defaultZoneTransferHandler;
+  private final PlayerMovementResponseHandler defaultPlayerMovementHandler;
 
   private EventLoopGroup group;
   private Channel datagramChannel;
@@ -55,7 +58,10 @@ public class QuicClient implements AutoCloseable {
     CharacterListResponseHandler characterListHandler,
     PongPacketHandler pongHandler,
     SelectCharacterResponseHandler selectCharacterHandler,
-    ReconnectResponseHandler reconnectHandler) {
+    ReconnectResponseHandler reconnectHandler,
+    JoinWorldResponseHandler joinWorldHandler,
+    ZoneTransferResponseHandler zoneTransferHandler,
+    PlayerMovementResponseHandler playerMovementHandler) {
     this.properties = properties;
     this.state = state;
     this.router = new IndexedPacketRouter();
@@ -65,6 +71,9 @@ public class QuicClient implements AutoCloseable {
     this.defaultPongHandler = pongHandler;
     this.defaultSelectCharacterHandler = selectCharacterHandler;
     this.defaultReconnectHandler = reconnectHandler;
+    this.defaultJoinWorldHandler = joinWorldHandler;
+    this.defaultZoneTransferHandler = zoneTransferHandler;
+    this.defaultPlayerMovementHandler = playerMovementHandler;
 
     registerDefaultHandlers();
   }
@@ -78,6 +87,9 @@ public class QuicClient implements AutoCloseable {
     this.router.register(MessageType.PONG, defaultPongHandler);
     this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
     this.router.register(MessageType.RECONNECT_RESPONSE, defaultReconnectHandler);
+    this.router.register(MessageType.JOIN_WORLD_RESPONSE, defaultJoinWorldHandler);
+    this.router.register(MessageType.ZONE_TRANSFER_RESPONSE, defaultZoneTransferHandler);
+    this.router.register(MessageType.PLAYER_MOVEMENT_RESPONSE, defaultPlayerMovementHandler);
   }
 
   /**

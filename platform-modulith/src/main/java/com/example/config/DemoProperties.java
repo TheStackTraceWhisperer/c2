@@ -3,7 +3,9 @@ package com.example.config;
 import io.micronaut.context.annotation.ConfigurationProperties;
 import io.micronaut.core.convert.format.MapFormat;
 import io.micronaut.serde.annotation.Serdeable;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.Map;
@@ -17,10 +19,13 @@ public class DemoProperties {
   private LoginProperties login;
   private LobbyProperties lobby;
   private WorldProperties world;
+  private ZoneProperties zone;
 
   @Getter
   @Setter
   @Serdeable
+  @NoArgsConstructor
+  @AllArgsConstructor
   public static class EndpointProperties {
     private int port;
     private String hostname;
@@ -73,4 +78,9 @@ public class DemoProperties {
   @Setter
   @ConfigurationProperties("world")
   public static class WorldProperties extends EndpointProperties {}
+
+  @Getter
+  @Setter
+  @ConfigurationProperties("zone")
+  public static class ZoneProperties extends EndpointProperties {}
 }

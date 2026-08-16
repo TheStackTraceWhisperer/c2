@@ -22,5 +22,8 @@ com:
         port: 9999
         hostname: localhost
       world:
+        port: 9996
+        hostname: localhost
+      zone:
         port: 9997
         hostname: localhost

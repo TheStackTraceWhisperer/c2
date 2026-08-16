@@ -3,6 +3,7 @@ package com.example.gateway;
 import com.example.common.protocol.ClientEnvelope;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
+import com.example.config.DemoProperties.EndpointProperties;
 import com.example.gateway.session.ClientSession;
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.BackendEnvelopeCodec;
@@ -35,32 +36,33 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
     long sessionId = (session != null) ? session.getSessionId() : 0L;
 
-    // Defense 1: Rate Limiter (Token Bucket)
     if (session != null && !session.getRateLimiter().tryConsume()) {
       log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded)",
         msg.serviceId(), msg.messageId(), sessionId);
       return;
     }
 
-    // Defense 2: Security Gate (Auth)
-    if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD)
+    if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
       && (session == null || !session.isAuthenticated())) {
       log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
       return;
     }
 
-    // Defense 3: Security Gate (Character Selection)
-    if (msg.serviceId() == ServiceType.WORLD && (session == null || session.getCharacterId() == 0L)) {
-      log.warn("[GATEWAY-SECURITY] Blocked unselected character access to WORLD from Session #{}", sessionId);
+    if ((msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
+      && (session == null || session.getCharacterId() == 0L)) {
+      log.warn("[GATEWAY-SECURITY] Blocked unselected character access to svc {} from Session #{}", msg.serviceId(), sessionId);
       return;
     }
 
-    int instanceId = (msg.serviceId() == ServiceType.WORLD && session != null)
-      ? session.getCurrentWorldId()
-      : 0;
-    long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), instanceId);
+    EndpointProperties endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
+    if (endpoint == null) {
+      log.error("[GATEWAY] No destination endpoint resolved for svc: {} on Session #{}", msg.serviceId(), sessionId);
+      return;
+    }
 
-    log.info("[GATEWAY] Inbound ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
+    long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), endpoint.getHostname(), endpoint.getPort());
+
+    log.debug("[GATEWAY] ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
       msg.serviceId(), msg.messageId(), sessionId, Long.toHexString(endpointKey));
 
     BackendEnvelope backendEnvelope = new BackendEnvelope(
@@ -83,12 +85,11 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         }
       });
 
-      // Flow Control: If backend write buffer is congested, pause reading from client
       if (!backendStream.isWritable()) {
         clientStream.config().setAutoRead(false);
       }
     } else {
-      enqueueAndConnect(ctx, session, msg.serviceId(), instanceId, endpointKey, backendEnvelope);
+      enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.getHostname(), endpoint.getPort(), endpointKey, backendEnvelope);
     }
   }
 
@@ -96,7 +97,8 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     ChannelHandlerContext ctx,
     ClientSession session,
     short serviceId,
-    int instanceId,
+    String host,
+    int port,
     long endpointKey,
     BackendEnvelope envelope) {
 
@@ -106,7 +108,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       return;
     }
 
-    gateway.getConnectionManager().getConnection(serviceId, instanceId, ctx.channel().eventLoop())
+    gateway.getConnectionManager().getConnection(serviceId, host, port, ctx.channel().eventLoop())
       .addListener((Future<QuicChannel> connFuture) -> {
         if (!connFuture.isSuccess()) {
           log.error("[GATEWAY] Failed to get connection for key 0x{}: {}",

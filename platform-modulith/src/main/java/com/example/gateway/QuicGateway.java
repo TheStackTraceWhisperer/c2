@@ -4,11 +4,11 @@ import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelopeCodec;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ProtocolConstants;
-import com.example.common.protocol.ServiceType;
 import com.example.config.DemoProperties;
 import com.example.gateway.handler.SetSessionAuthStateHandler;
 import com.example.gateway.handler.SetSessionCharacterHandler;
 import com.example.gateway.handler.SetSessionWorldHandler;
+import com.example.gateway.handler.SetSessionZoneHandler;
 import com.example.gateway.session.ClientSession;
 import com.example.gateway.session.SessionIdGenerator;
 import com.example.server.codec.BackendForySerializationProvider;
@@ -38,21 +38,19 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Context
 @Requires(env = {"gateway", Environment.TEST})
-@Requires(notEnv = {"login", "lobby", "world"})
+@Requires(notEnv = {"login", "lobby", "world", "zone"})
 @RequiredArgsConstructor
 public class QuicGateway {
 
-  @Getter
-  private final DemoProperties properties;
-  @Getter
-  private final BackendConnectionManager connectionManager;
+  @Getter private final DemoProperties properties;
+  @Getter private final BackendConnectionManager connectionManager;
 
   private final SetSessionAuthStateHandler authStateHandler;
   private final SetSessionCharacterHandler characterHandler;
   private final SetSessionWorldHandler worldHandler;
+  private final SetSessionZoneHandler zoneHandler;
 
-  @Getter
-  private final IndexedPacketRouter controlRouter = new IndexedPacketRouter();
+  @Getter private final IndexedPacketRouter controlRouter = new IndexedPacketRouter();
 
   private EventLoopGroup group;
   private Channel inboundDatagramChannel;
@@ -63,6 +61,7 @@ public class QuicGateway {
     controlRouter.register(MessageType.CTRL_SET_AUTH_STATE, authStateHandler);
     controlRouter.register(MessageType.CTRL_SET_CHARACTER, characterHandler);
     controlRouter.register(MessageType.CTRL_SET_WORLD, worldHandler);
+    controlRouter.register(MessageType.CTRL_SET_ZONE, zoneHandler);
 
     int nodeId = properties.getGateway().getNodeId();
     long rateCapacity = properties.getGateway().getRateLimit().getCapacity();
@@ -144,7 +143,7 @@ public class QuicGateway {
 
     session.getBackendStreams().forEach((endpointKey, backendStream) -> {
       if (backendStream.isActive()) {
-        short svcId = (short) (endpointKey >>> 32);
+        short svcId = (short) (endpointKey >>> 48);
         ByteBuf payloadBuf = backendStream.alloc().buffer(disconnectBytes.length).writeBytes(disconnectBytes);
         BackendEnvelope envelope = new BackendEnvelope(sessionId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
         backendStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> backendStream.close());

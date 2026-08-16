@@ -2,6 +2,7 @@ package com.example.gateway.handler;
 
 import com.example.common.handler.PacketHandler;
 import com.example.common.protocol.ServiceType;
+import com.example.config.DemoProperties.EndpointProperties;
 import com.example.gateway.BackendConnectionManager;
 import com.example.gateway.session.ClientSession;
 import com.example.server.protocol.SetSessionWorldControlMessage;
@@ -21,23 +22,22 @@ public class SetSessionWorldHandler implements PacketHandler<SetSessionWorldCont
       : null;
 
     if (session != null) {
+      EndpointProperties oldEndpoint = session.getWorldEndpoint();
       int previousWorldId = session.getCurrentWorldId();
-      int newWorldId = msg.worldId();
 
-      if (previousWorldId == newWorldId) {
-        return;
+      log.info("[GATEWAY-CTRL] Binding Session #{} to World #{} ({}:{})",
+        session.getSessionId(), msg.worldId(), msg.host(), msg.port());
+
+      if (oldEndpoint != null && (oldEndpoint.getPort() != msg.port() || !oldEndpoint.getHostname().equals(msg.host()))) {
+        long oldKey = BackendConnectionManager.makeKey(ServiceType.WORLD, oldEndpoint.getHostname(), oldEndpoint.getPort());
+        QuicStreamChannel oldStream = session.getBackendStreams().remove(oldKey);
+        if (oldStream != null && oldStream.isActive()) {
+          oldStream.close();
+        }
       }
 
-      log.info("[GATEWAY-CTRL] Transferring Session #{} from World #{} to World #{}",
-        session.getSessionId(), previousWorldId, newWorldId);
-
-      long oldKey = BackendConnectionManager.makeKey(ServiceType.WORLD, previousWorldId);
-      QuicStreamChannel oldStream = session.getBackendStreams().remove(oldKey);
-      if (oldStream != null && oldStream.isActive()) {
-        oldStream.close();
-      }
-
-      session.setCurrentWorldId(newWorldId);
+      session.setCurrentWorldId(msg.worldId());
+      session.setWorldEndpoint(new EndpointProperties(msg.port(), msg.host()));
     }
   }
 }

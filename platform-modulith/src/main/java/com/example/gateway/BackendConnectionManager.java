@@ -27,12 +27,15 @@ import java.util.concurrent.TimeUnit;
 public class BackendConnectionManager {
 
   private final DemoProperties properties;
-  // Cache the ongoing/active connection Future directly
-  private final Map<Short, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
+  private final Map<Long, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
   private Channel outboundDatagramChannel;
 
   public BackendConnectionManager(DemoProperties properties) {
     this.properties = properties;
+  }
+
+  public static long makeKey(short serviceId, int instanceId) {
+    return (((long) serviceId) << 32) | (instanceId & 0xFFFFFFFFL);
   }
 
   public void init(EventLoopGroup group) throws Exception {
@@ -60,45 +63,45 @@ public class BackendConnectionManager {
     log.info("[BACKEND-CONN-MGR] Outbound QUIC datagram channel initialized.");
   }
 
-  /**
-   * Lock-free atomic connection retrieval.
-   */
-  public Future<QuicChannel> getConnection(short serviceId, EventLoop eventLoop) {
-    // Check if we have an existing active connection
-    Future<QuicChannel> existingFuture = connectionFutures.get(serviceId);
+  public Future<QuicChannel> getConnection(short serviceId, int instanceId, EventLoop eventLoop) {
+    long key = makeKey(serviceId, instanceId);
+
+    Future<QuicChannel> existingFuture = connectionFutures.get(key);
     if (existingFuture != null && existingFuture.isSuccess() && existingFuture.getNow().isActive()) {
       return existingFuture;
     }
 
-    // Atomic computeIfAbsent prevents duplicate bootstrap attempts without coarse locks
-    return connectionFutures.compute(serviceId, (svc, currentFuture) -> {
+    return connectionFutures.compute(key, (k, currentFuture) -> {
       if (currentFuture != null && (!currentFuture.isDone() || (currentFuture.isSuccess() && currentFuture.getNow().isActive()))) {
         return currentFuture;
       }
-      return initiateConnection(serviceId, eventLoop);
+      return initiateConnection(serviceId, instanceId, key, eventLoop);
     });
   }
 
-  private Future<QuicChannel> initiateConnection(short serviceId, EventLoop eventLoop) {
-    DemoProperties.EndpointProperties endpoint = resolveEndpoint(serviceId);
+  private Future<QuicChannel> initiateConnection(short serviceId, int instanceId, long key, EventLoop eventLoop) {
+    DemoProperties.EndpointProperties endpoint = resolveEndpoint(serviceId, instanceId);
     if (endpoint == null) {
-      return eventLoop.newFailedFuture(new IllegalArgumentException("No backend registered for serviceId: " + serviceId));
+      return eventLoop.newFailedFuture(new IllegalArgumentException(
+        "No backend registered for serviceId: " + serviceId + ", instanceId: " + instanceId));
     }
 
     Promise<QuicChannel> promise = eventLoop.newPromise();
-    log.info("[BACKEND-CONN-MGR] Connecting to service {} at {}:{}...", serviceId, endpoint.getHostname(), endpoint.getPort());
+    log.info("[BACKEND-CONN-MGR] Connecting to service {} (instance {}) at {}:{}...",
+      serviceId, instanceId, endpoint.getHostname(), endpoint.getPort());
 
     QuicChannel.newBootstrap(outboundDatagramChannel)
       .handler(new ChannelInboundHandlerAdapter() {
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-          log.info("[BACKEND-CONN-MGR] Connection to service {} closed. Evicting from cache.", serviceId);
-          connectionFutures.remove(serviceId);
+          log.info("[BACKEND-CONN-MGR] Connection to service {} (instance {}) closed. Evicting.", serviceId, instanceId);
+          connectionFutures.remove(key);
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-          log.error("[BACKEND-CONN-MGR] Error on service {} connection: {}", serviceId, cause.getMessage());
+          log.error("[BACKEND-CONN-MGR] Error on connection to service {} (instance {}): {}",
+            serviceId, instanceId, cause.getMessage());
           ctx.close();
         }
       })
@@ -106,12 +109,12 @@ public class BackendConnectionManager {
       .connect()
       .addListener((Future<QuicChannel> future) -> {
         if (future.isSuccess()) {
-          QuicChannel channel = future.getNow();
-          log.info("[BACKEND-CONN-MGR] Connected to service {}.", serviceId);
-          promise.setSuccess(channel);
+          log.info("[BACKEND-CONN-MGR] Connected to service {} (instance {}).", serviceId, instanceId);
+          promise.setSuccess(future.getNow());
         } else {
-          log.error("[BACKEND-CONN-MGR] Failed to connect to service {}: {}", serviceId, future.cause().getMessage());
-          connectionFutures.remove(serviceId);
+          log.error("[BACKEND-CONN-MGR] Failed connection to service {} (instance {}): {}",
+            serviceId, instanceId, future.cause().getMessage());
+          connectionFutures.remove(key);
           promise.setFailure(future.cause());
         }
       });
@@ -119,11 +122,11 @@ public class BackendConnectionManager {
     return promise;
   }
 
-  private DemoProperties.EndpointProperties resolveEndpoint(short serviceId) {
+  private DemoProperties.EndpointProperties resolveEndpoint(short serviceId, int instanceId) {
     return switch (serviceId) {
       case ServiceType.AUTH -> properties.getLogin();
       case ServiceType.LOBBY -> properties.getLobby();
-      case ServiceType.WORLD -> properties.getWorld();
+      case ServiceType.WORLD -> properties.getGateway().getWorld(instanceId);
       default -> null;
     };
   }

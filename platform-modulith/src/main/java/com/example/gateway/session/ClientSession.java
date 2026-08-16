@@ -22,8 +22,10 @@ public class ClientSession {
   @Setter private volatile boolean authenticated = false;
   @Setter private volatile long accountId = 0;
   @Setter private volatile long characterId = 0;
+  @Setter private volatile int currentWorldId = 1; // Default to World 1
 
-  private final Map<Short, QuicStreamChannel> backendStreams = new ConcurrentHashMap<>();
+  // Keyed by BackendConnectionManager.makeKey(serviceId, instanceId)
+  private final Map<Long, QuicStreamChannel> backendStreams = new ConcurrentHashMap<>();
 
   public ClientSession(long sessionId, QuicChannel quicChannel, long maxBurst, long tokensPerSecond) {
     this.sessionId = sessionId;

@@ -2,6 +2,7 @@ package com.example.world.handler;
 
 import com.example.common.handler.PacketHandler;
 import com.example.server.SessionContext;
+import com.example.server.protocol.SetSessionWorldControlMessage;
 import com.example.world.dto.PlayerMovementRequest;
 import com.example.world.dto.PlayerMovementResponse;
 import com.example.world.state.WorldSessionRegistry;
@@ -26,15 +27,19 @@ public class PlayerMovementRequestHandler implements PacketHandler<PlayerMovemen
     long sid = (sessionId != null) ? sessionId : 0L;
     long currentTick = serverTick.incrementAndGet();
 
-    // In production, the character ID is tracked per active session entity
     long characterId = sessionRegistry.getCharacterId(sid);
     if (characterId == 0L) {
-      // Default to the first demo character if not explicitly registered in memory
       characterId = 1001L;
     }
 
     log.debug("[WORLD-SERVER] Movement from Session #{}, Char #{}: pos=({}, {}, {}), tick={}",
       sid, characterId, packet.x(), packet.y(), packet.z(), currentTick);
+
+    // Zone boundary / portal trigger: moving past x >= 500 triggers dynamic handoff to World 2
+    if (packet.x() >= 500.0f) {
+      log.info("[WORLD-SERVER] Character #{} crossed portal boundary. Triggering handoff to World 2...", characterId);
+      ctx.write(new SetSessionWorldControlMessage(2));
+    }
 
     ctx.writeAndFlush(new PlayerMovementResponse(characterId, packet.x(), packet.y(), packet.z(), currentTick));
   }

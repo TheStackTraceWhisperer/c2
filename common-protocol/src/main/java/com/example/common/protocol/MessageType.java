@@ -4,6 +4,7 @@ public final class MessageType {
   // Gateway Control Plane (1 - 9)
   public static final short CTRL_SET_AUTH_STATE = 1;
   public static final short CTRL_SET_CHARACTER = 2;
+  public static final short CTRL_SET_WORLD = 3;
 
   // Diagnostics / System (10 - 99)
   public static final short PING = 10;

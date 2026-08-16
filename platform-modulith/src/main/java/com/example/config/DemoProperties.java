@@ -1,63 +1,76 @@
 package com.example.config;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
-import io.micronaut.core.annotation.Introspected;
+import io.micronaut.core.convert.format.MapFormat;
+import io.micronaut.serde.annotation.Serdeable;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.Map;
+
 @Getter
 @Setter
-@Introspected
 @ConfigurationProperties("com.example.demo")
 public class DemoProperties {
 
-  private GatewayProperties gateway = new GatewayProperties(8888, "localhost", 1);
-  private EndpointProperties login = new EndpointProperties(9998, "localhost");
-  private EndpointProperties lobby = new EndpointProperties(9999, "localhost");
-  private EndpointProperties world = new EndpointProperties(9997, "localhost");
+  private GatewayProperties gateway;
+  private LoginProperties login;
+  private LobbyProperties lobby;
+  private WorldProperties world;
 
   @Getter
   @Setter
-  @Introspected
+  @Serdeable
   public static class EndpointProperties {
     private int port;
     private String hostname;
-
-    public EndpointProperties() {}
-
-    public EndpointProperties(int port, String hostname) {
-      this.port = port;
-      this.hostname = hostname;
-    }
   }
 
   @Getter
   @Setter
-  @Introspected
+  @ConfigurationProperties("gateway")
   public static class GatewayProperties extends EndpointProperties {
-    private int nodeId = 1;
-    private RateLimitProperties rateLimit = new RateLimitProperties(50, 20);
 
-    public GatewayProperties() {}
+    private int nodeId;
+    private RateLimitProperties rateLimit;
 
-    public GatewayProperties(int port, String hostname, int nodeId) {
-      super(port, hostname);
-      this.nodeId = nodeId;
+    @MapFormat(transformation = MapFormat.MapTransformation.NESTED)
+    private Map<String, EndpointProperties> worlds;
+
+    public EndpointProperties getWorld(int instanceId) {
+      if (worlds == null || worlds.isEmpty()) {
+        throw new IllegalStateException("Gateway worlds routing configuration is missing or empty.");
+      }
+      EndpointProperties endpoint = worlds.get(String.valueOf(instanceId));
+      if (endpoint == null) {
+        throw new IllegalArgumentException(
+          "No gateway world route configured for instanceId: " + instanceId
+        );
+      }
+      return endpoint;
+    }
+
+    @Getter
+    @Setter
+    @ConfigurationProperties("rate-limit")
+    public static class RateLimitProperties {
+      private long capacity;
+      private long refillRate;
     }
   }
 
   @Getter
   @Setter
-  @Introspected
-  public static class RateLimitProperties {
-    private long capacity = 50;
-    private long refillRate = 20;
+  @ConfigurationProperties("login")
+  public static class LoginProperties extends EndpointProperties {}
 
-    public RateLimitProperties() {}
+  @Getter
+  @Setter
+  @ConfigurationProperties("lobby")
+  public static class LobbyProperties extends EndpointProperties {}
 
-    public RateLimitProperties(long capacity, long refillRate) {
-      this.capacity = capacity;
-      this.refillRate = refillRate;
-    }
-  }
+  @Getter
+  @Setter
+  @ConfigurationProperties("world")
+  public static class WorldProperties extends EndpointProperties {}
 }

@@ -1,17 +1,19 @@
 package com.example.gateway;
 
-import com.example.server.protocol.BackendEnvelope;
-import com.example.server.protocol.SessionDisconnectedEvent;
-import com.example.server.codec.BackendForySerializationProvider;
 import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelopeCodec;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ProtocolConstants;
+import com.example.common.protocol.ServiceType;
 import com.example.config.DemoProperties;
 import com.example.gateway.handler.SetSessionAuthStateHandler;
 import com.example.gateway.handler.SetSessionCharacterHandler;
+import com.example.gateway.handler.SetSessionWorldHandler;
 import com.example.gateway.session.ClientSession;
 import com.example.gateway.session.SessionIdGenerator;
+import com.example.server.codec.BackendForySerializationProvider;
+import com.example.server.protocol.BackendEnvelope;
+import com.example.server.protocol.SessionDisconnectedEvent;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
@@ -47,6 +49,7 @@ public class QuicGateway {
 
   private final SetSessionAuthStateHandler authStateHandler;
   private final SetSessionCharacterHandler characterHandler;
+  private final SetSessionWorldHandler worldHandler;
 
   @Getter
   private final IndexedPacketRouter controlRouter = new IndexedPacketRouter();
@@ -59,6 +62,7 @@ public class QuicGateway {
   public void start() throws Exception {
     controlRouter.register(MessageType.CTRL_SET_AUTH_STATE, authStateHandler);
     controlRouter.register(MessageType.CTRL_SET_CHARACTER, characterHandler);
+    controlRouter.register(MessageType.CTRL_SET_WORLD, worldHandler);
 
     int nodeId = properties.getGateway().getNodeId();
     long rateCapacity = properties.getGateway().getRateLimit().getCapacity();
@@ -102,7 +106,6 @@ public class QuicGateway {
       .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
         @Override
         protected void initChannel(QuicStreamChannel ch) {
-          // Set watermarks: 32KB Low, 64KB High
           ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
 
           ch.pipeline().addLast(
@@ -139,8 +142,9 @@ public class QuicGateway {
     SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(sessionId, System.currentTimeMillis());
     byte[] disconnectBytes = BackendForySerializationProvider.get().serialize(disconnectEvent);
 
-    session.getBackendStreams().forEach((svcId, backendStream) -> {
+    session.getBackendStreams().forEach((endpointKey, backendStream) -> {
       if (backendStream.isActive()) {
+        short svcId = (short) (endpointKey >>> 32);
         ByteBuf payloadBuf = backendStream.alloc().buffer(disconnectBytes.length).writeBytes(disconnectBytes);
         BackendEnvelope envelope = new BackendEnvelope(sessionId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
         backendStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> backendStream.close());

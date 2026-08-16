@@ -27,14 +27,20 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
     if (msg.serviceId() == ServiceType.GATEWAY) {
       log.info("[GATEWAY-RELAY] Consuming control message ID: {} for Session #{}", msg.messageId(), msg.sessionId());
 
-      if (msg.payload() != null && msg.payload().isReadable()) {
-        byte[] bytes = new byte[msg.payload().readableBytes()];
-        msg.payload().readBytes(bytes);
-        Object controlMsg = BackendForySerializationProvider.get().deserialize(bytes);
+      try {
+        if (msg.payload() != null && msg.payload().isReadable()) {
+          byte[] bytes = new byte[msg.payload().readableBytes()];
+          msg.payload().readBytes(bytes);
+          Object controlMsg = BackendForySerializationProvider.get().deserialize(bytes);
 
-        if (controlMsg instanceof PacketMessage packetMessage) {
-          ctx.channel().attr(ClientSession.KEY).set(session);
-          controlRouter.route(ctx, packetMessage);
+          if (controlMsg instanceof PacketMessage packetMessage) {
+            ctx.channel().attr(ClientSession.KEY).set(session);
+            controlRouter.route(ctx, packetMessage);
+          }
+        }
+      } finally {
+        if (msg.payload() != null && msg.payload().refCnt() > 0) {
+          msg.payload().release();
         }
       }
       return;
@@ -45,6 +51,9 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
     if (!clientStreamChannel.isActive()) {
       log.warn("[GATEWAY-RELAY] Client channel inactive, dropping relay packet");
+      if (msg.payload() != null && msg.payload().refCnt() > 0) {
+        msg.payload().release();
+      }
       return;
     }
 
@@ -57,7 +66,9 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
     clientStreamChannel.writeAndFlush(clientEnvelope).addListener((ChannelFutureListener) future -> {
       if (!future.isSuccess()) {
         log.error("[GATEWAY-RELAY] Failed to relay to client stream: {}", future.cause().getMessage());
-        clientEnvelope.payload().release();
+        if (clientEnvelope.payload() != null && clientEnvelope.payload().refCnt() > 0) {
+          clientEnvelope.payload().release();
+        }
       }
     });
 

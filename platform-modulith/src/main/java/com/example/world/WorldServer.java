@@ -7,9 +7,9 @@ import com.example.server.AbstractBackendServer;
 import com.example.server.handler.SessionDisconnectedHandler;
 import com.example.world.handler.PlayerMovementRequestHandler;
 import io.micronaut.context.annotation.Context;
-import jakarta.annotation.PostConstruct;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

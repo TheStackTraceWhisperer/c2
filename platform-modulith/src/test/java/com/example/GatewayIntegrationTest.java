@@ -2,7 +2,6 @@ package com.example;
 
 import com.example.client.QuicClient;
 import com.example.client.state.ClientConnectionState;
-import com.example.server.protocol.SessionDisconnectedEvent;
 import com.example.common.dto.PingMessage;
 import com.example.common.dto.PongMessage;
 import com.example.common.protocol.MessageType;
@@ -13,6 +12,7 @@ import com.example.lobby.dto.SelectCharacterRequest;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.ReconnectRequest;
 import com.example.server.handler.SessionDisconnectedHandler;
+import com.example.server.protocol.SessionDisconnectedEvent;
 import com.example.world.dto.PlayerMovementRequest;
 import com.example.world.dto.PlayerMovementResponse;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
@@ -111,7 +111,7 @@ public class GatewayIntegrationTest {
   }
 
   @Test
-  @DisplayName("Teardown: Should broadcast SessionDisconnectedEvent to all 3 backend servers on client disconnect")
+  @DisplayName("Teardown: Should broadcast SessionDisconnectedEvent to active backend streams on disconnect")
   void testSessionTeardownBroadcast() throws Exception {
     List<SessionDisconnectedEvent> receivedEvents = new CopyOnWriteArrayList<>();
     Consumer<SessionDisconnectedEvent> listener = receivedEvents::add;
@@ -122,14 +122,11 @@ public class GatewayIntegrationTest {
     );
 
     try {
-      // 1. Authenticate (Stream 1: LoginServer)
       client.send(new LoginRequest("admin", "secret123"));
       await().atMost(5, TimeUnit.SECONDS).until(() ->
         client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
       );
 
-      // 2. Select Character (Stream 2: LobbyServer)
-      // Example in GatewayIntegrationTest
       client.send(new SelectCharacterRequest(
         client.getState().getAuthToken(),
         1001L
@@ -138,18 +135,14 @@ public class GatewayIntegrationTest {
         client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
       );
 
-      // 3. Move in World & Await response (Stream 3: WorldServer)
       client.send(new PlayerMovementRequest(0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
       moveFuture.get(5, TimeUnit.SECONDS);
 
-      // 4. Attach listener right before closing so previous test noise is excluded
       sessionDisconnectedHandler.onDisconnect(listener);
       receivedEvents.clear();
 
-      // 5. Abruptly close client connection
       client.close();
 
-      // 6. Assert all 3 backend streams received the teardown for this session
       await().atMost(5, TimeUnit.SECONDS).until(() -> receivedEvents.size() >= 3);
 
       long activeSessionId = receivedEvents.get(0).sessionId();
@@ -174,13 +167,11 @@ public class GatewayIntegrationTest {
       movementFuture.complete((PlayerMovementResponse) packet)
     );
 
-    // 1. Login
     client.send(new LoginRequest("admin", "secret123"));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    // 2. Select Character
     client.send(new SelectCharacterRequest(
       client.getState().getAuthToken(),
       1001L
@@ -190,13 +181,56 @@ public class GatewayIntegrationTest {
     );
     assertThat(client.getState().getSelectedCharacterId()).isEqualTo(1001L);
 
-    // 3. Move in World
     client.send(new PlayerMovementRequest(100.0f, 64.0f, -250.5f, 90.0f, 0.0f));
 
     PlayerMovementResponse moveResp = movementFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
     assertThat(moveResp.x()).isEqualTo(100.0f);
     assertThat(moveResp.serverTick()).isGreaterThan(0L);
+  }
+
+  @Test
+  @DisplayName("Seamless Zone Transfer: Should migrate character between world instance IDs without client reconnection")
+  void testSeamlessWorldTransfer() throws Exception {
+    CompletableFuture<PlayerMovementResponse> move1Future = new CompletableFuture<>();
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> move1Future.complete((PlayerMovementResponse) packet));
+
+    // 1. Authenticate & Enter World 1 (Default instance ID 1)
+    client.send(new LoginRequest("admin", "secret123"));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
+    );
+
+    // 2. Move in World instance 1
+    client.send(new PlayerMovementRequest(10.0f, 20.0f, 30.0f, 0.0f, 0.0f));
+    PlayerMovementResponse move1 = move1Future.get(5, TimeUnit.SECONDS);
+    assertThat(move1).isNotNull();
+    assertThat(move1.x()).isEqualTo(10.0f);
+
+    // 3. Move past boundary (x >= 500) -> WorldServer emits SetSessionWorldControlMessage(2)
+    CompletableFuture<PlayerMovementResponse> portalMoveFuture = new CompletableFuture<>();
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> portalMoveFuture.complete((PlayerMovementResponse) packet));
+
+    client.send(new PlayerMovementRequest(500.0f, 70.0f, -990.0f, 180.0f, 0.0f));
+    PlayerMovementResponse portalMove = portalMoveFuture.get(5, TimeUnit.SECONDS);
+    assertThat(portalMove).isNotNull();
+    assertThat(portalMove.x()).isEqualTo(500.0f);
+
+    // 4. Gateway closes stream for instance 1 and opens stream for instance 2 on next movement
+    CompletableFuture<PlayerMovementResponse> move2Future = new CompletableFuture<>();
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> move2Future.complete((PlayerMovementResponse) packet));
+
+    client.send(new PlayerMovementRequest(550.0f, 70.0f, -990.0f, 180.0f, 0.0f));
+    PlayerMovementResponse move2 = move2Future.get(5, TimeUnit.SECONDS);
+
+    assertThat(move2).isNotNull();
+    assertThat(move2.x()).isEqualTo(550.0f);
+    assertThat(client.isConnected()).isTrue();
   }
 
   @Test
@@ -207,16 +241,13 @@ public class GatewayIntegrationTest {
       movementFuture.complete((PlayerMovementResponse) packet)
     );
 
-    // 1. Authenticate but DO NOT select a character
     client.send(new LoginRequest("admin", "secret123"));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    // 2. Attempt direct World movement
     client.send(new PlayerMovementRequest(10.0f, 20.0f, 30.0f, 0.0f, 0.0f));
 
-    // 3. Ensure no response is returned
     await()
       .during(2, TimeUnit.SECONDS)
       .atMost(3, TimeUnit.SECONDS)
@@ -226,13 +257,11 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Rate Limiter: Should drop packet bursts exceeding token bucket capacity")
   void testRateLimiterDropsExcessiveBursts() throws Exception {
-    // 1. Authenticate & Select Character
     client.send(new LoginRequest("admin", "secret123"));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    // Example in GatewayIntegrationTest
     client.send(new SelectCharacterRequest(
       client.getState().getAuthToken(),
       1001L
@@ -241,25 +270,21 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    // 2. Count acknowledged responses
     java.util.concurrent.atomic.AtomicInteger acknowledgedMoves = new java.util.concurrent.atomic.AtomicInteger(0);
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
       acknowledgedMoves.incrementAndGet()
     );
 
-    // 3. Blast 100 packets instantly (Capacity is configured to 50 in application.yml)
     int packetsSent = 100;
     for (int i = 0; i < packetsSent; i++) {
       client.send(new PlayerMovementRequest(i, 0, 0, 0, 0));
     }
 
-    // 4. Await processing
     await()
       .during(1, TimeUnit.SECONDS)
       .atMost(2, TimeUnit.SECONDS)
       .until(() -> true);
 
-    // Acknowledged packets must be capped at capacity (<= 50)
     assertThat(acknowledgedMoves.get())
       .isGreaterThan(0)
       .isLessThanOrEqualTo(50);
@@ -268,13 +293,11 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Safeguards: Gateway should reject and close connection when receiving oversized frame")
   void testOversizedPayloadRejectedAtEdge() throws Exception {
-    // 1. Authenticate normally
     client.send(new LoginRequest("admin", "secret123"));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    // 2. Prepare an oversized framed buffer (20 KB > 16 KB MAX_PAYLOAD_SIZE)
     byte[] hugePayload = new byte[20 * 1024];
     ByteBuf rawFrame = Unpooled.buffer(4 + 4 + hugePayload.length);
 
@@ -284,18 +307,15 @@ public class GatewayIntegrationTest {
     rawFrame.writeShort(MessageType.PING);
     rawFrame.writeBytes(hugePayload);
 
-    // 3. Inject raw frame via client
     client.sendRaw(rawFrame);
 
-    // 4. Assert Gateway detects violation and terminates the client connection
     await().atMost(3, TimeUnit.SECONDS).until(() -> !client.isConnected());
-
     assertThat(client.isConnected()).isFalse();
   }
+
   @Test
   @DisplayName("Resumption: Disconnected client should reconnect with JWT and re-enter world")
   void testSessionReconnectionAndResumption() throws Exception {
-    // 1. Initial login & character selection
     client.send(new LoginRequest("admin", "secret123"));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
@@ -308,27 +328,22 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    // 2. Abrupt disconnect (simulating connection loss)
     client.close();
     assertThat(client.isConnected()).isFalse();
 
-    // 3. Connect a new QUIC connection
     client.connect().sync();
     assertThat(client.isConnected()).isTrue();
 
-    // 4. Send ReconnectRequest with stateless JWT token
     client.send(new ReconnectRequest(authToken));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    // 5. Select character to bind characterId to the new session
     client.send(new SelectCharacterRequest(authToken, 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    // 6. Send World movement on the restored session to verify Gateway permissions are active
     CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
       moveFuture.complete((PlayerMovementResponse) packet)

@@ -26,8 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<ClientEnvelope> {
 
   private final QuicGateway gateway;
-  private final Map<Short, Queue<BackendEnvelope>> pendingQueues = new ConcurrentHashMap<>();
-  private final Map<Short, Boolean> connectingFlags = new ConcurrentHashMap<>();
+  private final Map<Long, Queue<BackendEnvelope>> pendingQueues = new ConcurrentHashMap<>();
+  private final Map<Long, Boolean> connectingFlags = new ConcurrentHashMap<>();
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, ClientEnvelope msg) {
@@ -55,8 +55,13 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       return;
     }
 
-    log.info("[GATEWAY] Inbound ClientEnvelope (svc: {}, msg: {}). Stamping Session #{}",
-      msg.serviceId(), msg.messageId(), sessionId);
+    int instanceId = (msg.serviceId() == ServiceType.WORLD && session != null)
+      ? session.getCurrentWorldId()
+      : 0;
+    long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), instanceId);
+
+    log.info("[GATEWAY] Inbound ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
+      msg.serviceId(), msg.messageId(), sessionId, Long.toHexString(endpointKey));
 
     BackendEnvelope backendEnvelope = new BackendEnvelope(
       sessionId,
@@ -65,13 +70,13 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       msg.payload().retain()
     );
 
-    short serviceId = msg.serviceId();
-    QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(serviceId) : null;
+    QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(endpointKey) : null;
 
     if (backendStream != null && backendStream.isActive()) {
       backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
         if (!future.isSuccess()) {
-          log.error("[GATEWAY] Failed to forward to backend stream for svc {}: {}", serviceId, future.cause().getMessage());
+          log.error("[GATEWAY] Failed to forward to backend stream for key 0x{}: {}",
+            Long.toHexString(endpointKey), future.cause().getMessage());
           if (backendEnvelope.payload() != null && backendEnvelope.payload().refCnt() > 0) {
             backendEnvelope.payload().release();
           }
@@ -83,23 +88,31 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         clientStream.config().setAutoRead(false);
       }
     } else {
-      enqueueAndConnect(ctx, session, serviceId, backendEnvelope);
+      enqueueAndConnect(ctx, session, msg.serviceId(), instanceId, endpointKey, backendEnvelope);
     }
   }
 
-  private void enqueueAndConnect(ChannelHandlerContext ctx, ClientSession session, short serviceId, BackendEnvelope envelope) {
-    pendingQueues.computeIfAbsent(serviceId, k -> new ArrayDeque<>()).add(envelope);
+  private void enqueueAndConnect(
+    ChannelHandlerContext ctx,
+    ClientSession session,
+    short serviceId,
+    int instanceId,
+    long endpointKey,
+    BackendEnvelope envelope) {
 
-    if (Boolean.TRUE.equals(connectingFlags.putIfAbsent(serviceId, Boolean.TRUE))) {
+    pendingQueues.computeIfAbsent(endpointKey, k -> new ArrayDeque<>()).add(envelope);
+
+    if (Boolean.TRUE.equals(connectingFlags.putIfAbsent(endpointKey, Boolean.TRUE))) {
       return;
     }
 
-    gateway.getConnectionManager().getConnection(serviceId, ctx.channel().eventLoop())
+    gateway.getConnectionManager().getConnection(serviceId, instanceId, ctx.channel().eventLoop())
       .addListener((Future<QuicChannel> connFuture) -> {
         if (!connFuture.isSuccess()) {
-          log.error("[GATEWAY] Failed to get connection for svc {}: {}", serviceId, connFuture.cause().getMessage());
-          connectingFlags.remove(serviceId);
-          drainAndRelease(serviceId);
+          log.error("[GATEWAY] Failed to get connection for key 0x{}: {}",
+            Long.toHexString(endpointKey), connFuture.cause().getMessage());
+          connectingFlags.remove(endpointKey);
+          drainAndRelease(endpointKey);
           return;
         }
 
@@ -117,11 +130,11 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             );
           }
         }).addListener((Future<QuicStreamChannel> streamFuture) -> {
-          connectingFlags.remove(serviceId);
+          connectingFlags.remove(endpointKey);
 
           if (!ctx.channel().isActive()) {
             if (streamFuture.isSuccess()) streamFuture.getNow().close();
-            drainAndRelease(serviceId);
+            drainAndRelease(endpointKey);
             return;
           }
 
@@ -129,18 +142,19 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             QuicStreamChannel ch = streamFuture.getNow();
 
             if (session != null) {
-              session.getBackendStreams().put(serviceId, ch);
+              session.getBackendStreams().put(endpointKey, ch);
 
               ch.closeFuture().addListener((ChannelFutureListener) f -> {
-                log.debug("[GATEWAY] Backend stream for svc {} closed. Evicting from Session #{}",
-                  serviceId, session.getSessionId());
-                session.getBackendStreams().remove(serviceId, ch);
+                log.debug("[GATEWAY] Backend stream for key 0x{} closed. Evicting from Session #{}",
+                  Long.toHexString(endpointKey), session.getSessionId());
+                session.getBackendStreams().remove(endpointKey, ch);
               });
             }
 
-            log.info("[GATEWAY] Backend stream established for svc {}. Flushing pending frames...", serviceId);
+            log.info("[GATEWAY] Backend stream established for key 0x{}. Flushing pending frames...",
+              Long.toHexString(endpointKey));
 
-            Queue<BackendEnvelope> queue = pendingQueues.remove(serviceId);
+            Queue<BackendEnvelope> queue = pendingQueues.remove(endpointKey);
             if (queue != null) {
               while (!queue.isEmpty()) {
                 BackendEnvelope queuedEnvelope = queue.poll();
@@ -152,8 +166,9 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
               }
             }
           } else {
-            log.error("[GATEWAY] Failed to open stream for svc {}: {}", serviceId, streamFuture.cause().getMessage());
-            drainAndRelease(serviceId);
+            log.error("[GATEWAY] Failed to open stream for key 0x{}: {}",
+              Long.toHexString(endpointKey), streamFuture.cause().getMessage());
+            drainAndRelease(endpointKey);
           }
         });
       });
@@ -175,8 +190,8 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     super.channelWritabilityChanged(ctx);
   }
 
-  private void drainAndRelease(short serviceId) {
-    Queue<BackendEnvelope> queue = pendingQueues.remove(serviceId);
+  private void drainAndRelease(long endpointKey) {
+    Queue<BackendEnvelope> queue = pendingQueues.remove(endpointKey);
     if (queue != null) {
       while (!queue.isEmpty()) {
         BackendEnvelope env = queue.poll();

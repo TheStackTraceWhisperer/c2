@@ -1,11 +1,11 @@
 package com.example.login.handler;
 
-import com.example.server.protocol.SetSessionAuthStateControlMessage;
 import com.example.common.handler.PacketHandler;
 import com.example.login.auth.JwtTokenIssuer;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
 import com.example.server.SessionContext;
+import com.example.server.protocol.SetSessionAuthStateControlMessage;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +21,12 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
   @Override
   public void handle(ChannelHandlerContext ctx, LoginRequest packet) {
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
+    if (sessionId == null || sessionId <= 0L) {
+      log.error("[LOGIN-SERVER] Security violation: Missing or invalid SessionContext. Terminating connection.");
+      ctx.close();
+      return;
+    }
+
     log.info("[LOGIN-SERVER] Auth attempt from Session #{}: user='{}'", sessionId, packet.username());
 
     boolean success = "admin".equals(packet.username()) && "secret123".equals(packet.password());
@@ -29,11 +35,9 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
     String error = success ? "" : "Invalid credentials";
 
     if (success) {
-      // 1. Send Gateway Control Message to mark this Session as Authenticated
       ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
     }
 
-    // 2. Respond to Client
     ctx.writeAndFlush(new LoginResponse(success, accountId, token, error));
     log.info("[LOGIN-SERVER] LoginResponse sent to Session #{}", sessionId);
   }

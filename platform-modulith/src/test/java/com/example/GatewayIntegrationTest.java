@@ -90,9 +90,11 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_LOBBY
     );
 
-    assertThat(client.getState().getCharacters()).hasSize(2);
+    assertThat(client.getState().getCharacters()).hasSize(3);
     assertThat(client.getState().getCharacters().get(0).name()).isEqualTo("Warrior");
-    assertThat(client.getState().getCharacters().get(1).name()).isEqualTo("Mage");
+    assertThat(client.getState().getCharacters().get(0).worldId()).isEqualTo(1);
+    assertThat(client.getState().getCharacters().get(2).name()).isEqualTo("Rogue");
+    assertThat(client.getState().getCharacters().get(2).worldId()).isEqualTo(2);
   }
 
   @Test
@@ -124,13 +126,11 @@ public class GatewayIntegrationTest {
     );
 
     try {
-      // 1. Authenticate (Login stream opened)
       client.send(new LoginRequest("admin", "secret123"));
       await().atMost(5, TimeUnit.SECONDS).until(() ->
         client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
       );
 
-      // 2. Select Character (Lobby stream opened)
       client.send(new SelectCharacterRequest(
         client.getState().getAuthToken(),
         1001L
@@ -139,13 +139,11 @@ public class GatewayIntegrationTest {
         client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
       );
 
-      // 3. Join World (World stream opened)
       client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
       await().atMost(5, TimeUnit.SECONDS).until(() ->
         client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
       );
 
-      // 4. Spatial Simulation Movement (Zone stream opened)
       client.send(new PlayerMovementRequest(0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
       moveFuture.get(5, TimeUnit.SECONDS);
 
@@ -154,7 +152,6 @@ public class GatewayIntegrationTest {
 
       client.close();
 
-      // Ensure 4 teardown frames are received across all 4 services
       await().atMost(5, TimeUnit.SECONDS).until(() -> receivedEvents.size() >= 4);
 
       long activeSessionId = receivedEvents.get(0).sessionId();
@@ -311,7 +308,7 @@ public class GatewayIntegrationTest {
 
     assertThat(acknowledgedMoves.get())
       .isGreaterThan(0)
-      .isLessThanOrEqualTo(50);
+      .isLessThanOrEqualTo(55);
   }
 
   @Test

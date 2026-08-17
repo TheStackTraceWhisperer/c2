@@ -28,6 +28,7 @@ public class ZoneSimulationEngine {
   @Getter private final AtomicLong currentTick = new AtomicLong(0L);
 
   private final Map<Long, ZoneEntityState> entities = new ConcurrentHashMap<>();
+  private final Map<Long, Long> sessionToCharacter = new ConcurrentHashMap<>();
   private final Queue<QueuedMovement> movementQueue = new ConcurrentLinkedQueue<>();
   private ScheduledExecutorService tickExecutor;
 
@@ -50,7 +51,17 @@ public class ZoneSimulationEngine {
     log.info("[ZONE-ENGINE] 20 Hz simulation loop running (interval: {}ms).", TICK_INTERVAL_MS);
   }
 
+  public void registerSessionEntity(long sessionId, long characterId) {
+    sessionToCharacter.put(sessionId, characterId);
+  }
+
+  public long resolveCharacterId(long sessionId) {
+    // Default to mapped character ID, or standard entity range derived from session
+    return sessionToCharacter.getOrDefault(sessionId, 1000L + (sessionId % 1000L));
+  }
+
   public void enqueueMovement(ChannelHandlerContext ctx, long sessionId, long characterId, PlayerMovementRequest request) {
+    sessionToCharacter.putIfAbsent(sessionId, characterId);
     movementQueue.offer(new QueuedMovement(ctx, sessionId, characterId, request));
   }
 
@@ -58,15 +69,10 @@ public class ZoneSimulationEngine {
     try {
       long tickNumber = currentTick.incrementAndGet();
 
-      // 1. Drain & process queued movement frames
       QueuedMovement movement;
       while ((movement = movementQueue.poll()) != null) {
         processEntityMovement(tickNumber, movement);
       }
-
-      // 2. Local entity periodic updates & boundary evaluations
-      // (Future: NPC behaviors, cooldown ticks, AoI delta broadcasts)
-
     } catch (Throwable t) {
       log.error("[ZONE-ENGINE] Unhandled exception in simulation tick", t);
     }
@@ -74,7 +80,7 @@ public class ZoneSimulationEngine {
 
   private void processEntityMovement(long tickNumber, QueuedMovement m) {
     PlayerMovementRequest req = m.request();
-    ZoneEntityState state = entities.compute(m.characterId(), (k, v) -> {
+    entities.compute(m.characterId(), (k, v) -> {
       if (v == null) {
         return new ZoneEntityState(m.sessionId(), m.characterId(), req.x(), req.y(), req.z(), req.yaw(), req.pitch(), tickNumber);
       }
@@ -90,9 +96,12 @@ public class ZoneSimulationEngine {
     spatialGrid.updatePosition(m.characterId(), req.x(), req.z());
   }
 
-  public void removeEntity(long characterId) {
-    entities.remove(characterId);
-    spatialGrid.removeEntity(characterId);
+  public void removeEntityBySession(long sessionId) {
+    Long characterId = sessionToCharacter.remove(sessionId);
+    if (characterId != null) {
+      entities.remove(characterId);
+      spatialGrid.removeEntity(characterId);
+    }
   }
 
   @PreDestroy
@@ -101,6 +110,7 @@ public class ZoneSimulationEngine {
     if (tickExecutor != null) {
       tickExecutor.shutdown();
     }
+    sessionToCharacter.clear();
     entities.clear();
     spatialGrid.clear();
   }

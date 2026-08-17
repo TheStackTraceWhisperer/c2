@@ -1,7 +1,7 @@
 package com.example.server;
 
-import com.example.server.protocol.BackendEnvelope;
 import com.example.server.codec.BackendForySerializationProvider;
+import com.example.server.protocol.BackendEnvelope;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 
@@ -25,7 +25,7 @@ public class ServerEnvelopePayloadDecoder extends MessageToMessageDecoder<Backen
         }
       }
     } finally {
-      if (env.payload() != null) {
+      if (env.payload() != null && env.payload().refCnt() > 0) {
         env.payload().release();
       }
     }

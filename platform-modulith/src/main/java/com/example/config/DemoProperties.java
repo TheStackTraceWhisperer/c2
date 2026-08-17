@@ -1,14 +1,11 @@
 package com.example.config;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
-import io.micronaut.core.convert.format.MapFormat;
 import io.micronaut.serde.annotation.Serdeable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-
-import java.util.Map;
 
 @Getter
 @Setter
@@ -38,22 +35,6 @@ public class DemoProperties {
 
     private int nodeId;
     private RateLimitProperties rateLimit;
-
-    @MapFormat(transformation = MapFormat.MapTransformation.NESTED)
-    private Map<String, EndpointProperties> worlds;
-
-    public EndpointProperties getWorld(int instanceId) {
-      if (worlds == null || worlds.isEmpty()) {
-        throw new IllegalStateException("Gateway worlds routing configuration is missing or empty.");
-      }
-      EndpointProperties endpoint = worlds.get(String.valueOf(instanceId));
-      if (endpoint == null) {
-        throw new IllegalArgumentException(
-          "No gateway world route configured for instanceId: " + instanceId
-        );
-      }
-      return endpoint;
-    }
 
     @Getter
     @Setter

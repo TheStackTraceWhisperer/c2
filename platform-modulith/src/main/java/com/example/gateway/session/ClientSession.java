@@ -24,11 +24,11 @@ public class ClientSession {
   @Setter private volatile long accountId = 0L;
   @Setter private volatile long characterId = 0L;
 
-  @Setter private volatile int currentWorldId = 1;
-  @Setter private volatile EndpointProperties worldEndpoint;
+  @Setter private volatile int currentWorldId = 0;
+  @Setter private volatile EndpointProperties worldEndpoint = null;
 
-  @Setter private volatile int currentZoneId = 1;
-  @Setter private volatile EndpointProperties zoneEndpoint;
+  @Setter private volatile int currentZoneId = 0;
+  @Setter private volatile EndpointProperties zoneEndpoint = null;
 
   // Keyed by BackendConnectionManager.makeKey(serviceId, host, port)
   private final Map<Long, QuicStreamChannel> backendStreams = new ConcurrentHashMap<>();

@@ -22,7 +22,7 @@ public class ClientEnvelopePayloadDecoder extends MessageToMessageDecoder<Client
         }
       }
     } finally {
-      if (env.payload() != null) {
+      if (env.payload() != null && env.payload().refCnt() > 0) {
         env.payload().release();
       }
     }

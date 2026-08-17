@@ -3,29 +3,30 @@ package com.example.gateway.ratelimit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * High-performance, allocation-free Token Bucket rate limiter.
+ * High-performance, lock-free Token Bucket rate limiter.
  * State packed into a single 64-bit atomic word:
- * - High 32 bits: available tokens (fixed-point integer)
- * - Low 32 bits: last refill timestamp in seconds (offset from custom epoch)
+ * - High 32 bits: available fractional tokens (fixed-point Q16.16)
+ * - Low 32 bits: last refill timestamp in milliseconds (wrapped to 32-bit offset)
  */
 public class TokenBucket {
 
   private static final long TIME_MASK = 0xFFFFFFFFL;
-  private static final long TOKEN_SHIFT = 32L;
+  private static final long FP_SHIFT = 16L; // Q16.16 fixed-point
+  private static final long ONE_TOKEN_FP = 1L << FP_SHIFT; // 65,536
 
-  private final long capacity;
-  private final long refillTokensPerSecond;
+  private final long capacityFp;
+  private final long refillPerMsFp; // Tokens refilled per millisecond in Q16.16
   private final AtomicLong state;
 
   public TokenBucket(long capacity, long refillTokensPerSecond) {
     if (capacity <= 0 || refillTokensPerSecond <= 0) {
       throw new IllegalArgumentException("Capacity and refill rate must be positive");
     }
-    this.capacity = capacity;
-    this.refillTokensPerSecond = refillTokensPerSecond;
+    this.capacityFp = capacity << FP_SHIFT;
+    this.refillPerMsFp = (refillTokensPerSecond << FP_SHIFT) / 1000L;
 
-    long initialTime = (System.currentTimeMillis() / 1000L) & TIME_MASK;
-    this.state = new AtomicLong((capacity << TOKEN_SHIFT) | initialTime);
+    long nowMs = System.currentTimeMillis() & TIME_MASK;
+    this.state = new AtomicLong((capacityFp << 32) | nowMs);
   }
 
   /**
@@ -34,24 +35,24 @@ public class TokenBucket {
   public boolean tryConsume() {
     while (true) {
       long current = state.get();
-      long currentTokens = current >>> TOKEN_SHIFT;
-      long lastTime = current & TIME_MASK;
+      long currentTokensFp = current >>> 32;
+      long lastTimeMs = current & TIME_MASK;
 
-      long nowTime = (System.currentTimeMillis() / 1000L) & TIME_MASK;
-      long elapsedSeconds = (nowTime >= lastTime) ? (nowTime - lastTime) : 0L;
+      long nowMs = System.currentTimeMillis() & TIME_MASK;
+      long elapsedMs = (nowMs >= lastTimeMs) ? (nowMs - lastTimeMs) : (nowMs + (1L << 32) - lastTimeMs);
 
-      long newTokens = currentTokens;
-      if (elapsedSeconds > 0) {
-        long refilled = elapsedSeconds * refillTokensPerSecond;
-        newTokens = Math.min(capacity, currentTokens + refilled);
+      long newTokensFp = currentTokensFp;
+      if (elapsedMs > 0) {
+        long refilledFp = elapsedMs * refillPerMsFp;
+        newTokensFp = Math.min(capacityFp, currentTokensFp + refilledFp);
       }
 
-      if (newTokens < 1) {
+      if (newTokensFp < ONE_TOKEN_FP) {
         return false; // Rate limit exceeded
       }
 
-      long nextTokens = newTokens - 1;
-      long nextState = (nextTokens << TOKEN_SHIFT) | nowTime;
+      long nextTokensFp = newTokensFp - ONE_TOKEN_FP;
+      long nextState = (nextTokensFp << 32) | nowMs;
 
       if (state.compareAndSet(current, nextState)) {
         return true;

@@ -1,12 +1,14 @@
 package com.example.lobby.handler;
 
-import com.example.server.auth.TokenClaims;
-import com.example.server.auth.TokenVerifier;
 import com.example.common.handler.PacketHandler;
 import com.example.lobby.dto.CharacterListRequest;
 import com.example.lobby.dto.CharacterListResponse;
 import com.example.lobby.dto.CharacterSummary;
 import com.example.server.SessionContext;
+import com.example.server.auth.TokenClaims;
+import com.example.server.auth.TokenVerifier;
+import com.example.server.entity.CharacterRecord;
+import com.example.server.repository.CharacterRepository;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -22,13 +24,19 @@ import java.util.Optional;
 public class CharacterListRequestHandler implements PacketHandler<CharacterListRequest> {
 
   private final TokenVerifier tokenVerifier;
+  private final CharacterRepository characterRepository;
 
   @Override
   public void handle(ChannelHandlerContext ctx, CharacterListRequest packet) {
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
+    if (sessionId == null || sessionId <= 0L) {
+      log.error("[LOBBY-SERVER] Security violation: Missing or invalid SessionContext. Terminating connection.");
+      ctx.close();
+      return;
+    }
+
     log.info("[LOBBY-SERVER] Fetching character list for Session #{}", sessionId);
 
-    // 1. Verify stateless JWT
     Optional<TokenClaims> claimsOpt = tokenVerifier.verify(packet.authToken());
     if (claimsOpt.isEmpty()) {
       log.warn("[LOBBY-SERVER] Unauthorized character list query from Session #{}: invalid or expired token", sessionId);
@@ -39,12 +47,11 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
     TokenClaims claims = claimsOpt.get();
     log.info("[LOBBY-SERVER] Verified accountId={} for character list query", claims.accountId());
 
-    // 2. Fetch characters for the verified account
-    List<CharacterSummary> sampleCharacters = List.of(
-      new CharacterSummary(1001L, "Warrior", 45, "WARRIOR"),
-      new CharacterSummary(1002L, "Mage", 50, "WIZARD")
-    );
+    List<CharacterRecord> records = characterRepository.findByAccountId(claims.accountId());
+    List<CharacterSummary> summaries = records.stream()
+      .map(r -> new CharacterSummary(r.characterId(), r.name(), r.level(), r.characterClass(), r.worldId()))
+      .toList();
 
-    ctx.writeAndFlush(new CharacterListResponse(claims.accountId(), sampleCharacters));
+    ctx.writeAndFlush(new CharacterListResponse(claims.accountId(), summaries));
   }
 }

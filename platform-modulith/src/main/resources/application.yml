@@ -8,13 +8,6 @@ com:
         rate-limit:
           capacity: 50
           refill-rate: 20
-        worlds:
-          "1":
-            port: 9997
-            hostname: localhost
-          "2":
-            port: 9997
-            hostname: localhost
       login:
         port: 9998
         hostname: localhost

@@ -25,7 +25,7 @@ public class BackendEnvelopeCodec extends ByteToMessageCodec<BackendEnvelope> {
         out.writeBytes(msg.payload());
       }
     } finally {
-      if (msg.payload() != null) {
+      if (msg.payload() != null && msg.payload().refCnt() > 0) {
         msg.payload().release();
       }
     }
@@ -47,7 +47,7 @@ public class BackendEnvelopeCodec extends ByteToMessageCodec<BackendEnvelope> {
     long sessionId = in.readLong();
     short serviceId = in.readShort();
     short messageId = in.readShort();
-    ByteBuf payload = in.readRetainedSlice(in.readableBytes());
+    ByteBuf payload = in.readRetainedSlice(payloadLength);
     out.add(new BackendEnvelope(sessionId, serviceId, messageId, payload));
   }
 }

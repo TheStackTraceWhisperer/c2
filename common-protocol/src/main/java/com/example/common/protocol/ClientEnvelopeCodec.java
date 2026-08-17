@@ -23,7 +23,7 @@ public class ClientEnvelopeCodec extends ByteToMessageCodec<ClientEnvelope> {
         out.writeBytes(msg.payload());
       }
     } finally {
-      if (msg.payload() != null) {
+      if (msg.payload() != null && msg.payload().refCnt() > 0) {
         msg.payload().release();
       }
     }
@@ -44,7 +44,7 @@ public class ClientEnvelopeCodec extends ByteToMessageCodec<ClientEnvelope> {
 
     short serviceId = in.readShort();
     short messageId = in.readShort();
-    ByteBuf payload = in.readRetainedSlice(in.readableBytes());
+    ByteBuf payload = in.readRetainedSlice(payloadLength);
     out.add(new ClientEnvelope(serviceId, messageId, payload));
   }
 }

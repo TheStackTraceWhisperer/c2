@@ -17,6 +17,7 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
@@ -26,15 +27,12 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Singleton
+@RequiredArgsConstructor
 public class BackendConnectionManager {
 
   private final DemoProperties properties;
   private final Map<Long, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
   private Channel outboundDatagramChannel;
-
-  public BackendConnectionManager(DemoProperties properties) {
-    this.properties = properties;
-  }
 
   /**
    * Generates a 64-bit composite key from serviceId, host hash, and port.
@@ -73,12 +71,8 @@ public class BackendConnectionManager {
     return switch (serviceId) {
       case ServiceType.AUTH -> properties.getLogin();
       case ServiceType.LOBBY -> properties.getLobby();
-      case ServiceType.WORLD -> (session != null && session.getWorldEndpoint() != null)
-        ? session.getWorldEndpoint()
-        : properties.getWorld();
-      case ServiceType.ZONE -> (session != null && session.getZoneEndpoint() != null)
-        ? session.getZoneEndpoint()
-        : properties.getGateway().getWorld(1); // Default initial zone fallback
+      case ServiceType.WORLD -> (session != null) ? session.getWorldEndpoint() : null;
+      case ServiceType.ZONE -> (session != null) ? session.getZoneEndpoint() : null;
       default -> null;
     };
   }

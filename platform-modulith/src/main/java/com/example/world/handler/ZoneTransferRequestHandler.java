@@ -3,6 +3,7 @@ package com.example.world.handler;
 import com.example.common.handler.PacketHandler;
 import com.example.config.DemoProperties.EndpointProperties;
 import com.example.server.SessionContext;
+import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import com.example.server.repository.CharacterRepository;
@@ -23,6 +24,7 @@ public class ZoneTransferRequestHandler implements PacketHandler<ZoneTransferReq
   private final CharacterRepository characterRepository;
   private final ZoneRegistry zoneRegistry;
   private final WorldSessionRegistry sessionRegistry;
+  private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
   public void handle(ChannelHandlerContext ctx, ZoneTransferRequest packet) {
@@ -33,34 +35,36 @@ public class ZoneTransferRequestHandler implements PacketHandler<ZoneTransferReq
       return;
     }
 
-    log.info("[WORLD-SERVER] ZoneTransfer request: Session #{}, charId={}, targetZone={}",
-      sessionId, packet.characterId(), packet.targetZoneId());
+    dispatcher.dispatch(ctx, () -> {
+      log.info("[WORLD-SERVER] ZoneTransfer request: Session #{}, charId={}, targetZone={}",
+        sessionId, packet.characterId(), packet.targetZoneId());
 
-    EndpointProperties targetZoneEndpoint = zoneRegistry.getZoneEndpoint(packet.targetZoneId());
-    if (targetZoneEndpoint == null) {
-      log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry", packet.targetZoneId());
-      ctx.writeAndFlush(new ZoneTransferResponse(false, packet.targetZoneId(), "", 0, "Target zone unavailable"));
-      return;
-    }
+      EndpointProperties targetZoneEndpoint = zoneRegistry.getZoneEndpoint(packet.targetZoneId());
+      if (targetZoneEndpoint == null) {
+        log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry", packet.targetZoneId());
+        ctx.writeAndFlush(new ZoneTransferResponse(false, packet.targetZoneId(), "", 0, "Target zone unavailable"));
+        return;
+      }
 
-    sessionRegistry.updateZone(sessionId, packet.targetZoneId(), targetZoneEndpoint);
-    characterRepository.updatePosition(packet.characterId(), packet.targetZoneId(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+      sessionRegistry.updateZone(sessionId, packet.targetZoneId(), targetZoneEndpoint);
+      characterRepository.updatePosition(packet.characterId(), packet.targetZoneId(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
-    log.info("[WORLD-SERVER] Switching Gateway affinity for Session #{} -> Zone #{} ({}:{})",
-      sessionId, packet.targetZoneId(), targetZoneEndpoint.getHostname(), targetZoneEndpoint.getPort());
+      log.info("[WORLD-SERVER] Switching Gateway affinity for Session #{} -> Zone #{} ({}:{})",
+        sessionId, packet.targetZoneId(), targetZoneEndpoint.getHostname(), targetZoneEndpoint.getPort());
 
-    ctx.write(new SetSessionZoneControlMessage(
-      packet.targetZoneId(),
-      targetZoneEndpoint.getHostname(),
-      targetZoneEndpoint.getPort()
-    ));
+      ctx.write(new SetSessionZoneControlMessage(
+        packet.targetZoneId(),
+        targetZoneEndpoint.getHostname(),
+        targetZoneEndpoint.getPort()
+      ));
 
-    ctx.writeAndFlush(new ZoneTransferResponse(
-      true,
-      packet.targetZoneId(),
-      targetZoneEndpoint.getHostname(),
-      targetZoneEndpoint.getPort(),
-      ""
-    ));
+      ctx.writeAndFlush(new ZoneTransferResponse(
+        true,
+        packet.targetZoneId(),
+        targetZoneEndpoint.getHostname(),
+        targetZoneEndpoint.getPort(),
+        ""
+      ));
+    });
   }
 }

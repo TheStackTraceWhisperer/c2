@@ -128,15 +128,15 @@ public class QuicGateway {
 
     log.info("[GATEWAY] Listening on UDP port {}", gatewayPort);
   }
-
   private void handleSessionDisconnect(ClientSession session) {
     long sessionId = session.getSessionId();
+    long characterId = session.getCharacterId();
     int streamCount = session.getBackendStreams().size();
 
     if (streamCount == 0) return;
 
-    log.info("[GATEWAY] Client disconnected: Session #{}. Broadcasting teardown to {} active backend streams...",
-      sessionId, streamCount);
+    log.info("[GATEWAY] Client disconnected: Session #{} (Char #{}). Broadcasting teardown to {} active backend streams...",
+      sessionId, characterId, streamCount);
 
     SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(sessionId, System.currentTimeMillis());
     byte[] disconnectBytes = BackendForySerializationProvider.get().serialize(disconnectEvent);
@@ -145,7 +145,7 @@ public class QuicGateway {
       if (backendStream.isActive()) {
         short svcId = (short) (endpointKey >>> 48);
         ByteBuf payloadBuf = backendStream.alloc().buffer(disconnectBytes.length).writeBytes(disconnectBytes);
-        BackendEnvelope envelope = new BackendEnvelope(sessionId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
+        BackendEnvelope envelope = new BackendEnvelope(sessionId, characterId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
         backendStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> backendStream.close());
       }
     });

@@ -1,98 +1,73 @@
 package com.example.server.repository;
 
 import com.example.server.entity.CharacterRecord;
+import com.example.server.entity.CharacterStateSnapshot;
 import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
+@Slf4j
 @Singleton
+@RequiredArgsConstructor
 public class CharacterRepository {
 
-  private final Map<Long, CharacterRecord> charactersById = new ConcurrentHashMap<>();
-  private final Map<Long, List<Long>> accountCharacterMap = new ConcurrentHashMap<>();
-
-  public CharacterRepository() {
-    save(new CharacterRecord(
-      92668751L,
-      1001L,
-      "Warrior",
-      45,
-      "WARRIOR",
-      1,
-      1,
-      100.0f, 64.0f, -250.5f,
-      90.0f, 0.0f
-    ));
-
-    save(new CharacterRecord(
-      92668751L,
-      1002L,
-      "Mage",
-      50,
-      "WIZARD",
-      1,
-      1,
-      0.0f, 0.0f, 0.0f,
-      0.0f, 0.0f
-    ));
-
-    save(new CharacterRecord(
-      92668751L,
-      1003L,
-      "Rogue",
-      30,
-      "ROGUE",
-      2,
-      2,
-      550.0f, 70.0f, -990.0f,
-      180.0f, 0.0f
-    ));
-  }
+  private final CharacterJdbcRepository jdbcRepository;
 
   public Optional<CharacterRecord> findById(long characterId) {
-    return Optional.ofNullable(charactersById.get(characterId));
+    return jdbcRepository.findById(characterId);
   }
 
   public List<CharacterRecord> findByAccountId(long accountId) {
-    List<Long> ids = accountCharacterMap.getOrDefault(accountId, Collections.emptyList());
-    List<CharacterRecord> result = new ArrayList<>();
-    for (Long id : ids) {
-      CharacterRecord record = charactersById.get(id);
-      if (record != null) {
-        result.add(record);
-      }
-    }
-    return result;
+    return jdbcRepository.findByAccountId(accountId);
   }
 
   public Optional<CharacterRecord> findByAccountAndCharacterId(long accountId, long characterId) {
-    return findById(characterId).filter(c -> c.accountId() == accountId);
+    return jdbcRepository.findByAccountIdAndCharacterId(accountId, characterId);
   }
 
-  public void save(CharacterRecord record) {
-    charactersById.put(record.characterId(), record);
-    accountCharacterMap.computeIfAbsent(record.accountId(), k -> new ArrayList<>())
-      .removeIf(id -> id == record.characterId());
-    accountCharacterMap.get(record.accountId()).add(record.characterId());
+  public CharacterRecord save(CharacterRecord record) {
+    if (record.characterId() > 0L) {
+      jdbcRepository.insertWithId(
+        record.characterId(),
+        record.accountId(),
+        record.worldId(),
+        record.name(),
+        record.level(),
+        record.characterClass(),
+        record.zoneId(),
+        record.posX(),
+        record.posY(),
+        record.posZ(),
+        record.yaw(),
+        record.pitch()
+      );
+      return record;
+    }
+    return jdbcRepository.save(record);
   }
 
   public void updatePosition(long characterId, int zoneId, float x, float y, float z, float yaw, float pitch) {
-    charactersById.computeIfPresent(characterId, (id, old) -> new CharacterRecord(
-      old.accountId(),
-      old.characterId(),
-      old.name(),
-      old.level(),
-      old.characterClass(),
-      old.worldId(),
-      zoneId,
-      x, y, z,
-      yaw, pitch
-    ));
+    jdbcRepository.updatePosition(characterId, zoneId, x, y, z, yaw, pitch);
   }
 
-  public void clear() {
-    charactersById.clear();
-    accountCharacterMap.clear();
+  /**
+   * Persists a batch of dirty entity snapshots to PostgreSQL.
+   */
+  public void flushStateBatch(Collection<CharacterStateSnapshot> snapshots) {
+    if (snapshots == null || snapshots.isEmpty()) {
+      return;
+    }
+    for (CharacterStateSnapshot s : snapshots) {
+      try {
+        jdbcRepository.updatePosition(s.characterId(), s.zoneId(), s.x(), s.y(), s.z(), s.yaw(), s.pitch());
+      } catch (Exception e) {
+        log.error("[CHARACTER-REPO] Failed to flush snapshot for character #{}: {}", s.characterId(), e.getMessage(), e);
+      }
+    }
+    log.debug("[CHARACTER-REPO] Flushed {} dirty character checkpoints to PostgreSQL.", snapshots.size());
   }
 }

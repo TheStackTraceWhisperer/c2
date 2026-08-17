@@ -8,8 +8,10 @@ import com.example.gateway.session.ClientSession;
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.BackendEnvelopeCodec;
 import io.netty.channel.*;
+import io.netty.handler.codec.CorruptedFrameException;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
+import io.netty.handler.codec.TooLongFrameException;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
@@ -36,60 +38,68 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     ClientSession session = clientStream.parent().attr(ClientSession.KEY).get();
     long sessionId = (session != null) ? session.getSessionId() : 0L;
 
-    if (session != null && !session.getRateLimiter().tryConsume()) {
-      log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded)",
-        msg.serviceId(), msg.messageId(), sessionId);
-      return;
-    }
-
-    if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
-      && (session == null || !session.isAuthenticated())) {
-      log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
-      return;
-    }
-
-    if ((msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
-      && (session == null || session.getCharacterId() == 0L)) {
-      log.warn("[GATEWAY-SECURITY] Blocked unselected character access to svc {} from Session #{}", msg.serviceId(), sessionId);
-      return;
-    }
-
-    EndpointProperties endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
-    if (endpoint == null) {
-      log.error("[GATEWAY] No destination endpoint resolved for svc: {} on Session #{}", msg.serviceId(), sessionId);
-      return;
-    }
-
-    long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), endpoint.getHostname(), endpoint.getPort());
-
-    log.debug("[GATEWAY] ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
-      msg.serviceId(), msg.messageId(), sessionId, Long.toHexString(endpointKey));
-
-    BackendEnvelope backendEnvelope = new BackendEnvelope(
-      sessionId,
-      msg.serviceId(),
-      msg.messageId(),
-      msg.payload().retain()
-    );
-
-    QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(endpointKey) : null;
-
-    if (backendStream != null && backendStream.isActive()) {
-      backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
-        if (!future.isSuccess()) {
-          log.error("[GATEWAY] Failed to forward to backend stream for key 0x{}: {}",
-            Long.toHexString(endpointKey), future.cause().getMessage());
-          if (backendEnvelope.payload() != null && backendEnvelope.payload().refCnt() > 0) {
-            backendEnvelope.payload().release();
-          }
-        }
-      });
-
-      if (!backendStream.isWritable()) {
-        clientStream.config().setAutoRead(false);
+    try {
+      if (session != null && !session.getRateLimiter().tryConsume()) {
+        log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded)",
+          msg.serviceId(), msg.messageId(), sessionId);
+        return;
       }
-    } else {
-      enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.getHostname(), endpoint.getPort(), endpointKey, backendEnvelope);
+
+      if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
+        && (session == null || !session.isAuthenticated())) {
+        log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
+        return;
+      }
+
+      if ((msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
+        && (session == null || session.getCharacterId() == 0L)) {
+        log.warn("[GATEWAY-SECURITY] Blocked unselected character access to svc {} from Session #{}", msg.serviceId(), sessionId);
+        return;
+      }
+
+      EndpointProperties endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
+      if (endpoint == null) {
+        log.error("[GATEWAY] No destination endpoint resolved for svc: {} on Session #{}", msg.serviceId(), sessionId);
+        return;
+      }
+
+      long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), endpoint.getHostname(), endpoint.getPort());
+      long characterId = (session != null) ? session.getCharacterId() : 0L;
+
+      log.debug("[GATEWAY] ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
+        msg.serviceId(), msg.messageId(), sessionId, Long.toHexString(endpointKey));
+
+      BackendEnvelope backendEnvelope = new BackendEnvelope(
+        sessionId,
+        characterId,
+        msg.serviceId(),
+        msg.messageId(),
+        msg.payload().retain()
+      );
+
+      QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(endpointKey) : null;
+
+      if (backendStream != null && backendStream.isActive()) {
+        backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
+          if (!future.isSuccess()) {
+            log.error("[GATEWAY] Failed to forward to backend stream for key 0x{}: {}",
+              Long.toHexString(endpointKey), future.cause().getMessage());
+            if (backendEnvelope.payload() != null && backendEnvelope.payload().refCnt() > 0) {
+              backendEnvelope.payload().release();
+            }
+          }
+        });
+
+        if (!backendStream.isWritable()) {
+          clientStream.config().setAutoRead(false);
+        }
+      } else {
+        enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.getHostname(), endpoint.getPort(), endpointKey, backendEnvelope);
+      }
+    } finally {
+      if (msg.payload() != null && msg.payload().refCnt() > 0) {
+        msg.payload().release();
+      }
     }
   }
 
@@ -214,7 +224,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     log.error("[GATEWAY] Inbound stream error: {}", cause.getMessage(), cause);
     ctx.close();
 
-    if (cause instanceof io.netty.handler.codec.TooLongFrameException || cause instanceof io.netty.handler.codec.CorruptedFrameException) {
+    if (cause instanceof TooLongFrameException || cause instanceof CorruptedFrameException) {
       QuicStreamChannel streamChannel = (QuicStreamChannel) ctx.channel();
       if (streamChannel.parent() != null && streamChannel.parent().isActive()) {
         log.warn("[GATEWAY-SECURITY] Terminating QuicChannel due to protocol violation from stream {}", streamChannel);

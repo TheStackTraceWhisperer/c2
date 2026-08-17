@@ -3,6 +3,7 @@ package com.example.world.handler;
 import com.example.common.handler.PacketHandler;
 import com.example.config.DemoProperties.EndpointProperties;
 import com.example.server.SessionContext;
+import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import com.example.server.repository.CharacterRepository;
@@ -25,6 +26,7 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
   private final CharacterRepository characterRepository;
   private final ZoneRegistry zoneRegistry;
   private final WorldSessionRegistry sessionRegistry;
+  private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
   public void handle(ChannelHandlerContext ctx, JoinWorldRequest packet) {
@@ -35,38 +37,40 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
       return;
     }
 
-    log.info("[WORLD-SERVER] JoinWorld attempt: Session #{}, characterId={}", sessionId, packet.characterId());
+    dispatcher.dispatch(ctx, () -> {
+      log.info("[WORLD-SERVER] JoinWorld attempt: Session #{}, characterId={}", sessionId, packet.characterId());
 
-    Optional<CharacterRecord> characterOpt = characterRepository.findById(packet.characterId());
-    if (characterOpt.isEmpty()) {
-      log.error("[WORLD-SERVER] Character #{} not found in repository", packet.characterId());
-      ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Character does not exist"));
-      return;
-    }
+      Optional<CharacterRecord> characterOpt = characterRepository.findById(packet.characterId());
+      if (characterOpt.isEmpty()) {
+        log.error("[WORLD-SERVER] Character #{} not found in repository", packet.characterId());
+        ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Character does not exist"));
+        return;
+      }
 
-    CharacterRecord character = characterOpt.get();
-    int targetZoneId = character.zoneId();
-    EndpointProperties zoneEndpoint = zoneRegistry.getZoneEndpoint(targetZoneId);
+      CharacterRecord character = characterOpt.get();
+      int targetZoneId = character.zoneId();
+      EndpointProperties zoneEndpoint = zoneRegistry.getZoneEndpoint(targetZoneId);
 
-    if (zoneEndpoint == null) {
-      log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry", targetZoneId);
-      ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Target zone unavailable"));
-      return;
-    }
+      if (zoneEndpoint == null) {
+        log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry", targetZoneId);
+        ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Target zone unavailable"));
+        return;
+      }
 
-    sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint);
+      sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint);
 
-    log.info("[WORLD-SERVER] Dispatching CTRL_SET_ZONE -> Gateway: Session #{} -> Zone #{} ({}:{})",
-      sessionId, targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort());
+      log.info("[WORLD-SERVER] Dispatching CTRL_SET_ZONE -> Gateway: Session #{} -> Zone #{} ({}:{})",
+        sessionId, targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort());
 
-    ctx.write(new SetSessionZoneControlMessage(targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort()));
+      ctx.write(new SetSessionZoneControlMessage(targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort()));
 
-    ctx.writeAndFlush(new JoinWorldResponse(
-      true,
-      targetZoneId,
-      zoneEndpoint.getHostname(),
-      zoneEndpoint.getPort(),
-      ""
-    ));
+      ctx.writeAndFlush(new JoinWorldResponse(
+        true,
+        targetZoneId,
+        zoneEndpoint.getHostname(),
+        zoneEndpoint.getPort(),
+        ""
+      ));
+    });
   }
 }

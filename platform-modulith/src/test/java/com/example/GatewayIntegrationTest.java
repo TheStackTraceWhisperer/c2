@@ -11,8 +11,13 @@ import com.example.lobby.dto.CharacterListResponse;
 import com.example.lobby.dto.SelectCharacterRequest;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.ReconnectRequest;
+import com.example.server.entity.AccountRecord;
+import com.example.server.entity.CharacterRecord;
 import com.example.server.handler.SessionDisconnectedHandler;
 import com.example.server.protocol.SessionDisconnectedEvent;
+import com.example.server.repository.AccountRepository;
+import com.example.server.repository.CharacterRepository;
+import com.example.server.security.Argon2PasswordEncoder;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.ZoneTransferRequest;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -26,10 +31,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,17 +46,56 @@ import static org.awaitility.Awaitility.await;
 @MicronautTest
 public class GatewayIntegrationTest {
 
+  public static final long TEST_ACCOUNT_ID = 92668751L;
+  public static final String TEST_USERNAME = "admin";
+  public static final String TEST_PASSWORD = "secret123";
+
   @Inject
   private QuicClient client;
 
   @Inject
   private SessionDisconnectedHandler sessionDisconnectedHandler;
 
+  @Inject
+  private AccountRepository accountRepository;
+
+  @Inject
+  private CharacterRepository characterRepository;
+
+  @Inject
+  private Argon2PasswordEncoder passwordEncoder;
+
   @BeforeEach
   void setUp() throws Exception {
+    seedDatabase();
+
     client.getState().reset();
     client.registerDefaultHandlers();
     client.connect().sync();
+  }
+
+  private void seedDatabase() {
+    if (accountRepository.findByUsername(TEST_USERNAME).isEmpty()) {
+      String encodedHash = passwordEncoder.encode(TEST_PASSWORD);
+      accountRepository.save(new AccountRecord(
+        TEST_ACCOUNT_ID,
+        TEST_USERNAME,
+        encodedHash,
+        Instant.now(),
+        Instant.now()
+      ));
+    }
+
+    // Always reset character state to known baseline before each test run
+    characterRepository.save(new CharacterRecord(
+      TEST_ACCOUNT_ID, 1001L, "Warrior", 45, "WARRIOR", 1, 1, 100.0f, 64.0f, -250.5f, 90.0f, 0.0f
+    ));
+    characterRepository.save(new CharacterRecord(
+      TEST_ACCOUNT_ID, 1002L, "Mage", 50, "WIZARD", 1, 1, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+    ));
+    characterRepository.save(new CharacterRecord(
+      TEST_ACCOUNT_ID, 1003L, "Rogue", 30, "ROGUE", 2, 2, 550.0f, 70.0f, -990.0f, 180.0f, 0.0f
+    ));
   }
 
   @AfterEach
@@ -72,13 +119,13 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Production Flow: Login -> Lobby -> Populate ClientState")
   void testFullClientWorkflow() {
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
 
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    assertThat(client.getState().getAccountId()).isEqualTo(92668751L);
+    assertThat(client.getState().getAccountId()).isEqualTo(TEST_ACCOUNT_ID);
     assertThat(client.getState().getAuthToken()).isNotBlank();
 
     client.send(new CharacterListRequest(
@@ -126,7 +173,7 @@ public class GatewayIntegrationTest {
     );
 
     try {
-      client.send(new LoginRequest("admin", "secret123"));
+      client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
       await().atMost(5, TimeUnit.SECONDS).until(() ->
         client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
       );
@@ -176,7 +223,7 @@ public class GatewayIntegrationTest {
       movementFuture.complete((PlayerMovementResponse) packet)
     );
 
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -210,7 +257,7 @@ public class GatewayIntegrationTest {
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> move1Future.complete((PlayerMovementResponse) packet));
 
     // 1. Authenticate, Select Character, Join World (Zone 1)
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -257,7 +304,7 @@ public class GatewayIntegrationTest {
       movementFuture.complete((PlayerMovementResponse) packet)
     );
 
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -273,7 +320,7 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Rate Limiter: Should drop packet bursts exceeding token bucket capacity")
   void testRateLimiterDropsExcessiveBursts() throws Exception {
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -291,7 +338,7 @@ public class GatewayIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );
 
-    java.util.concurrent.atomic.AtomicInteger acknowledgedMoves = new java.util.concurrent.atomic.AtomicInteger(0);
+    AtomicInteger acknowledgedMoves = new AtomicInteger(0);
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
       acknowledgedMoves.incrementAndGet()
     );
@@ -314,7 +361,7 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Safeguards: Gateway should reject and close connection when receiving oversized frame")
   void testOversizedPayloadRejectedAtEdge() throws Exception {
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -337,7 +384,7 @@ public class GatewayIntegrationTest {
   @Test
   @DisplayName("Resumption: Disconnected client should reconnect with JWT and re-enter world")
   void testSessionReconnectionAndResumption() throws Exception {
-    client.send(new LoginRequest("admin", "secret123"));
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
@@ -385,5 +432,43 @@ public class GatewayIntegrationTest {
     PlayerMovementResponse moveResp = moveFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
     assertThat(moveResp.x()).isEqualTo(50.0f);
+  }
+
+  @Test
+  @DisplayName("Persistence Checkpoint: Moving in Zone and disconnecting must persist coordinates to PostgreSQL")
+  void testMovementPersistedToPostgresOnDisconnect() throws Exception {
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
+    );
+
+    client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
+    );
+
+    client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
+    );
+
+    CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
+    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> moveFuture.complete((PlayerMovementResponse) packet));
+
+    // Move to unique position (x=777.0, y=88.0, z=-999.0)
+    client.send(new PlayerMovementRequest(777.0f, 88.0f, -999.0f, 45.0f, 0.0f));
+    moveFuture.get(5, TimeUnit.SECONDS);
+
+    // Disconnect client to trigger dirty-state eviction flush
+    client.close();
+
+    // Verify coordinates are saved to PostgreSQL
+    await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+      Optional<CharacterRecord> record = characterRepository.findById(1001L);
+      assertThat(record).isPresent();
+      assertThat(record.get().posX()).isEqualTo(777.0f);
+      assertThat(record.get().posY()).isEqualTo(88.0f);
+      assertThat(record.get().posZ()).isEqualTo(-999.0f);
+    });
   }
 }

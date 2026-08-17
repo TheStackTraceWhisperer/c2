@@ -20,13 +20,15 @@ public class PlayerMovementRequestHandler implements PacketHandler<PlayerMovemen
   @Override
   public void handle(ChannelHandlerContext ctx, PlayerMovementRequest packet) {
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
-    if (sessionId == null || sessionId <= 0L) {
-      log.error("[ZONE-SERVER] Security violation: Missing or invalid SessionContext. Terminating connection.");
+    Long characterId = ctx.channel().attr(SessionContext.CHARACTER_ID).get();
+
+    if (sessionId == null || sessionId <= 0L || characterId == null || characterId <= 0L) {
+      log.error("[ZONE-SERVER] Security violation: Missing SessionContext (session={}, character={}). Terminating connection.",
+        sessionId, characterId);
       ctx.close();
       return;
     }
 
-    long characterId = simulationEngine.resolveCharacterId(sessionId);
     long currentTick = simulationEngine.getCurrentTick().get();
 
     log.debug("[ZONE-SERVER] Movement from Session #{}, Char #{}: pos=({}, {}, {}), tick={}",

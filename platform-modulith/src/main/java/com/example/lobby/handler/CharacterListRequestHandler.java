@@ -7,6 +7,7 @@ import com.example.lobby.dto.CharacterSummary;
 import com.example.server.SessionContext;
 import com.example.server.auth.TokenClaims;
 import com.example.server.auth.TokenVerifier;
+import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.repository.CharacterRepository;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,6 +26,7 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
 
   private final TokenVerifier tokenVerifier;
   private final CharacterRepository characterRepository;
+  private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
   public void handle(ChannelHandlerContext ctx, CharacterListRequest packet) {
@@ -35,23 +37,25 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
       return;
     }
 
-    log.info("[LOBBY-SERVER] Fetching character list for Session #{}", sessionId);
+    dispatcher.dispatch(ctx, () -> {
+      log.info("[LOBBY-SERVER] Fetching character list for Session #{}", sessionId);
 
-    Optional<TokenClaims> claimsOpt = tokenVerifier.verify(packet.authToken());
-    if (claimsOpt.isEmpty()) {
-      log.warn("[LOBBY-SERVER] Unauthorized character list query from Session #{}: invalid or expired token", sessionId);
-      ctx.writeAndFlush(new CharacterListResponse(0L, Collections.emptyList()));
-      return;
-    }
+      Optional<TokenClaims> claimsOpt = tokenVerifier.verify(packet.authToken());
+      if (claimsOpt.isEmpty()) {
+        log.warn("[LOBBY-SERVER] Unauthorized character list query from Session #{}: invalid or expired token", sessionId);
+        ctx.writeAndFlush(new CharacterListResponse(0L, Collections.emptyList()));
+        return;
+      }
 
-    TokenClaims claims = claimsOpt.get();
-    log.info("[LOBBY-SERVER] Verified accountId={} for character list query", claims.accountId());
+      TokenClaims claims = claimsOpt.get();
+      log.info("[LOBBY-SERVER] Verified accountId={} for character list query", claims.accountId());
 
-    List<CharacterRecord> records = characterRepository.findByAccountId(claims.accountId());
-    List<CharacterSummary> summaries = records.stream()
-      .map(r -> new CharacterSummary(r.characterId(), r.name(), r.level(), r.characterClass(), r.worldId()))
-      .toList();
+      List<CharacterRecord> records = characterRepository.findByAccountId(claims.accountId());
+      List<CharacterSummary> summaries = records.stream()
+        .map(r -> new CharacterSummary(r.characterId(), r.name(), r.level(), r.characterClass(), r.worldId()))
+        .toList();
 
-    ctx.writeAndFlush(new CharacterListResponse(claims.accountId(), summaries));
+      ctx.writeAndFlush(new CharacterListResponse(claims.accountId(), summaries));
+    });
   }
 }

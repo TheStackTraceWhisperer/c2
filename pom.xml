@@ -32,6 +32,7 @@
     <archunit.version>1.4.1</archunit.version>
     <assertj.version>3.27.3</assertj.version>
     <awaitility.version>4.3.0</awaitility.version>
+    <testcontainers.version>1.20.4</testcontainers.version>
   </properties>
 
   <dependencyManagement>

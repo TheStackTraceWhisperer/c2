@@ -13,6 +13,7 @@ public class ServerEnvelopePayloadDecoder extends MessageToMessageDecoder<Backen
   protected void decode(ChannelHandlerContext ctx, BackendEnvelope env, List<Object> out) {
     try {
       ctx.channel().attr(SessionContext.SESSION_ID).set(env.sessionId());
+      ctx.channel().attr(SessionContext.CHARACTER_ID).set(env.characterId());
       ctx.channel().attr(SessionContext.SERVICE_ID).set(env.serviceId());
 
       if (env.payload() != null && env.payload().isReadable()) {

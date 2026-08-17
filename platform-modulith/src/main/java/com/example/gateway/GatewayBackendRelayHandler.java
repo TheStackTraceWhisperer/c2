@@ -57,10 +57,11 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
       return;
     }
 
+    // Pass the payload directly without double-retaining; ClientEnvelopeCodec.encode releases it
     ClientEnvelope clientEnvelope = new ClientEnvelope(
       msg.serviceId(),
       msg.messageId(),
-      msg.payload().retain()
+      msg.payload()
     );
 
     clientStreamChannel.writeAndFlush(clientEnvelope).addListener((ChannelFutureListener) future -> {

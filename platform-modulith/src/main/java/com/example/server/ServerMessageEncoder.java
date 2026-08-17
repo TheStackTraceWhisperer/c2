@@ -2,7 +2,6 @@ package com.example.server;
 
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.codec.BackendForySerializationProvider;
-
 import com.example.common.protocol.PacketMessage;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -21,9 +20,12 @@ public class ServerMessageEncoder extends MessageToMessageEncoder<PacketMessage>
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
     long sid = (sessionId != null) ? sessionId : 0L;
 
+    Long characterId = ctx.channel().attr(SessionContext.CHARACTER_ID).get();
+    long cid = (characterId != null) ? characterId : 0L;
+
     byte[] bytes = BackendForySerializationProvider.get().serialize(msg);
     ByteBuf payloadBuf = ctx.alloc().buffer(bytes.length).writeBytes(bytes);
 
-    out.add(new BackendEnvelope(sid, msg.serviceId(), msg.messageId(), payloadBuf));
+    out.add(new BackendEnvelope(sid, cid, msg.serviceId(), msg.messageId(), payloadBuf));
   }
 }

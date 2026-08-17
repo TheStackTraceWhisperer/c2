@@ -1,3 +1,17 @@
+datasources:
+  default:
+    url: ${JDBC_URL:`jdbc:tc:postgresql:16-alpine:///mmo_platform`}
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    dialect: POSTGRES
+    maximum-pool-size: 10
+    minimum-idle: 2
+
+flyway:
+  datasources:
+    default:
+      enabled: true
+      clean-on-validation-error: true
+
 com:
   example:
     demo:

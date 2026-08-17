@@ -63,5 +63,7 @@ public class DemoProperties {
   @Getter
   @Setter
   @ConfigurationProperties("zone")
-  public static class ZoneProperties extends EndpointProperties {}
+  public static class ZoneProperties extends EndpointProperties {
+    private int zoneId = 1;
+  }
 }

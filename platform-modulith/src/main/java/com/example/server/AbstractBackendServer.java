@@ -1,10 +1,9 @@
 package com.example.server;
 
-import com.example.server.protocol.BackendEnvelopeCodec;
 import com.example.common.handler.InboundDispatchHandler;
 import com.example.common.handler.IndexedPacketRouter;
-
 import com.example.common.protocol.ProtocolConstants;
+import com.example.server.protocol.BackendEnvelopeCodec;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;

@@ -17,8 +17,8 @@ public class PlayerMovementResponseHandler implements PacketHandler<PlayerMoveme
 
   @Override
   public void handle(ChannelHandlerContext ctx, PlayerMovementResponse packet) {
-    log.debug("[CLIENT-HANDLER] PlayerMovementResponse received: charId={}, pos=({}, {}, {}), tick={}",
-      packet.characterId(), packet.x(), packet.y(), packet.z(), packet.serverTick());
+    log.debug("[CLIENT-HANDLER] Ack Movement: charId={}, pos=({}, {}, {}), tick={}, reconciled={}",
+      packet.characterId(), packet.x(), packet.y(), packet.z(), packet.serverTick(), packet.reconciled());
     clientState.updatePosition(packet.x(), packet.y(), packet.z(), packet.serverTick());
   }
 }

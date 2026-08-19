@@ -57,7 +57,7 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
         return;
       }
 
-      sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint);
+      sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint, ctx);
 
       log.info("[WORLD-SERVER] Dispatching CTRL_SET_ZONE -> Gateway: Session #{} -> Zone #{} ({}:{})",
         sessionId, targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort());

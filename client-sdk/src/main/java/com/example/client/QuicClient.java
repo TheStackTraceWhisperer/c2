@@ -43,8 +43,9 @@ public class QuicClient implements AutoCloseable {
   private final SelectCharacterResponseHandler defaultSelectCharacterHandler;
   private final ReconnectResponseHandler defaultReconnectHandler;
   private final JoinWorldResponseHandler defaultJoinWorldHandler;
-  private final ZoneTransferResponseHandler defaultZoneTransferHandler;
+  private final ZoneTransferNotificationHandler defaultZoneTransferHandler;
   private final PlayerMovementResponseHandler defaultPlayerMovementHandler;
+  private final ZoneStateDeltaHandler defaultZoneStateDeltaHandler;
 
   private EventLoopGroup group;
   private Channel datagramChannel;
@@ -60,8 +61,9 @@ public class QuicClient implements AutoCloseable {
     SelectCharacterResponseHandler selectCharacterHandler,
     ReconnectResponseHandler reconnectHandler,
     JoinWorldResponseHandler joinWorldHandler,
-    ZoneTransferResponseHandler zoneTransferHandler,
-    PlayerMovementResponseHandler playerMovementHandler) {
+    ZoneTransferNotificationHandler zoneTransferHandler,
+    PlayerMovementResponseHandler playerMovementHandler,
+    ZoneStateDeltaHandler zoneStateDeltaHandler) {
     this.properties = properties;
     this.state = state;
     this.router = new IndexedPacketRouter();
@@ -74,13 +76,11 @@ public class QuicClient implements AutoCloseable {
     this.defaultJoinWorldHandler = joinWorldHandler;
     this.defaultZoneTransferHandler = zoneTransferHandler;
     this.defaultPlayerMovementHandler = playerMovementHandler;
+    this.defaultZoneStateDeltaHandler = zoneStateDeltaHandler;
 
     registerDefaultHandlers();
   }
 
-  /**
-   * Resets and registers the default production handlers.
-   */
   public void registerDefaultHandlers() {
     this.router.register(MessageType.LOGIN_RESPONSE, defaultLoginHandler);
     this.router.register(MessageType.CHARACTER_LIST_RESPONSE, defaultCharacterListHandler);
@@ -88,13 +88,11 @@ public class QuicClient implements AutoCloseable {
     this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
     this.router.register(MessageType.RECONNECT_RESPONSE, defaultReconnectHandler);
     this.router.register(MessageType.JOIN_WORLD_RESPONSE, defaultJoinWorldHandler);
-    this.router.register(MessageType.ZONE_TRANSFER_RESPONSE, defaultZoneTransferHandler);
+    this.router.register(MessageType.ZONE_TRANSFER_NOTIFICATION, defaultZoneTransferHandler);
     this.router.register(MessageType.PLAYER_MOVEMENT_RESPONSE, defaultPlayerMovementHandler);
+    this.router.register(MessageType.ZONE_STATE_DELTA_BROADCAST, defaultZoneStateDeltaHandler);
   }
 
-  /**
-   * Fluent hook for test scripts to attach custom listeners or overrides.
-   */
   public <T extends PacketMessage> QuicClient on(short messageId, PacketHandler<T> handler) {
     router.register(messageId, handler);
     return this;
@@ -133,6 +131,15 @@ public class QuicClient implements AutoCloseable {
 
     QuicChannel.newBootstrap(datagramChannel)
       .handler(new ChannelInboundHandlerAdapter() {
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) {
+          log.info("[CLIENT] QuicChannel inactive.");
+          if (streamChannel != null && streamChannel.isActive()) {
+            streamChannel.close();
+          }
+          ctx.fireChannelInactive();
+        }
+
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
           log.error("[CLIENT] Connection error: {}", cause.getMessage());
@@ -188,10 +195,6 @@ public class QuicClient implements AutoCloseable {
     });
   }
 
-  /**
-   * Directly writes raw bytes into the QUIC stream pipeline.
-   * Useful for security testing, fault injection, and raw frame fuzzing.
-   */
   public ChannelFuture sendRaw(ByteBuf byteBuf) {
     if (streamChannel == null || !streamChannel.isActive()) {
       byteBuf.release();
@@ -204,9 +207,6 @@ public class QuicClient implements AutoCloseable {
     });
   }
 
-  /**
-   * Checks if the bidirectional stream channel is currently active.
-   */
   public boolean isConnected() {
     return streamChannel != null && streamChannel.isActive()
       && quicChannel != null && quicChannel.isActive();

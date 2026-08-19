@@ -3,7 +3,6 @@ package com.example.zone.handler;
 import com.example.common.handler.PacketHandler;
 import com.example.server.SessionContext;
 import com.example.zone.dto.PlayerMovementRequest;
-import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.engine.ZoneSimulationEngine;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
@@ -23,18 +22,11 @@ public class PlayerMovementRequestHandler implements PacketHandler<PlayerMovemen
     Long characterId = ctx.channel().attr(SessionContext.CHARACTER_ID).get();
 
     if (sessionId == null || sessionId <= 0L || characterId == null || characterId <= 0L) {
-      log.error("[ZONE-SERVER] Security violation: Missing SessionContext (session={}, character={}). Terminating connection.",
-        sessionId, characterId);
+      log.error("[ZONE-SERVER] Security violation: Missing SessionContext (session={}, character={}).", sessionId, characterId);
       ctx.close();
       return;
     }
 
-    long currentTick = simulationEngine.getCurrentTick().get();
-
-    log.debug("[ZONE-SERVER] Movement from Session #{}, Char #{}: pos=({}, {}, {}), tick={}",
-      sessionId, characterId, packet.x(), packet.y(), packet.z(), currentTick);
-
     simulationEngine.enqueueMovement(ctx, sessionId, characterId, packet);
-    ctx.writeAndFlush(new PlayerMovementResponse(characterId, packet.x(), packet.y(), packet.z(), currentTick));
   }
 }

@@ -1,25 +1,59 @@
 package com.example.zone.state;
 
-import lombok.AllArgsConstructor;
+import io.netty.channel.ChannelHandlerContext;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 @Getter
 @Setter
-@AllArgsConstructor
 public class ZoneEntityState {
   private final long sessionId;
   private final long characterId;
+  private String name = "Player";
+  private String characterClass = "WARRIOR";
+  private int level = 1;
   private int zoneId;
+
+  // Kinematics
   private float x;
   private float y;
   private float z;
+  private float vx;
+  private float vy;
+  private float vz;
   private float yaw;
   private float pitch;
+  private int moveFlags;
+
   private long lastUpdatedTick;
   private boolean dirty;
+  private ChannelHandlerContext channelContext;
 
-  public ZoneEntityState(long sessionId, long characterId, int zoneId, float x, float y, float z, float yaw, float pitch, long lastUpdatedTick) {
-    this(sessionId, characterId, zoneId, x, y, z, yaw, pitch, lastUpdatedTick, true);
+  // Observed entity set for AoI differencing
+  private final Set<Long> knownEntities = ConcurrentHashMap.newKeySet();
+
+  public ZoneEntityState(long sessionId, long characterId, int zoneId,
+                         float x, float y, float z,
+                         float vx, float vy, float vz,
+                         float yaw, float pitch, int moveFlags,
+                         long lastUpdatedTick, ChannelHandlerContext ctx) {
+    this.sessionId = sessionId;
+    this.characterId = characterId;
+    this.zoneId = zoneId;
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.vx = vx;
+    this.vy = vy;
+    this.vz = vz;
+    this.yaw = yaw;
+    this.pitch = pitch;
+    this.moveFlags = moveFlags;
+    this.lastUpdatedTick = lastUpdatedTick;
+    this.dirty = true;
+    this.channelContext = ctx;
   }
 }

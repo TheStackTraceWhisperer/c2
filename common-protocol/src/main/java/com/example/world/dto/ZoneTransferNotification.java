@@ -4,13 +4,14 @@ import com.example.common.protocol.MessageType;
 import com.example.common.protocol.PacketMessage;
 import com.example.common.protocol.ServiceType;
 
-public record ZoneTransferResponse(
-  boolean success,
+public record ZoneTransferNotification(
   int targetZoneId,
   String zoneHost,
   int zonePort,
-  String errorMessage
+  float spawnX,
+  float spawnY,
+  float spawnZ
 ) implements PacketMessage {
   @Override public short serviceId() { return ServiceType.WORLD; }
-  @Override public short messageId() { return MessageType.ZONE_TRANSFER_RESPONSE; }
+  @Override public short messageId() { return MessageType.ZONE_TRANSFER_NOTIFICATION; }
 }

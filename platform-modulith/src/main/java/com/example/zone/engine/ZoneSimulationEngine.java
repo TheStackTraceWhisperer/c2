@@ -1,10 +1,16 @@
 package com.example.zone.engine;
 
 import com.example.config.DemoProperties;
+import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
+import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.CharacterStateSnapshot;
 import com.example.server.repository.CharacterRepository;
+import com.example.zone.dto.EntityMovementUpdate;
+import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
+import com.example.zone.dto.PlayerMovementResponse;
+import com.example.zone.dto.ZoneStateDeltaMessage;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
 import io.netty.channel.ChannelHandlerContext;
@@ -15,10 +21,7 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -27,9 +30,11 @@ import java.util.concurrent.atomic.AtomicLong;
 @RequiredArgsConstructor
 public class ZoneSimulationEngine {
 
-  private static final int TICK_RATE_HZ = 20;
-  private static final long TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ; // 50ms
-  private static final long FLUSH_INTERVAL_TICKS = 600L; // Every 30 seconds (600 ticks @ 20Hz)
+  public static final int TICK_RATE_HZ = 20;
+  public static final long TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ; // 50ms
+  public static final float MAX_SPEED_UNITS_PER_SEC = 25.0f;
+  public static final float MAX_DISTANCE_PER_TICK = (MAX_SPEED_UNITS_PER_SEC / TICK_RATE_HZ) * 2.0f; // 2.5m per tick tolerance
+  private static final long FLUSH_INTERVAL_TICKS = 600L; // 30s
 
   private final DemoProperties properties;
   private final SpatialGrid spatialGrid;
@@ -59,77 +64,213 @@ public class ZoneSimulationEngine {
     });
 
     tickExecutor.scheduleAtFixedRate(this::tick, 0, TICK_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    log.info("[ZONE-ENGINE] 20 Hz simulation loop running for Zone #{} (interval: {}ms).",
-      getAuthoritativeZoneId(), TICK_INTERVAL_MS);
+    log.info("[ZONE-ENGINE] 20 Hz Authoritative Spatial Simulation initialized for Zone #{}", getAuthoritativeZoneId());
   }
 
   public int getAuthoritativeZoneId() {
     return (properties.getZone() != null) ? properties.getZone().getZoneId() : 1;
   }
 
-  public void registerSessionEntity(long sessionId, long characterId) {
+  public void registerSessionEntity(long sessionId, long characterId, ChannelHandlerContext ctx) {
     sessionToCharacter.put(sessionId, characterId);
-  }
-
-  public void enqueueMovement(ChannelHandlerContext ctx, long sessionId, long characterId, PlayerMovementRequest request) {
-    sessionToCharacter.putIfAbsent(sessionId, characterId);
-
-    long tickNumber = currentTick.get();
     int zoneId = getAuthoritativeZoneId();
 
-    entities.compute(characterId, (k, v) -> {
-      if (v == null) {
-        return new ZoneEntityState(sessionId, characterId, zoneId, request.x(), request.y(), request.z(), request.yaw(), request.pitch(), tickNumber, true);
+    entities.compute(characterId, (id, existing) -> {
+      if (existing != null) {
+        existing.setChannelContext(ctx);
+        existing.setZoneId(zoneId);
+        return existing;
       }
-      v.setZoneId(zoneId);
-      v.setX(request.x());
-      v.setY(request.y());
-      v.setZ(request.z());
-      v.setYaw(request.yaw());
-      v.setPitch(request.pitch());
-      v.setLastUpdatedTick(tickNumber);
-      v.setDirty(true);
-      return v;
-    });
 
-    movementQueue.offer(new QueuedMovement(ctx, sessionId, characterId, request));
+      Optional<CharacterRecord> recordOpt = characterRepository.findById(characterId);
+      float initX = recordOpt.map(CharacterRecord::posX).orElse(0.0f);
+      float initY = recordOpt.map(CharacterRecord::posY).orElse(0.0f);
+      float initZ = recordOpt.map(CharacterRecord::posZ).orElse(0.0f);
+      float initYaw = recordOpt.map(CharacterRecord::yaw).orElse(0.0f);
+      float initPitch = recordOpt.map(CharacterRecord::pitch).orElse(0.0f);
+
+      ZoneEntityState state = new ZoneEntityState(
+        sessionId, characterId, zoneId,
+        initX, initY, initZ,
+        0.0f, 0.0f, 0.0f,
+        initYaw, initPitch,
+        0, currentTick.get(), ctx
+      );
+
+      recordOpt.ifPresent(r -> {
+        state.setName(r.name());
+        state.setCharacterClass(r.characterClass());
+        state.setLevel(r.level());
+      });
+
+      spatialGrid.updatePosition(characterId, initX, initZ);
+      return state;
+    });
+  }
+
+  public void enqueueMovement(ChannelHandlerContext ctx, long sessionId, long characterId, PlayerMovementRequest req) {
+    sessionToCharacter.putIfAbsent(sessionId, characterId);
+    movementQueue.offer(new QueuedMovement(ctx, sessionId, characterId, req));
   }
 
   private void tick() {
     try {
       long tickNumber = currentTick.incrementAndGet();
 
-      QueuedMovement movement;
-      while ((movement = movementQueue.poll()) != null) {
-        spatialGrid.updatePosition(movement.characterId(), movement.request().x(), movement.request().z());
-      }
+      processInboundMovements(tickNumber);
+      broadcastAoIDeltas(tickNumber);
 
       if (tickNumber % FLUSH_INTERVAL_TICKS == 0) {
         flushDirtyEntitiesAsync();
       }
     } catch (Throwable t) {
-      log.error("[ZONE-ENGINE] Unhandled exception in simulation tick", t);
+      log.error("[ZONE-ENGINE] Critical error in simulation tick", t);
+    }
+  }
+
+  private void processInboundMovements(long tickNumber) {
+    QueuedMovement m;
+    int currentZoneId = getAuthoritativeZoneId();
+
+    while ((m = movementQueue.poll()) != null) {
+      PlayerMovementRequest req = m.request();
+      long charId = m.characterId();
+      long sid = m.sessionId();
+      ChannelHandlerContext ctx = m.ctx();
+
+      ZoneEntityState state = entities.get(charId);
+      if (state == null) {
+        registerSessionEntity(sid, charId, ctx);
+        state = entities.get(charId);
+      }
+
+      state.setChannelContext(ctx);
+
+      boolean zoneChanged = state.getZoneId() != currentZoneId;
+      if (zoneChanged) {
+        state.setZoneId(currentZoneId);
+        state.setX(req.x());
+        state.setY(req.y());
+        state.setZ(req.z());
+        state.getKnownEntities().clear();
+      }
+
+      float dx = req.x() - state.getX();
+      float dy = req.y() - state.getY();
+      float dz = req.z() - state.getZ();
+      double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      boolean reconciled = false;
+      if (!zoneChanged && dist > MAX_DISTANCE_PER_TICK && state.getLastUpdatedTick() > 0 && state.getLastUpdatedTick() != tickNumber) {
+        log.warn("[ZONE-KINEMATICS] Client #{} exceeded max movement distance (dist={}/max={}). Reconciling.",
+          charId, String.format("%.2f", dist), MAX_DISTANCE_PER_TICK);
+        reconciled = true;
+      } else {
+        state.setX(req.x());
+        state.setY(req.y());
+        state.setZ(req.z());
+      }
+
+      state.setVx(req.vx());
+      state.setVy(req.vy());
+      state.setVz(req.vz());
+      state.setYaw(req.yaw());
+      state.setPitch(req.pitch());
+      state.setMoveFlags(req.moveFlags());
+      state.setLastUpdatedTick(tickNumber);
+      state.setDirty(true);
+
+      spatialGrid.updatePosition(charId, state.getX(), state.getZ());
+
+      ctx.channel().attr(SessionContext.SESSION_ID).set(sid);
+      ctx.channel().attr(SessionContext.CHARACTER_ID).set(charId);
+      ctx.writeAndFlush(new PlayerMovementResponse(
+        charId,
+        state.getX(), state.getY(), state.getZ(),
+        state.getVx(), state.getVy(), state.getVz(),
+        state.getYaw(), state.getPitch(),
+        state.getMoveFlags(),
+        tickNumber,
+        req.clientTick(),
+        reconciled
+      ));
+    }
+  }
+
+  private void broadcastAoIDeltas(long tickNumber) {
+    for (ZoneEntityState observer : entities.values()) {
+      ChannelHandlerContext ctx = observer.getChannelContext();
+      if (ctx == null || !ctx.channel().isActive()) {
+        continue;
+      }
+
+      Set<Long> nearbyCharIds = spatialGrid.getNearbyEntities(observer.getX(), observer.getZ());
+      Set<Long> known = observer.getKnownEntities();
+
+      List<EntitySpawnRecord> spawns = new ArrayList<>();
+      List<EntityMovementUpdate> updates = new ArrayList<>();
+      List<Long> despawns = new ArrayList<>();
+
+      for (Long neighborId : nearbyCharIds) {
+        if (neighborId.equals(observer.getCharacterId())) {
+          continue;
+        }
+
+        ZoneEntityState neighbor = entities.get(neighborId);
+        if (neighbor == null) continue;
+
+        if (!known.contains(neighborId)) {
+          known.add(neighborId);
+          spawns.add(new EntitySpawnRecord(
+            neighbor.getCharacterId(),
+            neighbor.getName(),
+            neighbor.getCharacterClass(),
+            neighbor.getLevel(),
+            neighbor.getX(), neighbor.getY(), neighbor.getZ(),
+            neighbor.getVx(), neighbor.getVy(), neighbor.getVz(),
+            neighbor.getYaw(), neighbor.getPitch()
+          ));
+        } else if (neighbor.isDirty() || neighbor.getLastUpdatedTick() == tickNumber) {
+          updates.add(new EntityMovementUpdate(
+            neighbor.getCharacterId(),
+            neighbor.getX(), neighbor.getY(), neighbor.getZ(),
+            neighbor.getVx(), neighbor.getVy(), neighbor.getVz(),
+            neighbor.getYaw(), neighbor.getPitch(),
+            neighbor.getMoveFlags()
+          ));
+        }
+      }
+
+      Iterator<Long> knownIter = known.iterator();
+      while (knownIter.hasNext()) {
+        Long knownId = knownIter.next();
+        if (!nearbyCharIds.contains(knownId) || !entities.containsKey(knownId)) {
+          knownIter.remove();
+          despawns.add(knownId);
+        }
+      }
+
+      if (!spawns.isEmpty() || !updates.isEmpty() || !despawns.isEmpty()) {
+        ctx.channel().attr(SessionContext.SESSION_ID).set(observer.getSessionId());
+        ctx.channel().attr(SessionContext.CHARACTER_ID).set(observer.getCharacterId());
+        ctx.writeAndFlush(new ZoneStateDeltaMessage(tickNumber, spawns, updates, despawns));
+      }
     }
   }
 
   public void flushDirtyEntitiesAsync() {
     List<CharacterStateSnapshot> dirtySnapshots = new ArrayList<>();
-
     for (ZoneEntityState state : entities.values()) {
       if (state.isDirty()) {
         state.setDirty(false);
         dirtySnapshots.add(new CharacterStateSnapshot(
           state.getCharacterId(),
           state.getZoneId(),
-          state.getX(),
-          state.getY(),
-          state.getZ(),
-          state.getYaw(),
-          state.getPitch()
+          state.getX(), state.getY(), state.getZ(),
+          state.getYaw(), state.getPitch()
         ));
       }
     }
-
     if (!dirtySnapshots.isEmpty()) {
       dispatcher.dispatch(() -> characterRepository.flushStateBatch(dirtySnapshots));
     }
@@ -141,15 +282,12 @@ public class ZoneSimulationEngine {
       ZoneEntityState state = entities.remove(characterId);
       spatialGrid.removeEntity(characterId);
 
-      if (state != null) {
+      if (state != null && state.isDirty()) {
         CharacterStateSnapshot snapshot = new CharacterStateSnapshot(
           state.getCharacterId(),
           state.getZoneId(),
-          state.getX(),
-          state.getY(),
-          state.getZ(),
-          state.getYaw(),
-          state.getPitch()
+          state.getX(), state.getY(), state.getZ(),
+          state.getYaw(), state.getPitch()
         );
         dispatcher.dispatch(() -> characterRepository.flushStateBatch(List.of(snapshot)));
       }
@@ -158,7 +296,7 @@ public class ZoneSimulationEngine {
 
   @PreDestroy
   public void stop() {
-    log.info("[ZONE-ENGINE] Stopping simulation loop and flushing remaining states...");
+    log.info("[ZONE-ENGINE] Stopping simulation loop and persisting remaining states...");
     if (tickExecutor != null) {
       tickExecutor.shutdown();
     }

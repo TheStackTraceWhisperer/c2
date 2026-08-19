@@ -27,12 +27,12 @@ public final class MessageType {
   // World Service / Realm Orchestration (300 - 399)
   public static final short JOIN_WORLD_REQUEST = 300;
   public static final short JOIN_WORLD_RESPONSE = 301;
-  public static final short ZONE_TRANSFER_REQUEST = 302;
-  public static final short ZONE_TRANSFER_RESPONSE = 303;
+  public static final short ZONE_TRANSFER_NOTIFICATION = 302;
 
   // Zone Service / Authoritative Simulation (400 - 499)
   public static final short PLAYER_MOVEMENT_REQUEST = 400;
   public static final short PLAYER_MOVEMENT_RESPONSE = 401;
+  public static final short ZONE_STATE_DELTA_BROADCAST = 402;
 
   private MessageType() {}
 }

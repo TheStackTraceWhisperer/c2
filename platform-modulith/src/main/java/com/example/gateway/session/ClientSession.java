@@ -1,7 +1,7 @@
 package com.example.gateway.session;
 
-import com.example.config.DemoProperties.EndpointProperties;
 import com.example.gateway.ratelimit.TokenBucket;
+import com.example.server.protocol.EndpointTarget;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.AttributeKey;
@@ -25,12 +25,11 @@ public class ClientSession {
   @Setter private volatile long characterId = 0L;
 
   @Setter private volatile int currentWorldId = 0;
-  @Setter private volatile EndpointProperties worldEndpoint = null;
+  @Setter private volatile EndpointTarget worldEndpoint = null;
 
   @Setter private volatile int currentZoneId = 0;
-  @Setter private volatile EndpointProperties zoneEndpoint = null;
+  @Setter private volatile EndpointTarget zoneEndpoint = null;
 
-  // Keyed by BackendConnectionManager.makeKey(serviceId, host, port)
   private final Map<Long, QuicStreamChannel> backendStreams = new ConcurrentHashMap<>();
 
   public ClientSession(long sessionId, QuicChannel quicChannel, long maxBurst, long tokensPerSecond) {

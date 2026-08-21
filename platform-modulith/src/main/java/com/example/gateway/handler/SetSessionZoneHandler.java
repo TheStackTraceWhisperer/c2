@@ -3,11 +3,11 @@ package com.example.gateway.handler;
 import com.example.common.handler.PacketHandler;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ServiceType;
-import com.example.config.DemoProperties.EndpointProperties;
 import com.example.gateway.BackendConnectionManager;
 import com.example.gateway.session.ClientSession;
 import com.example.server.codec.BackendForySerializationProvider;
 import com.example.server.protocol.BackendEnvelope;
+import com.example.server.protocol.EndpointTarget;
 import com.example.server.protocol.SessionDisconnectedEvent;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import io.netty.buffer.ByteBuf;
@@ -28,17 +28,16 @@ public class SetSessionZoneHandler implements PacketHandler<SetSessionZoneContro
       : null;
 
     if (session != null) {
-      EndpointProperties oldEndpoint = session.getZoneEndpoint();
+      EndpointTarget oldEndpoint = session.getZoneEndpoint();
       int previousZoneId = session.getCurrentZoneId();
 
       log.info("[GATEWAY-CTRL] Transferring Session #{} from Zone #{} to Zone #{} ({}:{})",
         session.getSessionId(), previousZoneId, msg.zoneId(), msg.host(), msg.port());
 
       if (oldEndpoint != null) {
-        long oldKey = BackendConnectionManager.makeKey(ServiceType.ZONE, oldEndpoint.getHostname(), oldEndpoint.getPort());
+        long oldKey = BackendConnectionManager.makeKey(ServiceType.ZONE, oldEndpoint.host(), oldEndpoint.port());
         QuicStreamChannel oldStream = session.getBackendStreams().remove(oldKey);
         if (oldStream != null && oldStream.isActive()) {
-          // Authoritatively evict entity state from previous zone before closing stream
           SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(session.getSessionId(), System.currentTimeMillis());
           byte[] bytes = BackendForySerializationProvider.get().serialize(disconnectEvent);
           ByteBuf payloadBuf = oldStream.alloc().buffer(bytes.length).writeBytes(bytes);
@@ -48,7 +47,7 @@ public class SetSessionZoneHandler implements PacketHandler<SetSessionZoneContro
       }
 
       session.setCurrentZoneId(msg.zoneId());
-      session.setZoneEndpoint(new EndpointProperties(msg.port(), msg.host()));
+      session.setZoneEndpoint(new EndpointTarget(msg.host(), msg.port()));
     }
   }
 }

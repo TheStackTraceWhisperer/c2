@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 public abstract class AbstractBackendServer {
 
   protected final String serviceName;
+  protected final String bindHost;
   protected final int port;
   protected final IndexedPacketRouter router;
 
@@ -68,11 +69,11 @@ public abstract class AbstractBackendServer {
     channel = bootstrap.group(group)
       .channel(NioDatagramChannel.class)
       .handler(codec)
-      .bind(new InetSocketAddress(port))
+      .bind(new InetSocketAddress(bindHost, port))
       .sync()
       .channel();
 
-    log.info("[{}-SERVER] listening for QUIC UDP datagrams on port {}", serviceName, port);
+    log.info("[{}-SERVER] listening on QUIC UDP {}:{}", serviceName, bindHost, port);
   }
 
   @PreDestroy

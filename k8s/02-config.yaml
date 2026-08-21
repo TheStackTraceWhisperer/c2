@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-common-config
+data:
+  DATASOURCES_DEFAULT_URL: "jdbc:postgresql://postgres:5432/mmo_platform"
+  DATASOURCES_DEFAULT_USERNAME: "postgres"
+  DATASOURCES_DEFAULT_PASSWORD: "postgres"
+  DATASOURCES_DEFAULT_DRIVER_CLASS_NAME: "org.postgresql.Driver"
+  APP_LOGIN_HOST: "login-service"
+  APP_LOGIN_PORT: "9998"
+  APP_LOBBY_HOST: "lobby-service"
+  APP_LOBBY_PORT: "9999"
+  APP_OPERATOR_IMAGE: "platform-modulith:latest"
+  APP_AUTH_PRIVATE_KEY_PATH: "/certs/jwt/tls.key"
+  APP_AUTH_PUBLIC_KEY_PATH: "/certs/jwt/tls.crt"

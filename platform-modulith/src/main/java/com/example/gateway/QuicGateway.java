@@ -4,7 +4,7 @@ import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelopeCodec;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ProtocolConstants;
-import com.example.config.DemoProperties;
+import com.example.config.GatewayProperties;
 import com.example.gateway.handler.SetSessionAuthStateHandler;
 import com.example.gateway.handler.SetSessionCharacterHandler;
 import com.example.gateway.handler.SetSessionWorldHandler;
@@ -16,7 +16,6 @@ import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.SessionDisconnectedEvent;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
-import io.micronaut.context.env.Environment;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
@@ -37,12 +36,11 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Context
-@Requires(env = {"gateway", Environment.TEST})
-@Requires(notEnv = {"login", "lobby", "world", "zone"})
+@Requires(env = "gateway")
 @RequiredArgsConstructor
 public class QuicGateway {
 
-  @Getter private final DemoProperties properties;
+  private final GatewayProperties properties;
   @Getter private final BackendConnectionManager connectionManager;
 
   private final SetSessionAuthStateHandler authStateHandler;
@@ -63,13 +61,8 @@ public class QuicGateway {
     controlRouter.register(MessageType.CTRL_SET_WORLD, worldHandler);
     controlRouter.register(MessageType.CTRL_SET_ZONE, zoneHandler);
 
-    int nodeId = properties.getGateway().getNodeId();
-    long rateCapacity = properties.getGateway().getRateLimit().getCapacity();
-    long rateRefill = properties.getGateway().getRateLimit().getRefillRate();
-
-    sessionIdGenerator = new SessionIdGenerator(nodeId);
+    sessionIdGenerator = new SessionIdGenerator(properties.getNodeId());
     group = new NioEventLoopGroup(2);
-
     connectionManager.init(group);
 
     SelfSignedCertificate cert = new SelfSignedCertificate();
@@ -89,9 +82,9 @@ public class QuicGateway {
         @Override
         protected void initChannel(QuicChannel quicChannel) {
           long sid = sessionIdGenerator.nextSessionId();
-          ClientSession session = new ClientSession(sid, quicChannel, rateCapacity, rateRefill);
+          ClientSession session = new ClientSession(sid, quicChannel, properties.getRateCapacity(), properties.getRateRefill());
           quicChannel.attr(ClientSession.KEY).set(session);
-          log.info("[GATEWAY] Assigned new ClientSession #{} to QuicChannel {}", sid, quicChannel);
+          log.info("[GATEWAY] Assigned ClientSession #{} to QuicChannel {}", sid, quicChannel);
 
           quicChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
             @Override
@@ -106,7 +99,6 @@ public class QuicGateway {
         @Override
         protected void initChannel(QuicStreamChannel ch) {
           ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
-
           ch.pipeline().addLast(
             new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
             new LengthFieldPrepender(4),
@@ -117,17 +109,21 @@ public class QuicGateway {
       })
       .build();
 
-    int gatewayPort = properties.getGateway().getPort();
     inboundDatagramChannel = new Bootstrap()
       .group(group)
       .channel(NioDatagramChannel.class)
       .handler(serverCodec)
-      .bind(new InetSocketAddress(gatewayPort))
+      .bind(new InetSocketAddress(properties.getHost(), properties.getPort()))
       .sync()
       .channel();
 
-    log.info("[GATEWAY] Listening on UDP port {}", gatewayPort);
+    log.info("[GATEWAY] Listening on UDP {}:{}", properties.getHost(), properties.getPort());
   }
+
+  public boolean isRunning() {
+    return inboundDatagramChannel != null && inboundDatagramChannel.isActive();
+  }
+
   private void handleSessionDisconnect(ClientSession session) {
     long sessionId = session.getSessionId();
     long characterId = session.getCharacterId();
@@ -135,9 +131,7 @@ public class QuicGateway {
 
     if (streamCount == 0) return;
 
-    log.info("[GATEWAY] Client disconnected: Session #{} (Char #{}). Broadcasting teardown to {} active backend streams...",
-      sessionId, characterId, streamCount);
-
+    log.info("[GATEWAY] Client disconnected: Session #{} (Char #{}). Broadcasting teardown...", sessionId, characterId);
     SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(sessionId, System.currentTimeMillis());
     byte[] disconnectBytes = BackendForySerializationProvider.get().serialize(disconnectEvent);
 
@@ -155,7 +149,7 @@ public class QuicGateway {
 
   @PreDestroy
   public void stop() {
-    log.info("shutting down QUIC gateway...");
+    log.info("[GATEWAY] Shutting down gateway...");
     if (inboundDatagramChannel != null) inboundDatagramChannel.close();
     if (group != null) group.shutdownGracefully();
   }

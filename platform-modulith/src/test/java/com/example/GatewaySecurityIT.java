@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-public class GatewaySecurityTest extends BaseIntegrationTest {
+public class GatewaySecurityIT extends BaseIntegrationTest {
 
   @Test
   @DisplayName("Security: Gateway drops Lobby requests if session is unauthenticated")

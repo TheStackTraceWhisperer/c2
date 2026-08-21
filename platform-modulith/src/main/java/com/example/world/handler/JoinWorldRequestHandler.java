@@ -1,10 +1,11 @@
 package com.example.world.handler;
 
 import com.example.common.handler.PacketHandler;
-import com.example.config.DemoProperties.EndpointProperties;
+import com.example.config.WorldServerProperties;
 import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
+import com.example.server.protocol.EndpointTarget;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import com.example.server.repository.CharacterRepository;
 import com.example.world.dto.JoinWorldRequest;
@@ -27,6 +28,7 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
   private final ZoneRegistry zoneRegistry;
   private final WorldSessionRegistry sessionRegistry;
   private final VirtualThreadTaskDispatcher dispatcher;
+  private final WorldServerProperties properties;
 
   @Override
   public void handle(ChannelHandlerContext ctx, JoinWorldRequest packet) {
@@ -49,10 +51,11 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
 
       CharacterRecord character = characterOpt.get();
       int targetZoneId = character.zoneId();
-      EndpointProperties zoneEndpoint = zoneRegistry.getZoneEndpoint(targetZoneId);
+      int realmId = properties.getRealmId();
+      EndpointTarget zoneEndpoint = zoneRegistry.getZoneEndpoint(realmId, targetZoneId);
 
       if (zoneEndpoint == null) {
-        log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry", targetZoneId);
+        log.error("[WORLD-SERVER] Target Zone #{} not found in active zone registry for Realm #{}", targetZoneId, realmId);
         ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Target zone unavailable"));
         return;
       }
@@ -60,15 +63,15 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
       sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint, ctx);
 
       log.info("[WORLD-SERVER] Dispatching CTRL_SET_ZONE -> Gateway: Session #{} -> Zone #{} ({}:{})",
-        sessionId, targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort());
+        sessionId, targetZoneId, zoneEndpoint.host(), zoneEndpoint.port());
 
-      ctx.write(new SetSessionZoneControlMessage(targetZoneId, zoneEndpoint.getHostname(), zoneEndpoint.getPort()));
+      ctx.write(new SetSessionZoneControlMessage(targetZoneId, zoneEndpoint.host(), zoneEndpoint.port()));
 
       ctx.writeAndFlush(new JoinWorldResponse(
         true,
         targetZoneId,
-        zoneEndpoint.getHostname(),
-        zoneEndpoint.getPort(),
+        zoneEndpoint.host(),
+        zoneEndpoint.port(),
         ""
       ));
     });

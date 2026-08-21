@@ -10,23 +10,45 @@ CREATE TABLE accounts
 
 CREATE INDEX idx_accounts_username ON accounts (username);
 
--- 2. Realms / Worlds (Lobby & World Coordinator)
+-- 2. Realms / Worlds (Reconciled into World Pods by Operator)
 CREATE TABLE realms
 (
     id           INT PRIMARY KEY,
     name         VARCHAR(64) UNIQUE NOT NULL,
     realm_type   VARCHAR(16)        NOT NULL DEFAULT 'STANDARD',
-    max_capacity INT                NOT NULL DEFAULT 2000
+    host         VARCHAR(128)       NOT NULL DEFAULT '',
+    port         INT                NOT NULL DEFAULT 9996,
+    status       VARCHAR(32)        NOT NULL DEFAULT 'PENDING',
+    max_capacity INT                NOT NULL DEFAULT 2000,
+    last_updated TIMESTAMPTZ        NOT NULL DEFAULT NOW()
 );
 
--- Seed baseline development realms
 INSERT INTO realms (id, name, realm_type, max_capacity)
 VALUES
-    (1, 'Development Realm 1', 'STANDARD', 2000),
-    (2, 'Development Realm 2', 'STANDARD', 2000)
+    (1, 'Realm 1 - Prime', 'STANDARD', 2000),
+    (2, 'Realm 2 - Secondary', 'STANDARD', 2000)
     ON CONFLICT (id) DO NOTHING;
 
--- 3. Characters (Lobby, World, & Zone Persistence)
+-- 3. Zones (Reconciled into Zone Pods by Operator)
+CREATE TABLE zones
+(
+    id             INT PRIMARY KEY,
+    realm_id       INT                NOT NULL REFERENCES realms (id) ON DELETE CASCADE,
+    name           VARCHAR(64)        NOT NULL,
+    host           VARCHAR(128)       NOT NULL DEFAULT '',
+    port           INT                NOT NULL DEFAULT 9997,
+    status         VARCHAR(32)        NOT NULL DEFAULT 'PENDING',
+    is_static      BOOLEAN            NOT NULL DEFAULT true,
+    last_heartbeat TIMESTAMPTZ        NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO zones (id, realm_id, name, is_static)
+VALUES
+    (1, 1, 'Starter Forest', true),
+    (2, 1, 'Highland Plains', true)
+    ON CONFLICT (id) DO NOTHING;
+
+-- 4. Characters (Lobby, World, & Zone Persistence)
 CREATE TABLE characters
 (
     id              BIGSERIAL PRIMARY KEY,

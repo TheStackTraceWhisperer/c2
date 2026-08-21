@@ -33,6 +33,7 @@
     <assertj.version>3.27.3</assertj.version>
     <awaitility.version>4.3.0</awaitility.version>
     <testcontainers.version>1.20.4</testcontainers.version>
+    <fabric8.version>6.13.4</fabric8.version>
   </properties>
 
   <dependencyManagement>
@@ -52,6 +53,13 @@
         <groupId>com.example</groupId>
         <artifactId>platform-modulith</artifactId>
         <version>${project.version}</version>
+      </dependency>
+
+      <!-- Kubernetes Operator SDK -->
+      <dependency>
+        <groupId>io.fabric8</groupId>
+        <artifactId>kubernetes-client</artifactId>
+        <version>${fabric8.version}</version>
       </dependency>
 
       <!-- Networking & Serialization -->

@@ -2,7 +2,7 @@ package com.example.login;
 
 import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
-import com.example.config.DemoProperties;
+import com.example.config.LoginServerProperties;
 import com.example.login.handler.LoginRequestHandler;
 import com.example.login.handler.PingPacketHandler;
 import com.example.login.handler.ReconnectRequestHandler;
@@ -10,14 +10,12 @@ import com.example.server.AbstractBackendServer;
 import com.example.server.handler.SessionDisconnectedHandler;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
-import io.micronaut.context.env.Environment;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Context
-@Requires(env = {"login", Environment.TEST})
-@Requires(notEnv = {"gateway", "lobby", "world"})
+@Requires(env = "login")
 public class LoginServer extends AbstractBackendServer {
 
   private final LoginRequestHandler loginHandler;
@@ -26,13 +24,13 @@ public class LoginServer extends AbstractBackendServer {
   private final ReconnectRequestHandler reconnectHandler;
 
   public LoginServer(
-    DemoProperties properties,
+    LoginServerProperties properties,
     IndexedPacketRouter router,
     LoginRequestHandler loginHandler,
     PingPacketHandler pingHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler,
     ReconnectRequestHandler reconnectHandler) {
-    super("LOGIN", properties.getLogin().getPort(), router);
+    super("LOGIN", properties.getHost(), properties.getPort(), router);
     this.loginHandler = loginHandler;
     this.pingHandler = pingHandler;
     this.sessionDisconnectedHandler = sessionDisconnectedHandler;

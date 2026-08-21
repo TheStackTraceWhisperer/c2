@@ -1,6 +1,6 @@
 package com.example.zone.engine;
 
-import com.example.config.DemoProperties;
+import com.example.config.ZoneServerProperties;
 import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
@@ -36,7 +36,7 @@ public class ZoneSimulationEngine {
   public static final float MAX_DISTANCE_PER_TICK = (MAX_SPEED_UNITS_PER_SEC / TICK_RATE_HZ) * 2.0f; // 2.5m per tick tolerance
   private static final long FLUSH_INTERVAL_TICKS = 600L; // 30s
 
-  private final DemoProperties properties;
+  private final ZoneServerProperties properties;
   private final SpatialGrid spatialGrid;
   private final CharacterRepository characterRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
@@ -64,16 +64,16 @@ public class ZoneSimulationEngine {
     });
 
     tickExecutor.scheduleAtFixedRate(this::tick, 0, TICK_INTERVAL_MS, TimeUnit.MILLISECONDS);
-    log.info("[ZONE-ENGINE] 20 Hz Authoritative Spatial Simulation initialized for Zone #{}", getAuthoritativeZoneId());
+    log.info("[ZONE-ENGINE] 20 Hz Authoritative Spatial Simulation initialized for Zone #{}", properties.getZoneId());
   }
 
   public int getAuthoritativeZoneId() {
-    return (properties.getZone() != null) ? properties.getZone().getZoneId() : 1;
+    return properties.getZoneId();
   }
 
   public void registerSessionEntity(long sessionId, long characterId, ChannelHandlerContext ctx) {
     sessionToCharacter.put(sessionId, characterId);
-    int zoneId = getAuthoritativeZoneId();
+    int zoneId = properties.getZoneId();
 
     entities.compute(characterId, (id, existing) -> {
       if (existing != null) {
@@ -130,7 +130,7 @@ public class ZoneSimulationEngine {
 
   private void processInboundMovements(long tickNumber) {
     QueuedMovement m;
-    int currentZoneId = getAuthoritativeZoneId();
+    int currentZoneId = properties.getZoneId();
 
     while ((m = movementQueue.poll()) != null) {
       PlayerMovementRequest req = m.request();

@@ -2,17 +2,15 @@ package com.example.gateway;
 
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
-import com.example.config.DemoProperties;
-import com.example.config.DemoProperties.EndpointProperties;
+import com.example.config.LobbyServerProperties;
+import com.example.config.LoginServerProperties;
 import com.example.gateway.session.ClientSession;
+import com.example.server.protocol.EndpointTarget;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
-import io.netty.incubator.codec.quic.QuicChannel;
-import io.netty.incubator.codec.quic.QuicClientCodecBuilder;
-import io.netty.incubator.codec.quic.QuicSslContext;
-import io.netty.incubator.codec.quic.QuicSslContextBuilder;
+import io.netty.incubator.codec.quic.*;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
 import jakarta.annotation.PreDestroy;
@@ -30,13 +28,11 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class BackendConnectionManager {
 
-  private final DemoProperties properties;
+  private final LoginServerProperties loginProperties;
+  private final LobbyServerProperties lobbyProperties;
   private final Map<Long, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
   private Channel outboundDatagramChannel;
 
-  /**
-   * Generates a 64-bit composite key from serviceId, host hash, and port.
-   */
   public static long makeKey(short serviceId, String host, int port) {
     int hostHash = (host != null) ? host.hashCode() : 0;
     return (((long) serviceId) << 48) ^ (((long) (hostHash & 0xFFFF)) << 32) ^ (port & 0xFFFFFFFFL);
@@ -67,10 +63,10 @@ public class BackendConnectionManager {
     log.info("[BACKEND-CONN-MGR] Outbound QUIC datagram channel initialized.");
   }
 
-  public EndpointProperties resolveEndpoint(short serviceId, ClientSession session) {
+  public EndpointTarget resolveEndpoint(short serviceId, ClientSession session) {
     return switch (serviceId) {
-      case ServiceType.AUTH -> properties.getLogin();
-      case ServiceType.LOBBY -> properties.getLobby();
+      case ServiceType.AUTH -> new EndpointTarget(loginProperties.getHost(), loginProperties.getPort());
+      case ServiceType.LOBBY -> new EndpointTarget(lobbyProperties.getHost(), lobbyProperties.getPort());
       case ServiceType.WORLD -> (session != null) ? session.getWorldEndpoint() : null;
       case ServiceType.ZONE -> (session != null) ? session.getZoneEndpoint() : null;
       default -> null;
@@ -107,7 +103,7 @@ public class BackendConnectionManager {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-          log.error("[BACKEND-CONN-MGR] Error on connection to service {} ({}:{}): {}",
+          log.error("[BACKEND-CONN-MGR] Error on service {} connection ({}:{}): {}",
             serviceId, host, port, cause.getMessage());
           ctx.close();
         }

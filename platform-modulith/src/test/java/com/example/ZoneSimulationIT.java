@@ -12,6 +12,8 @@ import com.example.support.BaseIntegrationTest;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
+import io.micronaut.context.BeanContext;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +24,10 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-public class ZoneSimulationIntegrationTest extends BaseIntegrationTest {
+public class ZoneSimulationIT extends BaseIntegrationTest {
+
+  @Inject
+  private BeanContext beanContext;
 
   @Test
   @DisplayName("Persistence Checkpoint: Moving in Zone and disconnecting persists dirty state to PostgreSQL")

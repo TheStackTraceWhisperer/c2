@@ -3,10 +3,10 @@ package com.example.gateway;
 import com.example.common.protocol.ClientEnvelope;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
-import com.example.config.DemoProperties.EndpointProperties;
 import com.example.gateway.session.ClientSession;
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.BackendEnvelopeCodec;
+import com.example.server.protocol.EndpointTarget;
 import io.netty.channel.*;
 import io.netty.handler.codec.CorruptedFrameException;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
@@ -57,17 +57,14 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         return;
       }
 
-      EndpointProperties endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
+      EndpointTarget endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
       if (endpoint == null) {
         log.error("[GATEWAY] No destination endpoint resolved for svc: {} on Session #{}", msg.serviceId(), sessionId);
         return;
       }
 
-      long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), endpoint.getHostname(), endpoint.getPort());
+      long endpointKey = BackendConnectionManager.makeKey(msg.serviceId(), endpoint.host(), endpoint.port());
       long characterId = (session != null) ? session.getCharacterId() : 0L;
-
-      log.debug("[GATEWAY] ClientEnvelope (svc: {}, msg: {}). Stamping Session #{} -> Target Key 0x{}",
-        msg.serviceId(), msg.messageId(), sessionId, Long.toHexString(endpointKey));
 
       BackendEnvelope backendEnvelope = new BackendEnvelope(
         sessionId,
@@ -94,7 +91,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
           clientStream.config().setAutoRead(false);
         }
       } else {
-        enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.getHostname(), endpoint.getPort(), endpointKey, backendEnvelope);
+        enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.host(), endpoint.port(), endpointKey, backendEnvelope);
       }
     } finally {
       if (msg.payload() != null && msg.payload().refCnt() > 0) {
@@ -133,7 +130,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
           @Override
           protected void initChannel(QuicStreamChannel ch) {
             ch.config().setWriteBufferWaterMark(new WriteBufferWaterMark(32 * 1024, 64 * 1024));
-
             ch.pipeline().addLast(
               new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
               new LengthFieldPrepender(4),
@@ -155,10 +151,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
 
             if (session != null) {
               session.getBackendStreams().put(endpointKey, ch);
-
               ch.closeFuture().addListener((ChannelFutureListener) f -> {
-                log.debug("[GATEWAY] Backend stream for key 0x{} closed. Evicting from Session #{}",
-                  Long.toHexString(endpointKey), session.getSessionId());
                 session.getBackendStreams().remove(endpointKey, ch);
               });
             }

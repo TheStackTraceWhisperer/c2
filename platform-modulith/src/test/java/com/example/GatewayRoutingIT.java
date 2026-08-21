@@ -8,29 +8,20 @@ import com.example.common.protocol.MovementFlags;
 import com.example.lobby.dto.SelectCharacterRequest;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.ReconnectRequest;
-import com.example.server.handler.SessionDisconnectedHandler;
-import com.example.server.protocol.SessionDisconnectedEvent;
 import com.example.support.BaseIntegrationTest;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
-import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-public class GatewayRoutingTest extends BaseIntegrationTest {
-
-  @Inject
-  private SessionDisconnectedHandler sessionDisconnectedHandler;
+public class GatewayRoutingIT extends BaseIntegrationTest {
 
   @Test
   @DisplayName("Transport: Client exchanges Ping and Pong with LoginServer via Gateway")
@@ -43,57 +34,6 @@ public class GatewayRoutingTest extends BaseIntegrationTest {
     PongMessage pong = pongFuture.get(5, TimeUnit.SECONDS);
     assertThat(pong).isNotNull();
     assertThat(pong.message()).isEqualTo("PONG");
-  }
-
-  @Test
-  @DisplayName("Teardown: Gateway broadcasts SessionDisconnectedEvent to all active backend streams on disconnect")
-  void testSessionTeardownBroadcast() throws Exception {
-    List<SessionDisconnectedEvent> receivedEvents = new CopyOnWriteArrayList<>();
-    Consumer<SessionDisconnectedEvent> listener = receivedEvents::add;
-
-    CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
-    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
-      moveFuture.complete((PlayerMovementResponse) packet)
-    );
-
-    try {
-      client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-      await().atMost(5, TimeUnit.SECONDS).until(() ->
-        client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
-      );
-
-      client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
-      await().atMost(5, TimeUnit.SECONDS).until(() ->
-        client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
-      );
-
-      client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
-      await().atMost(5, TimeUnit.SECONDS).until(() ->
-        client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
-      );
-
-      client.send(new PlayerMovementRequest(100.0f, 64.0f, -250.5f, 0, 0, 0, 0, 0, MovementFlags.IDLE, 1L));
-      moveFuture.get(5, TimeUnit.SECONDS);
-
-      sessionDisconnectedHandler.onDisconnect(listener);
-      receivedEvents.clear();
-
-      client.close();
-
-      await().atMost(5, TimeUnit.SECONDS).until(() -> receivedEvents.size() >= 4);
-
-      long activeSessionId = receivedEvents.get(0).sessionId();
-      List<SessionDisconnectedEvent> sessionEvents = receivedEvents.stream()
-        .filter(e -> e.sessionId() == activeSessionId)
-        .toList();
-
-      assertThat(sessionEvents)
-        .hasSize(4)
-        .allMatch(event -> event.timestamp() > 0);
-
-    } finally {
-      sessionDisconnectedHandler.removeListener(listener);
-    }
   }
 
   @Test

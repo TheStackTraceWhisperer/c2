@@ -1,32 +1,29 @@
 package com.example;
 
 import com.example.client.ClientConfiguration;
-import com.example.config.DemoProperties;
+import com.example.config.GatewayProperties;
 import io.micronaut.context.annotation.Replaces;
 import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
 
 @Singleton
 @Replaces(ClientConfiguration.class)
+@RequiredArgsConstructor
 public class TestClientConfiguration implements ClientConfiguration {
 
-  private final DemoProperties demoProperties;
-
-  public TestClientConfiguration(DemoProperties demoProperties) {
-    this.demoProperties = demoProperties;
-  }
+  private final GatewayProperties gatewayProperties;
 
   @Override
   public GatewayEndpoint getGateway() {
-    DemoProperties.GatewayProperties gateway = demoProperties.getGateway();
     return new GatewayEndpoint() {
       @Override
       public int getPort() {
-        return gateway.getPort();
+        return gatewayProperties.getPort();
       }
 
       @Override
       public String getHostname() {
-        return gateway.getHostname();
+        return gatewayProperties.getHost();
       }
     };
   }

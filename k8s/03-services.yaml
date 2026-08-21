@@ -1,0 +1,168 @@
+# 1. RBAC for MMO Fleet Operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mmo-operator-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mmo-operator-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mmo-operator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mmo-operator-role
+subjects:
+  - kind: ServiceAccount
+    name: mmo-operator-sa
+    namespace: default
+---
+# 2. MMO Fleet Operator Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mmo-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mmo-operator
+  template:
+    metadata:
+      labels:
+        app: mmo-operator
+    spec:
+      serviceAccountName: mmo-operator-sa
+      containers:
+        - name: operator
+          image: platform-modulith:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: MICRONAUT_ENVIRONMENTS
+              value: "operator"
+            - name: FLYWAY_DATASOURCES_DEFAULT_ENABLED
+              value: "true"
+---
+# 3. Login Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: login-service
+spec:
+  ports:
+    - port: 9998
+      targetPort: 9998
+      protocol: UDP
+      name: quic
+  selector:
+    app: login-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login-service
+spec:
+  selector:
+    matchLabels:
+      app: login-service
+  template:
+    metadata:
+      labels:
+        app: login-service
+    spec:
+      containers:
+        - name: login-service
+          image: platform-modulith:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: MICRONAUT_ENVIRONMENTS
+              value: "login"
+            - name: FLYWAY_DATASOURCES_DEFAULT_ENABLED
+              value: "true"
+            - name: APP_LOGIN_HOST
+              value: "0.0.0.0"
+            - name: APP_LOGIN_PORT
+              value: "9998"
+          ports:
+            - containerPort: 9998
+              protocol: UDP
+              name: quic
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /certs/jwt
+              readOnly: true
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: jwt-keypair-secret
+---
+# 4. Lobby Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: lobby-service
+spec:
+  ports:
+    - port: 9999
+      targetPort: 9999
+      protocol: UDP
+      name: quic
+  selector:
+    app: lobby-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lobby-service
+spec:
+  selector:
+    matchLabels:
+      app: lobby-service
+  template:
+    metadata:
+      labels:
+        app: lobby-service
+    spec:
+      containers:
+        - name: lobby-service
+          image: platform-modulith:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: MICRONAUT_ENVIRONMENTS
+              value: "lobby"
+            - name: FLYWAY_DATASOURCES_DEFAULT_ENABLED
+              value: "false"
+            - name: APP_LOBBY_HOST
+              value: "0.0.0.0"
+            - name: APP_LOBBY_PORT
+              value: "9999"
+          ports:
+            - containerPort: 9999
+              protocol: UDP
+              name: quic
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /certs/jwt
+              readOnly: true
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: jwt-keypair-secret

@@ -1,6 +1,6 @@
 package com.example.world.registry;
 
-import com.example.config.DemoProperties.EndpointProperties;
+import com.example.server.protocol.EndpointTarget;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.AllArgsConstructor;
@@ -20,7 +20,7 @@ public class WorldSessionRegistry {
     private final long sessionId;
     private final long characterId;
     private int currentZoneId;
-    private EndpointProperties currentZoneEndpoint;
+    private EndpointTarget currentZoneEndpoint;
     private long joinedTimestamp;
     private ChannelHandlerContext context;
   }
@@ -28,7 +28,7 @@ public class WorldSessionRegistry {
   private final Map<Long, WorldPlayerSession> sessions = new ConcurrentHashMap<>();
   private final Map<Long, Long> characterToSession = new ConcurrentHashMap<>();
 
-  public void registerSession(long sessionId, long characterId, int initialZoneId, EndpointProperties initialZoneEndpoint, ChannelHandlerContext ctx) {
+  public void registerSession(long sessionId, long characterId, int initialZoneId, EndpointTarget initialZoneEndpoint, ChannelHandlerContext ctx) {
     WorldPlayerSession session = new WorldPlayerSession(
       sessionId,
       characterId,
@@ -50,7 +50,7 @@ public class WorldSessionRegistry {
     return (sid != null) ? sessions.get(sid) : null;
   }
 
-  public void updateZone(long sessionId, int newZoneId, EndpointProperties newZoneEndpoint) {
+  public void updateZone(long sessionId, int newZoneId, EndpointTarget newZoneEndpoint) {
     WorldPlayerSession session = sessions.get(sessionId);
     if (session != null) {
       session.setCurrentZoneId(newZoneId);

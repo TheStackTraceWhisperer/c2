@@ -2,51 +2,56 @@ package com.example.world;
 
 import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
-import com.example.config.DemoProperties;
-import com.example.config.DemoProperties.EndpointProperties;
+import com.example.config.WorldServerProperties;
 import com.example.server.AbstractBackendServer;
 import com.example.server.SessionContext;
+import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.handler.SessionDisconnectedHandler;
+import com.example.server.protocol.EndpointTarget;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import com.example.server.repository.CharacterRepository;
-import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.ZoneTransferNotification;
 import com.example.world.handler.JoinWorldRequestHandler;
 import com.example.world.registry.WorldSessionRegistry;
 import com.example.world.registry.ZoneRegistry;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
-import io.micronaut.context.env.Environment;
+import io.micronaut.context.annotation.Value;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.annotation.PostConstruct;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Context
-@Requires(env = {"world", Environment.TEST})
-@Requires(notEnv = {"gateway", "login", "lobby", "zone"})
+@Requires(env = "world")
 public class WorldServer extends AbstractBackendServer {
 
-  private final DemoProperties properties;
+  @Getter
+  @Value("${app.world.realm-id:1}")
+  private int realmId;
+
   private final ZoneRegistry zoneRegistry;
   private final WorldSessionRegistry sessionRegistry;
   private final CharacterRepository characterRepository;
+  private final VirtualThreadTaskDispatcher dispatcher;
   private final JoinWorldRequestHandler joinWorldHandler;
   private final SessionDisconnectedHandler sessionDisconnectedHandler;
 
   public WorldServer(
-    DemoProperties properties,
+    WorldServerProperties properties,
     ZoneRegistry zoneRegistry,
     WorldSessionRegistry sessionRegistry,
     CharacterRepository characterRepository,
+    VirtualThreadTaskDispatcher dispatcher,
     IndexedPacketRouter router,
     JoinWorldRequestHandler joinWorldHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler) {
-    super("WORLD", properties.getWorld().getPort(), router);
-    this.properties = properties;
+    super("WORLD", properties.getHost(), properties.getPort(), router);
     this.zoneRegistry = zoneRegistry;
     this.sessionRegistry = sessionRegistry;
     this.characterRepository = characterRepository;
+    this.dispatcher = dispatcher;
     this.joinWorldHandler = joinWorldHandler;
     this.sessionDisconnectedHandler = sessionDisconnectedHandler;
   }
@@ -56,17 +61,12 @@ public class WorldServer extends AbstractBackendServer {
     router.register(MessageType.JOIN_WORLD_REQUEST, joinWorldHandler);
     router.register(MessageType.SESSION_DISCONNECTED, sessionDisconnectedHandler);
 
-    int zonePort = properties.getZone().getPort();
-    String zoneHost = properties.getZone().getHostname();
-    zoneRegistry.registerZone(1, zoneHost, zonePort);
-    zoneRegistry.registerZone(2, zoneHost, zonePort);
+    log.info("[WORLD-SERVER] Booting World Coordinator for Realm #{}. Loading zone topology from database...", realmId);
+    zoneRegistry.refreshFromDatabase(realmId);
 
     start();
   }
 
-  /**
-   * Server-authoritative zone transfer initiation.
-   */
   public void transferPlayer(long sessionId, long characterId, int targetZoneId) {
     WorldSessionRegistry.WorldPlayerSession session = sessionRegistry.getSession(sessionId);
     if (session == null) {
@@ -79,7 +79,7 @@ public class WorldServer extends AbstractBackendServer {
     }
 
     ChannelHandlerContext ctx = session.getContext();
-    EndpointProperties targetZoneEndpoint = zoneRegistry.getZoneEndpoint(targetZoneId);
+    EndpointTarget targetZoneEndpoint = zoneRegistry.getZoneEndpoint(realmId, targetZoneId);
     if (targetZoneEndpoint == null) {
       log.error("[WORLD-SERVER] Target Zone #{} is offline", targetZoneId);
       return;
@@ -91,26 +91,25 @@ public class WorldServer extends AbstractBackendServer {
 
     sessionRegistry.updateZone(session.getSessionId(), targetZoneId, targetZoneEndpoint);
 
-    // 1. Authoritative DB update before dispatching network handoff
-    characterRepository.updatePosition(characterId, targetZoneId, spawnX, spawnY, spawnZ, 0.0f, 0.0f);
+    dispatcher.dispatch(() -> {
+      characterRepository.updatePosition(characterId, targetZoneId, spawnX, spawnY, spawnZ, 0.0f, 0.0f);
+    });
 
     log.info("[WORLD-SERVER] Orchestrating Authoritative Handoff for Session #{} (Char #{}) -> Zone #{} ({}:{})",
-      session.getSessionId(), characterId, targetZoneId, targetZoneEndpoint.getHostname(), targetZoneEndpoint.getPort());
+      session.getSessionId(), characterId, targetZoneId, targetZoneEndpoint.host(), targetZoneEndpoint.port());
 
-    // 2. Instruct Gateway to switch session route affinity to target zone
     ctx.channel().attr(SessionContext.SESSION_ID).set(session.getSessionId());
     ctx.channel().attr(SessionContext.CHARACTER_ID).set(characterId);
     ctx.write(new SetSessionZoneControlMessage(
       targetZoneId,
-      targetZoneEndpoint.getHostname(),
-      targetZoneEndpoint.getPort()
+      targetZoneEndpoint.host(),
+      targetZoneEndpoint.port()
     ));
 
-    // 3. Notify downstream client of new zone coordinates
     ctx.writeAndFlush(new ZoneTransferNotification(
       targetZoneId,
-      targetZoneEndpoint.getHostname(),
-      targetZoneEndpoint.getPort(),
+      targetZoneEndpoint.host(),
+      targetZoneEndpoint.port(),
       spawnX, spawnY, spawnZ
     ));
   }

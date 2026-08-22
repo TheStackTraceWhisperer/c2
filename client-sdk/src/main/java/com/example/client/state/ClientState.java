@@ -39,7 +39,8 @@ public class ClientState {
   public record RemoteEntityState(
     long characterId,
     String name,
-    String characterClass,
+    short mainJobId,
+    short subJobId,
     int level,
     float x, float y, float z,
     float vx, float vy, float vz,
@@ -49,7 +50,7 @@ public class ClientState {
 
   public void addOrUpdateRemoteEntity(EntitySpawnRecord spawn) {
     remoteEntities.put(spawn.characterId(), new RemoteEntityState(
-      spawn.characterId(), spawn.name(), spawn.characterClass(), spawn.level(),
+      spawn.characterId(), spawn.name(), spawn.mainJobId(), spawn.subJobId(), spawn.level(),
       spawn.x(), spawn.y(), spawn.z(),
       spawn.vx(), spawn.vy(), spawn.vz(),
       spawn.yaw(), spawn.pitch(), 0
@@ -58,7 +59,7 @@ public class ClientState {
 
   public void updateRemoteEntityMovement(EntityMovementUpdate update) {
     remoteEntities.computeIfPresent(update.characterId(), (id, old) -> new RemoteEntityState(
-      old.characterId(), old.name(), old.characterClass(), old.level(),
+      old.characterId(), old.name(), old.mainJobId(), old.subJobId(), old.level(),
       update.x(), update.y(), update.z(),
       update.vx(), update.vy(), update.vz(),
       update.yaw(), update.pitch(), update.moveFlags()

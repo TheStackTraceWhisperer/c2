@@ -4,8 +4,6 @@ import com.example.client.ClientConfiguration;
 import com.example.client.QuicClient;
 import com.example.client.handler.*;
 import com.example.client.state.ClientState;
-import com.example.server.entity.AccountRecord;
-import com.example.server.entity.CharacterRecord;
 import com.example.server.repository.AccountJdbcRepository;
 import com.example.server.repository.CharacterJdbcRepository;
 import com.example.server.security.Argon2PasswordEncoder;
@@ -43,6 +41,8 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       entry("datasources.default.username", "postgres"),
       entry("datasources.default.password", "postgres"),
       entry("datasources.default.driver-class-name", "org.postgresql.Driver"),
+      entry("datasources.default.maximum-pool-size", "3"),
+      entry("datasources.default.minimum-idle", "1"),
       entry("flyway.datasources.default.enabled", "false"),
       entry("app.gateway.host", System.getProperty("app.gateway.host", "127.0.0.1")),
       entry("app.gateway.port", System.getProperty("app.gateway.port", "8888")),
@@ -102,20 +102,36 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       accountRepository.insertWithId(
         TEST_ACCOUNT_ID,
         TEST_USERNAME,
+        TEST_USERNAME + "@ffxi.internal",
         encodedHash,
         Instant.now(),
         Instant.now()
       );
     }
 
+    // Zone 230: Southern San d'Oria (World 1)
     characterRepository.insertWithId(
-      1001L, TEST_ACCOUNT_ID, 1, "Warrior", 45, "WARRIOR", 1, 100.0f, 64.0f, -250.5f, 90.0f, 0.0f
+      1001L, TEST_ACCOUNT_ID, 1, "ElvaanKnight",
+      (short) 3, (short) 0, (short) 1, (short) 1, (short) 1, (short) 0,
+      (short) 1, (short) 45, (short) 0, (short) 0,
+      230, 0.0f, -2.0f, -10.0f, 90.0f, 0.0f,
+      230, 0.0f, -2.0f, -10.0f
     );
+    // Zone 230: Southern San d'Oria (World 1)
     characterRepository.insertWithId(
-      1002L, TEST_ACCOUNT_ID, 1, "Mage", 50, "WIZARD", 1, 102.0f, 64.0f, -250.5f, 0.0f, 0.0f
+      1002L, TEST_ACCOUNT_ID, 1, "TarutaruMage",
+      (short) 5, (short) 0, (short) 1, (short) 1, (short) 0, (short) 2,
+      (short) 4, (short) 50, (short) 3, (short) 25,
+      230, 2.0f, -2.0f, -10.0f, 0.0f, 0.0f,
+      230, 0.0f, -2.0f, -10.0f
     );
+    // Zone 234: Bastok Mines (World 2 - Unallocated Instance for Testing)
     characterRepository.insertWithId(
-      1003L, TEST_ACCOUNT_ID, 2, "Rogue", 30, "ROGUE", 2, 550.0f, 70.0f, -990.0f, 180.0f, 0.0f
+      1003L, TEST_ACCOUNT_ID, 2, "HumeRanger",
+      (short) 1, (short) 0, (short) 1, (short) 1, (short) 1, (short) 1,
+      (short) 6, (short) 30, (short) 1, (short) 15,
+      234, -80.0f, 0.0f, -40.0f, 180.0f, 0.0f,
+      234, -80.0f, 0.0f, -40.0f
     );
   }
 

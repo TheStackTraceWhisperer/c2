@@ -39,7 +39,7 @@ if ! k3d cluster list | grep -q "${CLUSTER_NAME}"; then
     --port "${DB_PORT}:${DB_PORT}@loadbalancer"
 fi
 
-# 4. Deploy Kubernetes Dashboard FIRST
+# 4. Deploy Kubernetes Dashboard
 echo "[k8s] Deploying Kubernetes Dashboard..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
 
@@ -67,10 +67,7 @@ EOF
 echo "[k8s] Waiting for Kubernetes Dashboard deployment..."
 kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=60s
 
-# Kill any stale port-forwarding on DASHBOARD_PORT
 pkill -f "kubectl port-forward.*kubernetes-dashboard.*${DASHBOARD_PORT}" || true
-
-# Start direct port-forward in the background
 kubectl port-forward --address 0.0.0.0 -n kubernetes-dashboard svc/kubernetes-dashboard "${DASHBOARD_PORT}:443" > /dev/null 2>&1 &
 sleep 2
 
@@ -90,7 +87,6 @@ mkdir -p "${CERTS_DIR}"
 openssl genpkey -algorithm RSA -out "${CERTS_DIR}/jwt.key" -pkeyopt rsa_keygen_bits:2048
 openssl rsa -pubout -in "${CERTS_DIR}/jwt.key" -out "${CERTS_DIR}/jwt.pub"
 
-# Create/Update Kubernetes Secret
 kubectl create secret generic jwt-keypair-secret \
   --from-file=tls.key="${CERTS_DIR}/jwt.key" \
   --from-file=tls.crt="${CERTS_DIR}/jwt.pub" \
@@ -100,7 +96,6 @@ kubectl create secret generic jwt-keypair-secret \
 echo "[k3d] Importing platform-modulith:latest into cluster..."
 k3d image import platform-modulith:latest -c "${CLUSTER_NAME}"
 
-# Trap for failure inspection
 function cleanup_on_exit {
   local exit_code=$?
   if [ $exit_code -ne 0 ]; then
@@ -126,7 +121,8 @@ kubectl apply -f k8s/03-services.yaml
 kubectl apply -f k8s/04-gateway.yaml
 
 echo "[k8s] Triggering rolling restart of static deployments..."
-kubectl rollout restart deployment/login-service \
+kubectl rollout restart deployment/postgres \
+  deployment/login-service \
   deployment/lobby-service \
   deployment/mmo-operator \
   deployment/gateway
@@ -138,7 +134,7 @@ kubectl rollout status deployment/lobby-service --timeout=90s
 kubectl rollout status deployment/mmo-operator --timeout=90s
 kubectl rollout status deployment/gateway --timeout=90s
 
-echo "[k8s] Waiting for MMO Operator to reconcile and spin up dynamic World & Zone pods..."
+echo "[k8s] Waiting for MMO Operator to reconcile and spin up dynamic World & FFXI Zone pods..."
 function wait_for_pod {
   local pod_name="$1"
   local retries=30
@@ -155,10 +151,15 @@ function wait_for_pod {
   echo " READY."
 }
 
+# Wait for World Coordinators
 wait_for_pod "world-1"
 wait_for_pod "world-2"
-wait_for_pod "zone-1"
-wait_for_pod "zone-2"
+
+# Wait for Starter City Zone Pods (World 1)
+wait_for_pod "zone-230"
+wait_for_pod "zone-231"
+wait_for_pod "zone-234"
+wait_for_pod "zone-238"
 
 # 8. Run Integration Test Suite against live k3d endpoints
 echo "[test] Executing Integration Test Suite (IT) against live k3d cluster..."
@@ -168,7 +169,9 @@ mvn test -pl platform-modulith -am \
   -Dapp.gateway.host=127.0.0.1 \
   -Dapp.gateway.port=${GATEWAY_PORT} \
   -Ddatasources.default.url="jdbc:postgresql://localhost:${DB_PORT}/mmo_platform" \
+  -Ddatasources.default.maximum-pool-size=3 \
+  -Ddatasources.default.minimum-idle=1 \
   -Dapp.auth.private-key-path="${CERTS_DIR}/jwt.key" \
   -Dapp.auth.public-key-path="${CERTS_DIR}/jwt.pub"
 
-echo "[e2e] All multi-node cluster tests passed successfully!"
+echo "[e2e] All FFXI multi-schema cluster tests passed successfully!"

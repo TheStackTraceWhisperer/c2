@@ -52,7 +52,18 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
 
       List<CharacterRecord> records = characterRepository.findByAccountId(claims.accountId());
       List<CharacterSummary> summaries = records.stream()
-        .map(r -> new CharacterSummary(r.characterId(), r.name(), r.level(), r.characterClass(), r.worldId()))
+        .map(r -> new CharacterSummary(
+          r.characterId(),
+          r.name(),
+          r.worldId(),
+          r.raceId(),
+          r.gender(),
+          r.zoneId(),
+          (int) r.mainJobLevel(),
+          r.nationId(),
+          r.mainJobId(),
+          r.subJobId()
+        ))
         .toList();
 
       ctx.writeAndFlush(new CharacterListResponse(claims.accountId(), summaries));

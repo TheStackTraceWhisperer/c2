@@ -5,12 +5,15 @@ import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.CharacterStateSnapshot;
+import com.example.server.entity.ZoneLineRecord;
 import com.example.server.repository.CharacterRepository;
+import com.example.server.repository.ZoneLineJdbcRepository;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.dto.ZoneStateDeltaMessage;
+import com.example.zone.spatial.FastMath3D;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
 import io.netty.channel.ChannelHandlerContext;
@@ -33,12 +36,13 @@ public class ZoneSimulationEngine {
   public static final int TICK_RATE_HZ = 20;
   public static final long TICK_INTERVAL_MS = 1000 / TICK_RATE_HZ; // 50ms
   public static final float MAX_SPEED_UNITS_PER_SEC = 25.0f;
-  public static final float MAX_DISTANCE_PER_TICK = (MAX_SPEED_UNITS_PER_SEC / TICK_RATE_HZ) * 2.0f; // 2.5m per tick tolerance
+  public static final float MAX_DISTANCE_PER_TICK = (MAX_SPEED_UNITS_PER_SEC / TICK_RATE_HZ) * 2.0f; // 2.5m tolerance
   private static final long FLUSH_INTERVAL_TICKS = 600L; // 30s
 
   private final ZoneServerProperties properties;
   private final SpatialGrid spatialGrid;
   private final CharacterRepository characterRepository;
+  private final ZoneLineJdbcRepository zoneLineRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
 
   @Getter private final AtomicLong currentTick = new AtomicLong(0L);
@@ -46,6 +50,7 @@ public class ZoneSimulationEngine {
   private final Map<Long, ZoneEntityState> entities = new ConcurrentHashMap<>();
   private final Map<Long, Long> sessionToCharacter = new ConcurrentHashMap<>();
   private final Queue<QueuedMovement> movementQueue = new ConcurrentLinkedQueue<>();
+  private final List<ZoneLineRecord> cachedZoneLines = new CopyOnWriteArrayList<>();
   private ScheduledExecutorService tickExecutor;
 
   public record QueuedMovement(
@@ -57,6 +62,9 @@ public class ZoneSimulationEngine {
 
   @PostConstruct
   public void start() {
+    cachedZoneLines.addAll(zoneLineRepository.findBySourceZoneId(properties.getZoneId()));
+    log.info("[ZONE-ENGINE] Loaded {} trigger zone lines for Zone #{}", cachedZoneLines.size(), properties.getZoneId());
+
     tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
       Thread t = new Thread(r, "zone-simulation-loop");
       t.setDaemon(true);
@@ -86,8 +94,8 @@ public class ZoneSimulationEngine {
       float initX = recordOpt.map(CharacterRecord::posX).orElse(0.0f);
       float initY = recordOpt.map(CharacterRecord::posY).orElse(0.0f);
       float initZ = recordOpt.map(CharacterRecord::posZ).orElse(0.0f);
-      float initYaw = recordOpt.map(CharacterRecord::yaw).orElse(0.0f);
-      float initPitch = recordOpt.map(CharacterRecord::pitch).orElse(0.0f);
+      float initYaw = recordOpt.map(CharacterRecord::rotYaw).orElse(0.0f);
+      float initPitch = recordOpt.map(CharacterRecord::rotPitch).orElse(0.0f);
 
       ZoneEntityState state = new ZoneEntityState(
         sessionId, characterId, zoneId,
@@ -99,8 +107,9 @@ public class ZoneSimulationEngine {
 
       recordOpt.ifPresent(r -> {
         state.setName(r.name());
-        state.setCharacterClass(r.characterClass());
-        state.setLevel(r.level());
+        state.setMainJobId(r.mainJobId());
+        state.setSubJobId(r.subJobId());
+        state.setLevel((int) r.mainJobLevel());
       });
 
       spatialGrid.updatePosition(characterId, initX, initZ);
@@ -155,9 +164,13 @@ public class ZoneSimulationEngine {
         state.getKnownEntities().clear();
       }
 
-      float dx = req.x() - state.getX();
-      float dy = req.y() - state.getY();
-      float dz = req.z() - state.getZ();
+      float startX = state.getX();
+      float startY = state.getY();
+      float startZ = state.getZ();
+
+      float dx = req.x() - startX;
+      float dy = req.y() - startY;
+      float dz = req.z() - startZ;
       double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
       boolean reconciled = false;
@@ -179,6 +192,20 @@ public class ZoneSimulationEngine {
       state.setMoveFlags(req.moveFlags());
       state.setLastUpdatedTick(tickNumber);
       state.setDirty(true);
+
+      // Swept-OBB Collision Checks
+      for (ZoneLineRecord line : cachedZoneLines) {
+        if (FastMath3D.lineSegmentIntersectsObb(
+          startX, startY, startZ,
+          state.getX(), state.getY(), state.getZ(),
+          line.centerX(), line.centerY(), line.centerZ(),
+          line.extentX(), line.extentY(), line.extentZ(),
+          line.rotationYaw())) {
+          log.info("[ZONE-LINE] Player #{} triggered zone transition '{}' -> Target Zone #{}",
+            charId, line.name(), line.targetZoneId());
+          break;
+        }
+      }
 
       spatialGrid.updatePosition(charId, state.getX(), state.getZ());
 
@@ -224,7 +251,8 @@ public class ZoneSimulationEngine {
           spawns.add(new EntitySpawnRecord(
             neighbor.getCharacterId(),
             neighbor.getName(),
-            neighbor.getCharacterClass(),
+            neighbor.getMainJobId(),
+            neighbor.getSubJobId(),
             neighbor.getLevel(),
             neighbor.getX(), neighbor.getY(), neighbor.getZ(),
             neighbor.getVx(), neighbor.getVy(), neighbor.getVz(),

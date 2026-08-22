@@ -13,7 +13,8 @@ public class ZoneEntityState {
   private final long sessionId;
   private final long characterId;
   private String name = "Player";
-  private String characterClass = "WARRIOR";
+  private short mainJobId = 1;
+  private short subJobId = 0;
   private int level = 1;
   private int zoneId;
 

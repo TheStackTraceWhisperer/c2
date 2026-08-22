@@ -30,6 +30,7 @@ public class AccountRepository {
       jdbcRepository.insertWithId(
         record.id(),
         record.username(),
+        record.email() != null ? record.email() : record.username() + "@example.internal",
         record.passwordHash(),
         record.createdAt() != null ? record.createdAt() : Instant.now(),
         record.updatedAt() != null ? record.updatedAt() : Instant.now()

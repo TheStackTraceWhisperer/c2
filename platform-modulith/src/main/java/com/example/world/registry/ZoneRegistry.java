@@ -1,8 +1,8 @@
 package com.example.world.registry;
 
-import com.example.server.entity.ZoneTopologyRecord;
+import com.example.server.entity.ZoneInstanceRecord;
 import com.example.server.protocol.EndpointTarget;
-import com.example.server.repository.ZoneTopologyJdbcRepository;
+import com.example.server.repository.ZoneInstanceJdbcRepository;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,13 +15,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ZoneRegistry {
 
-  private final ZoneTopologyJdbcRepository topologyRepository;
+  private final ZoneInstanceJdbcRepository instanceRepository;
   private final Map<Integer, EndpointTarget> activeZones = new ConcurrentHashMap<>();
 
-  public void refreshFromDatabase(int realmId) {
-    for (ZoneTopologyRecord record : topologyRepository.findByRealmId(realmId)) {
+  public void refreshFromDatabase(int worldId) {
+    for (ZoneInstanceRecord record : instanceRepository.findByWorldId(worldId)) {
       if (record.host() != null && !record.host().isBlank()) {
-        registerZone(record.id(), record.host(), record.port());
+        registerZone(record.zoneId(), record.host(), record.port());
       }
     }
   }
@@ -36,16 +36,15 @@ public class ZoneRegistry {
     activeZones.remove(zoneId);
   }
 
-  public EndpointTarget getZoneEndpoint(int realmId, int zoneId) {
+  public EndpointTarget getZoneEndpoint(int worldId, int zoneId) {
     EndpointTarget cached = activeZones.get(zoneId);
     if (cached != null) {
       return cached;
     }
-    // Query database directly for newly provisioned or updated Pod IPs
-    return topologyRepository.findByIdAndRealmId(zoneId, realmId)
+    return instanceRepository.findByIdAndWorldId(zoneId, worldId)
       .filter(z -> z.host() != null && !z.host().isBlank())
       .map(z -> {
-        registerZone(z.id(), z.host(), z.port());
+        registerZone(z.zoneId(), z.host(), z.port());
         return new EndpointTarget(z.host(), z.port());
       })
       .orElse(null);

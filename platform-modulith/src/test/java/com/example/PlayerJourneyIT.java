@@ -22,7 +22,7 @@ import static org.awaitility.Awaitility.await;
 public class PlayerJourneyIT extends BaseIntegrationTest {
 
   @Test
-  @DisplayName("Lifecycle: Authenticate -> Query Character List -> Populate State")
+  @DisplayName("Lifecycle: Authenticate -> Query Character List -> Populate FFXI Characters")
   void testFullClientWorkflow() {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
 
@@ -43,14 +43,14 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
     );
 
     assertThat(client.getState().getCharacters()).hasSize(3);
-    assertThat(client.getState().getCharacters().get(0).name()).isEqualTo("Warrior");
+    assertThat(client.getState().getCharacters().get(0).name()).isEqualTo("ElvaanKnight");
     assertThat(client.getState().getCharacters().get(0).worldId()).isEqualTo(1);
-    assertThat(client.getState().getCharacters().get(2).name()).isEqualTo("Rogue");
+    assertThat(client.getState().getCharacters().get(2).name()).isEqualTo("HumeRanger");
     assertThat(client.getState().getCharacters().get(2).worldId()).isEqualTo(2);
   }
 
   @Test
-  @DisplayName("Lifecycle: Login -> Select Character -> Join World -> Move in Authoritative Zone")
+  @DisplayName("Lifecycle: Login -> Select Character -> Join FFXI S. San d'Oria (230) -> Move")
   void testCompleteInGameWorkflow() throws Exception {
     CompletableFuture<PlayerMovementResponse> movementFuture = new CompletableFuture<>();
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
@@ -72,12 +72,13 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );
+    assertThat(client.getState().getCurrentZoneId()).isEqualTo(230);
 
-    client.send(new PlayerMovementRequest(100.2f, 64.0f, -250.5f, 4.0f, 0.0f, 0.0f, 90.0f, 0.0f, MovementFlags.FORWARD, 1L));
+    client.send(new PlayerMovementRequest(0.2f, -2.0f, -10.0f, 1.0f, 0.0f, 0.0f, 90.0f, 0.0f, MovementFlags.FORWARD, 1L));
 
     PlayerMovementResponse moveResp = movementFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
-    assertThat(moveResp.x()).isEqualTo(100.2f);
+    assertThat(moveResp.x()).isEqualTo(0.2f);
     assertThat(moveResp.serverTick()).isGreaterThan(0L);
   }
 }

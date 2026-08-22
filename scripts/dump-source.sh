@@ -25,7 +25,7 @@ find "$SEARCH_DIR" \( \
   -name "*.properties" -o \
   -name "*.sh" -o \
   -name "*.sql" \
-\) -not -path "*/target/*" -not -path "*/.idea/*" -not -path "*/.github/*" | while read -r file; do
+\) -not -path "*/target/*" -not -path "*/.idea/*" -not -path "*/.github/*" -not -path "*/reference/*" | while read -r file; do
   echo "Processing $file..."
   # Append the file path as a header
   echo "# \`$file\`" >> "$OUTPUT_FILE"

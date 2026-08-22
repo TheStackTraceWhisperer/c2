@@ -1,9 +1,9 @@
 package com.example.operator;
 
-import com.example.server.entity.RealmRecord;
-import com.example.server.entity.ZoneTopologyRecord;
-import com.example.server.repository.RealmJdbcRepository;
-import com.example.server.repository.ZoneTopologyJdbcRepository;
+import com.example.server.entity.WorldRecord;
+import com.example.server.entity.ZoneInstanceRecord;
+import com.example.server.repository.WorldJdbcRepository;
+import com.example.server.repository.ZoneInstanceJdbcRepository;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
 public class MmoFleetOperator {
 
   private final KubernetesClient k8s;
-  private final RealmJdbcRepository realmRepository;
-  private final ZoneTopologyJdbcRepository zoneRepository;
+  private final WorldJdbcRepository worldRepository;
+  private final ZoneInstanceJdbcRepository zoneInstanceRepository;
 
   @Value("${app.operator.namespace:default}")
   private String namespace;
@@ -49,7 +49,7 @@ public class MmoFleetOperator {
 
   @PostConstruct
   public void init() {
-    log.info("[OPERATOR] MMO Database-Driven Fleet Operator initialized in namespace '{}' using image '{}'",
+    log.info("[OPERATOR] MMO Fleet Operator initialized in namespace '{}' using image '{}'",
       namespace, getImage());
     reconcile();
   }
@@ -57,7 +57,7 @@ public class MmoFleetOperator {
   @Scheduled(fixedDelay = "2s", initialDelay = "1s")
   public void reconcile() {
     try {
-      reconcileRealms();
+      reconcileWorlds();
       reconcileZones();
     } catch (DataAccessException dae) {
       log.warn("[OPERATOR] Database schema not ready yet: {}", dae.getMessage());
@@ -66,32 +66,32 @@ public class MmoFleetOperator {
     }
   }
 
-  private void reconcileRealms() {
-    Iterable<RealmRecord> desiredRealms = realmRepository.findAll();
+  private void reconcileWorlds() {
+    Iterable<WorldRecord> desiredWorlds = worldRepository.findAll();
 
-    Map<Integer, Pod> realmPods = k8s.pods().inNamespace(namespace)
+    Map<Integer, Pod> worldPods = k8s.pods().inNamespace(namespace)
       .withLabel("app.mmo/component", "world")
       .list().getItems().stream()
-      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/realm-id"))
+      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/world-id"))
       .collect(Collectors.toMap(
-        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/realm-id")),
+        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/world-id")),
         p -> p,
         (existing, duplicate) -> existing
       ));
 
-    for (RealmRecord realm : desiredRealms) {
-      Pod pod = realmPods.get(realm.id());
+    for (WorldRecord world : desiredWorlds) {
+      Pod pod = worldPods.get(world.id());
       if (pod == null) {
-        log.info("[OPERATOR] Provisioning missing World Pod for Realm #{} ({})", realm.id(), realm.name());
-        spawnRealmPod(realm);
+        log.info("[OPERATOR] Provisioning missing World Pod for World #{} ({})", world.id(), world.name());
+        spawnWorldPod(world);
       } else {
         String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
         String podIp = pod.getStatus() != null ? pod.getStatus().getPodIP() : null;
 
         if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
-          if (!podIp.equals(realm.host()) || !"ONLINE".equals(realm.status())) {
-            log.info("[OPERATOR] Realm #{} is RUNNING. Syncing host={}:{} to DB", realm.id(), podIp, realm.port());
-            realmRepository.updateEndpoint(realm.id(), podIp, realm.port(), "ONLINE");
+          if (!podIp.equals(world.host()) || !"ONLINE".equals(world.status())) {
+            log.info("[OPERATOR] World #{} is RUNNING. Syncing host={}:{} to DB", world.id(), podIp, world.port());
+            worldRepository.updateEndpoint(world.id(), podIp, world.port(), "ONLINE");
           }
         }
       }
@@ -99,38 +99,39 @@ public class MmoFleetOperator {
   }
 
   private void reconcileZones() {
-    Iterable<ZoneTopologyRecord> desiredZones = zoneRepository.findAll();
+    Iterable<ZoneInstanceRecord> desiredZones = zoneInstanceRepository.findAll();
 
     Map<Integer, Pod> zonePods = k8s.pods().inNamespace(namespace)
       .withLabel("app.mmo/component", "zone")
       .list().getItems().stream()
-      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/zone-id"))
+      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/zone-instance-id"))
       .collect(Collectors.toMap(
-        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/zone-id")),
+        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/zone-instance-id")),
         p -> p,
         (existing, duplicate) -> existing
       ));
 
-    for (ZoneTopologyRecord zone : desiredZones) {
-      Pod pod = zonePods.get(zone.id());
+    for (ZoneInstanceRecord instance : desiredZones) {
+      Pod pod = zonePods.get(instance.id());
       if (pod == null) {
-        log.info("[OPERATOR] Provisioning missing Zone Pod for Zone #{} ({}, Realm #{})", zone.id(), zone.name(), zone.realmId());
-        spawnZonePod(zone);
+        log.info("[OPERATOR] Provisioning missing Zone Pod for Instance #{} (Zone #{}, World #{})",
+          instance.id(), instance.zoneId(), instance.worldId());
+        spawnZonePod(instance);
       } else {
         String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
         String podIp = pod.getStatus() != null ? pod.getStatus().getPodIP() : null;
 
         if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
-          if (!podIp.equals(zone.host()) || !"ONLINE".equals(zone.status())) {
-            log.info("[OPERATOR] Zone #{} is RUNNING. Syncing host={}:{} to DB", zone.id(), podIp, zone.port());
-            zoneRepository.updateEndpoint(zone.id(), podIp, zone.port(), "ONLINE");
+          if (!podIp.equals(instance.host()) || !"ONLINE".equals(instance.status())) {
+            log.info("[OPERATOR] Zone Instance #{} is RUNNING. Syncing host={}:{} to DB", instance.id(), podIp, instance.port());
+            zoneInstanceRepository.updateEndpoint(instance.id(), podIp, instance.port(), "ONLINE");
           }
         }
       }
     }
   }
 
-  private void spawnRealmPod(RealmRecord realm) {
+  private void spawnWorldPod(WorldRecord world) {
     Container container = new ContainerBuilder()
       .withName("world")
       .withImage(getImage())
@@ -138,9 +139,9 @@ public class MmoFleetOperator {
       .addNewEnv().withName("MICRONAUT_ENVIRONMENTS").withValue("world").endEnv()
       .addNewEnv().withName("FLYWAY_DATASOURCES_DEFAULT_ENABLED").withValue("false").endEnv()
       .addNewEnv().withName("APP_WORLD_HOST").withValue("0.0.0.0").endEnv()
-      .addNewEnv().withName("APP_WORLD_PORT").withValue(String.valueOf(realm.port())).endEnv()
-      .addNewEnv().withName("APP_WORLD_REALM_ID").withValue(String.valueOf(realm.id())).endEnv()
-      .addNewPort().withContainerPort(realm.port()).withProtocol("UDP").withName("quic").endPort()
+      .addNewEnv().withName("APP_WORLD_PORT").withValue(String.valueOf(world.port())).endEnv()
+      .addNewEnv().withName("APP_WORLD_REALM_ID").withValue(String.valueOf(world.id())).endEnv()
+      .addNewPort().withContainerPort(world.port()).withProtocol("UDP").withName("quic").endPort()
       .addNewEnvFrom()
       .withNewConfigMapRef()
       .withName("platform-common-config")
@@ -150,10 +151,10 @@ public class MmoFleetOperator {
 
     Pod pod = new PodBuilder()
       .withNewMetadata()
-      .withName("world-" + realm.id())
+      .withName("world-" + world.id())
       .withNamespace(namespace)
       .addToLabels("app.mmo/component", "world")
-      .addToLabels("app.mmo/realm-id", String.valueOf(realm.id()))
+      .addToLabels("app.mmo/world-id", String.valueOf(world.id()))
       .endMetadata()
       .withNewSpec()
       .withContainers(container)
@@ -164,7 +165,7 @@ public class MmoFleetOperator {
     k8s.pods().inNamespace(namespace).resource(pod).create();
   }
 
-  private void spawnZonePod(ZoneTopologyRecord zone) {
+  private void spawnZonePod(ZoneInstanceRecord instance) {
     Container container = new ContainerBuilder()
       .withName("zone")
       .withImage(getImage())
@@ -172,9 +173,9 @@ public class MmoFleetOperator {
       .addNewEnv().withName("MICRONAUT_ENVIRONMENTS").withValue("zone").endEnv()
       .addNewEnv().withName("FLYWAY_DATASOURCES_DEFAULT_ENABLED").withValue("false").endEnv()
       .addNewEnv().withName("APP_ZONE_HOST").withValue("0.0.0.0").endEnv()
-      .addNewEnv().withName("APP_ZONE_PORT").withValue(String.valueOf(zone.port())).endEnv()
-      .addNewEnv().withName("APP_ZONE_ZONE_ID").withValue(String.valueOf(zone.id())).endEnv()
-      .addNewPort().withContainerPort(zone.port()).withProtocol("UDP").withName("quic").endPort()
+      .addNewEnv().withName("APP_ZONE_PORT").withValue(String.valueOf(instance.port())).endEnv()
+      .addNewEnv().withName("APP_ZONE_ZONE_ID").withValue(String.valueOf(instance.zoneId())).endEnv()
+      .addNewPort().withContainerPort(instance.port()).withProtocol("UDP").withName("quic").endPort()
       .addNewEnvFrom()
       .withNewConfigMapRef()
       .withName("platform-common-config")
@@ -184,11 +185,11 @@ public class MmoFleetOperator {
 
     Pod pod = new PodBuilder()
       .withNewMetadata()
-      .withName("zone-" + zone.id())
+      .withName("zone-" + instance.id())
       .withNamespace(namespace)
       .addToLabels("app.mmo/component", "zone")
-      .addToLabels("app.mmo/zone-id", String.valueOf(zone.id()))
-      .addToLabels("app.mmo/realm-id", String.valueOf(zone.realmId()))
+      .addToLabels("app.mmo/zone-instance-id", String.valueOf(instance.id()))
+      .addToLabels("app.mmo/world-id", String.valueOf(instance.worldId()))
       .endMetadata()
       .withNewSpec()
       .withContainers(container)

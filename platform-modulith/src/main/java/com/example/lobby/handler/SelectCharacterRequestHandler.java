@@ -8,11 +8,11 @@ import com.example.server.auth.TokenClaims;
 import com.example.server.auth.TokenVerifier;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
-import com.example.server.entity.RealmRecord;
+import com.example.server.entity.WorldRecord;
 import com.example.server.protocol.SetSessionCharacterControlMessage;
 import com.example.server.protocol.SetSessionWorldControlMessage;
 import com.example.server.repository.CharacterRepository;
-import com.example.server.repository.RealmJdbcRepository;
+import com.example.server.repository.WorldJdbcRepository;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ public class SelectCharacterRequestHandler implements PacketHandler<SelectCharac
 
   private final TokenVerifier tokenVerifier;
   private final CharacterRepository characterRepository;
-  private final RealmJdbcRepository realmRepository;
+  private final WorldJdbcRepository worldRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
@@ -58,22 +58,22 @@ public class SelectCharacterRequestHandler implements PacketHandler<SelectCharac
       }
 
       CharacterRecord character = characterOpt.get();
-      int realmId = character.worldId();
-      Optional<RealmRecord> realmOpt = realmRepository.findById(realmId);
+      int worldId = character.worldId();
+      Optional<WorldRecord> worldOpt = worldRepository.findById(worldId);
 
-      if (realmOpt.isEmpty() || realmOpt.get().host() == null || realmOpt.get().host().isBlank()) {
-        log.error("[LOBBY-SERVER] Target Realm #{} for character #{} is not yet online or registered in DB", realmId, character.characterId());
-        ctx.writeAndFlush(new SelectCharacterResponse(false, packet.characterId(), "Target realm is unavailable"));
+      if (worldOpt.isEmpty() || worldOpt.get().host() == null || worldOpt.get().host().isBlank()) {
+        log.error("[LOBBY-SERVER] Target World #{} for character #{} is not yet online or registered in DB", worldId, character.characterId());
+        ctx.writeAndFlush(new SelectCharacterResponse(false, packet.characterId(), "Target world is unavailable"));
         return;
       }
 
-      RealmRecord realm = realmOpt.get();
+      WorldRecord world = worldOpt.get();
       ctx.write(new SetSessionCharacterControlMessage(character.characterId()));
 
-      log.info("[LOBBY-SERVER] Binding Session #{} to Realm #{} ({}:{}) from topology database",
-        sessionId, realm.id(), realm.host(), realm.port());
+      log.info("[LOBBY-SERVER] Binding Session #{} to World #{} ({}:{}) from database",
+        sessionId, world.id(), world.host(), world.port());
 
-      ctx.write(new SetSessionWorldControlMessage(realm.id(), realm.host(), realm.port()));
+      ctx.write(new SetSessionWorldControlMessage(world.id(), world.host(), world.port()));
       ctx.writeAndFlush(new SelectCharacterResponse(true, character.characterId(), ""));
     });
   }

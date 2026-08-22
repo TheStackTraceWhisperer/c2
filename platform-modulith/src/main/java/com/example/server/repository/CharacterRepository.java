@@ -36,34 +36,43 @@ public class CharacterRepository {
         record.accountId(),
         record.worldId(),
         record.name(),
-        record.level(),
-        record.characterClass(),
+        record.raceId(),
+        record.gender(),
+        record.faceId(),
+        record.hairId(),
+        record.sizeId(),
+        record.nationId(),
+        record.mainJobId(),
+        record.mainJobLevel(),
+        record.subJobId(),
+        record.subJobLevel(),
         record.zoneId(),
         record.posX(),
         record.posY(),
         record.posZ(),
-        record.yaw(),
-        record.pitch()
+        record.rotYaw(),
+        record.rotPitch(),
+        record.hpZoneId(),
+        record.hpPosX(),
+        record.hpPosY(),
+        record.hpPosZ()
       );
       return record;
     }
     return jdbcRepository.save(record);
   }
 
-  public void updatePosition(long characterId, int zoneId, float x, float y, float z, float yaw, float pitch) {
-    jdbcRepository.updatePosition(characterId, zoneId, x, y, z, yaw, pitch);
+  public void updatePosition(long characterId, int zoneId, float posX, float posY, float posZ, float rotYaw, float rotPitch) {
+    jdbcRepository.updatePosition(characterId, zoneId, posX, posY, posZ, rotYaw, rotPitch);
   }
 
-  /**
-   * Persists a batch of dirty entity snapshots to PostgreSQL.
-   */
   public void flushStateBatch(Collection<CharacterStateSnapshot> snapshots) {
     if (snapshots == null || snapshots.isEmpty()) {
       return;
     }
     for (CharacterStateSnapshot s : snapshots) {
       try {
-        jdbcRepository.updatePosition(s.characterId(), s.zoneId(), s.x(), s.y(), s.z(), s.yaw(), s.pitch());
+        jdbcRepository.updatePosition(s.characterId(), s.zoneId(), s.posX(), s.posY(), s.posZ(), s.rotYaw(), s.rotPitch());
       } catch (Exception e) {
         log.error("[CHARACTER-REPO] Failed to flush snapshot for character #{}: {}", s.characterId(), e.getMessage(), e);
       }

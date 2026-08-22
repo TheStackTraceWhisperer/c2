@@ -7,20 +7,21 @@ import io.micronaut.data.annotation.MappedProperty;
 
 import java.time.Instant;
 
-@MappedEntity("accounts")
+@MappedEntity(value = "accounts", schema = "player")
 public record AccountRecord(
   @Id @GeneratedValue(GeneratedValue.Type.IDENTITY)
-  @MappedProperty("id")
   Long id,
   String username,
+  String email,
   @MappedProperty("password_hash")
   String passwordHash,
+  String status,
   @MappedProperty("created_at")
   Instant createdAt,
   @MappedProperty("updated_at")
   Instant updatedAt
 ) {
-  public static AccountRecord of(String username, String passwordHash) {
-    return new AccountRecord(null, username, passwordHash, Instant.now(), Instant.now());
+  public static AccountRecord of(String username, String email, String passwordHash) {
+    return new AccountRecord(null, username, email, passwordHash, "ACTIVE", Instant.now(), Instant.now());
   }
 }

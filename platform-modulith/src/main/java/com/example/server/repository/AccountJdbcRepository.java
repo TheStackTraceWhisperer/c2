@@ -17,12 +17,13 @@ public interface AccountJdbcRepository extends CrudRepository<AccountRecord, Lon
   boolean existsByUsername(String username);
 
   @Query("""
-      INSERT INTO accounts (id, username, password_hash, created_at, updated_at)
-      VALUES (:id, :username, :passwordHash, :createdAt, :updatedAt)
+      INSERT INTO player.accounts (id, username, email, password_hash, status, created_at, updated_at)
+      VALUES (:id, :username, :email, :passwordHash, 'ACTIVE', :createdAt, :updatedAt)
       ON CONFLICT (id) DO UPDATE SET
           username = EXCLUDED.username,
+          email = EXCLUDED.email,
           password_hash = EXCLUDED.password_hash,
           updated_at = EXCLUDED.updated_at
       """)
-  void insertWithId(Long id, String username, String passwordHash, Instant createdAt, Instant updatedAt);
+  void insertWithId(Long id, String username, String email, String passwordHash, Instant createdAt, Instant updatedAt);
 }

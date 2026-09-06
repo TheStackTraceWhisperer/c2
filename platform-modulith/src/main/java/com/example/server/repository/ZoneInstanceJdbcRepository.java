@@ -14,7 +14,7 @@ public interface ZoneInstanceJdbcRepository extends CrudRepository<ZoneInstanceR
 
   List<ZoneInstanceRecord> findByWorldId(int worldId);
 
-  Optional<ZoneInstanceRecord> findByIdAndWorldId(int id, int worldId);
+  Optional<ZoneInstanceRecord> findByWorldIdAndZoneIdAndIsStaticTrue(int worldId, int zoneId);
 
   @Query("""
       UPDATE infra.zone_instances

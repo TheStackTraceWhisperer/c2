@@ -20,14 +20,14 @@ public class ZoneRegistry {
 
   public void refreshFromDatabase(int worldId) {
     for (ZoneInstanceRecord record : instanceRepository.findByWorldId(worldId)) {
-      if (record.host() != null && !record.host().isBlank()) {
+      if (record.isStatic() && record.host() != null && !record.host().isBlank()) {
         registerZone(record.zoneId(), record.host(), record.port());
       }
     }
   }
 
   public void registerZone(int zoneId, String host, int port) {
-    log.info("[ZONE-REGISTRY] Registered Zone #{} at {}:{}", zoneId, host, port);
+    log.info("[ZONE-REGISTRY] Registered Static Zone #{} at {}:{}", zoneId, host, port);
     activeZones.put(zoneId, new EndpointTarget(host, port));
   }
 
@@ -41,7 +41,7 @@ public class ZoneRegistry {
     if (cached != null) {
       return cached;
     }
-    return instanceRepository.findByIdAndWorldId(zoneId, worldId)
+    return instanceRepository.findByWorldIdAndZoneIdAndIsStaticTrue(worldId, zoneId)
       .filter(z -> z.host() != null && !z.host().isBlank())
       .map(z -> {
         registerZone(z.zoneId(), z.host(), z.port());

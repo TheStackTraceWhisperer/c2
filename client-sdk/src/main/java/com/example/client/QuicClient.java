@@ -39,6 +39,7 @@ public class QuicClient implements AutoCloseable {
 
   private final LoginResponseHandler defaultLoginHandler;
   private final CharacterListResponseHandler defaultCharacterListHandler;
+  private final CreateCharacterResponseHandler defaultCreateCharacterHandler;
   private final PongPacketHandler defaultPongHandler;
   private final SelectCharacterResponseHandler defaultSelectCharacterHandler;
   private final ReconnectResponseHandler defaultReconnectHandler;
@@ -57,6 +58,7 @@ public class QuicClient implements AutoCloseable {
     ClientState state,
     LoginResponseHandler loginHandler,
     CharacterListResponseHandler characterListHandler,
+    CreateCharacterResponseHandler createCharacterHandler,
     PongPacketHandler pongHandler,
     SelectCharacterResponseHandler selectCharacterHandler,
     ReconnectResponseHandler reconnectHandler,
@@ -70,6 +72,7 @@ public class QuicClient implements AutoCloseable {
 
     this.defaultLoginHandler = loginHandler;
     this.defaultCharacterListHandler = characterListHandler;
+    this.defaultCreateCharacterHandler = createCharacterHandler;
     this.defaultPongHandler = pongHandler;
     this.defaultSelectCharacterHandler = selectCharacterHandler;
     this.defaultReconnectHandler = reconnectHandler;
@@ -84,6 +87,7 @@ public class QuicClient implements AutoCloseable {
   public void registerDefaultHandlers() {
     this.router.register(MessageType.LOGIN_RESPONSE, defaultLoginHandler);
     this.router.register(MessageType.CHARACTER_LIST_RESPONSE, defaultCharacterListHandler);
+    this.router.register(MessageType.CREATE_CHARACTER_RESPONSE, defaultCreateCharacterHandler);
     this.router.register(MessageType.PONG, defaultPongHandler);
     this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
     this.router.register(MessageType.RECONNECT_RESPONSE, defaultReconnectHandler);

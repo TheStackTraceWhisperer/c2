@@ -5,6 +5,7 @@ import com.example.client.QuicClient;
 import com.example.client.handler.*;
 import com.example.client.state.ClientState;
 import com.example.server.repository.AccountJdbcRepository;
+import com.example.server.repository.ActiveSessionJdbcRepository;
 import com.example.server.repository.CharacterJdbcRepository;
 import com.example.server.security.Argon2PasswordEncoder;
 import io.micronaut.context.annotation.Value;
@@ -27,6 +28,10 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
   public static final long TEST_ACCOUNT_ID = 92668751L;
   public static final String TEST_USERNAME = "admin";
   public static final String TEST_PASSWORD = "secret123";
+
+  public static final long TEST_ACCOUNT_ID_2 = 92668752L;
+  public static final String TEST_USERNAME_2 = "player2";
+  public static final String TEST_PASSWORD_2 = "secret456";
 
   @Value("${app.gateway.host:127.0.0.1}")
   private String gatewayHost;
@@ -53,6 +58,9 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
 
   @Inject
   protected AccountJdbcRepository accountRepository;
+
+  @Inject
+  protected ActiveSessionJdbcRepository activeSessionRepository;
 
   @Inject
   protected CharacterJdbcRepository characterRepository;
@@ -84,6 +92,7 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       state,
       new LoginResponseHandler(state),
       new CharacterListResponseHandler(state),
+      new CreateCharacterResponseHandler(),
       new PongPacketHandler(),
       new SelectCharacterResponseHandler(state),
       new ReconnectResponseHandler(state),
@@ -97,6 +106,9 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
   }
 
   protected void seedDatabase() {
+    activeSessionRepository.deleteAll();
+
+    // Account 1: Admin
     if (accountRepository.findByUsername(TEST_USERNAME).isEmpty()) {
       String encodedHash = passwordEncoder.encode(TEST_PASSWORD);
       accountRepository.insertWithId(
@@ -109,29 +121,44 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       );
     }
 
-    // Zone 230: Southern San d'Oria (World 1)
+    // Account 2: Player2
+    if (accountRepository.findByUsername(TEST_USERNAME_2).isEmpty()) {
+      String encodedHash2 = passwordEncoder.encode(TEST_PASSWORD_2);
+      accountRepository.insertWithId(
+        TEST_ACCOUNT_ID_2,
+        TEST_USERNAME_2,
+        TEST_USERNAME_2 + "@ffxi.internal",
+        encodedHash2,
+        Instant.now(),
+        Instant.now()
+      );
+    }
+
+    // Account 1 -> Character 1001: ElvaanKnight in S. San d'Oria (Zone 230)
     characterRepository.insertWithId(
       1001L, TEST_ACCOUNT_ID, 1, "ElvaanKnight",
       (short) 3, (short) 0, (short) 1, (short) 1, (short) 1, (short) 0,
       (short) 1, (short) 45, (short) 0, (short) 0,
-      230, 0.0f, -2.0f, -10.0f, 90.0f, 0.0f,
-      230, 0.0f, -2.0f, -10.0f
+      230, 66.0f, -1.0f, -40.0f, 180.0f, 0.0f,
+      230, 66.0f, -1.0f, -40.0f
     );
-    // Zone 230: Southern San d'Oria (World 1)
+
+    // Account 2 -> Character 1002: TarutaruMage in S. San d'Oria (Zone 230)
     characterRepository.insertWithId(
-      1002L, TEST_ACCOUNT_ID, 1, "TarutaruMage",
+      1002L, TEST_ACCOUNT_ID_2, 1, "TarutaruMage",
       (short) 5, (short) 0, (short) 1, (short) 1, (short) 0, (short) 2,
       (short) 4, (short) 50, (short) 3, (short) 25,
-      230, 2.0f, -2.0f, -10.0f, 0.0f, 0.0f,
-      230, 0.0f, -2.0f, -10.0f
+      230, 68.0f, -1.0f, -40.0f, 0.0f, 0.0f,
+      230, 66.0f, -1.0f, -40.0f
     );
-    // Zone 234: Bastok Mines (World 2 - Unallocated Instance for Testing)
+
+    // Account 1 -> Character 1003: HumeRanger in Bastok Mines (Zone 234, World 2)
     characterRepository.insertWithId(
       1003L, TEST_ACCOUNT_ID, 2, "HumeRanger",
       (short) 1, (short) 0, (short) 1, (short) 1, (short) 1, (short) 1,
       (short) 6, (short) 30, (short) 1, (short) 15,
-      234, -80.0f, 0.0f, -40.0f, 180.0f, 0.0f,
-      234, -80.0f, 0.0f, -40.0f
+      234, 110.0f, 0.0f, -60.0f, 90.0f, 0.0f,
+      234, 110.0f, 0.0f, -60.0f
     );
   }
 

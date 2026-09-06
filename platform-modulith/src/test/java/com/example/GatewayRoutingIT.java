@@ -82,10 +82,10 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
       moveFuture.complete((PlayerMovementResponse) packet)
     );
 
-    client.send(new PlayerMovementRequest(100.1f, 64.0f, -250.5f, 2.0f, 0, 0, 0, 0, MovementFlags.FORWARD, 1L));
+    client.send(new PlayerMovementRequest(66.1f, -1.0f, -40.0f, 2.0f, 0, 0, 180.0f, 0, MovementFlags.FORWARD, 1L));
 
     PlayerMovementResponse moveResp = moveFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
-    assertThat(moveResp.x()).isEqualTo(100.1f);
+    assertThat(moveResp.x()).isEqualTo(66.1f);
   }
 }

@@ -92,7 +92,7 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
 
     int packetsSent = 100;
     for (int i = 0; i < packetsSent; i++) {
-      client.send(new PlayerMovementRequest(100.0f + (i * 0.01f), 64.0f, -250.5f, 0, 0, 0, 0, 0, MovementFlags.IDLE, i));
+      client.send(new PlayerMovementRequest(66.0f + (i * 0.01f), -1.0f, -40.0f, 0, 0, 0, 180.0f, 0, MovementFlags.IDLE, i));
     }
 
     await()

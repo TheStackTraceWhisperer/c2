@@ -2,11 +2,7 @@ package com.example.common.codec;
 
 import com.example.common.dto.PingMessage;
 import com.example.common.dto.PongMessage;
-import com.example.lobby.dto.CharacterListRequest;
-import com.example.lobby.dto.CharacterListResponse;
-import com.example.lobby.dto.CharacterSummary;
-import com.example.lobby.dto.SelectCharacterRequest;
-import com.example.lobby.dto.SelectCharacterResponse;
+import com.example.lobby.dto.*;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
 import com.example.login.dto.ReconnectRequest;
@@ -46,6 +42,8 @@ public final class ForySerializationProvider {
     FORY.register(CharacterSummary.class, 202);
     FORY.register(SelectCharacterRequest.class, 203);
     FORY.register(SelectCharacterResponse.class, 204);
+    FORY.register(CreateCharacterRequest.class, 205);
+    FORY.register(CreateCharacterResponse.class, 206);
 
     // World Service / Realm Orchestration (300 - 399)
     FORY.register(JoinWorldRequest.class, 300);

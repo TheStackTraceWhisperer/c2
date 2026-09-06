@@ -51,7 +51,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
     CompletableFuture<PlayerMovementResponse> moveFuture = new CompletableFuture<>();
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> moveFuture.complete((PlayerMovementResponse) packet));
 
-    client.send(new PlayerMovementRequest(0.5f, -2.0f, -10.0f, 1.0f, 0.0f, 0.0f, 45.0f, 0.0f, MovementFlags.FORWARD, 1L));
+    client.send(new PlayerMovementRequest(66.5f, -1.0f, -40.0f, 1.0f, 0.0f, 0.0f, 180.0f, 0.0f, MovementFlags.FORWARD, 1L));
     moveFuture.get(5, TimeUnit.SECONDS);
 
     client.close();
@@ -59,16 +59,17 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
     await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
       Optional<CharacterRecord> record = characterRepository.findById(1001L);
       assertThat(record).isPresent();
-      assertThat(record.get().posX()).isEqualTo(0.5f);
-      assertThat(record.get().posY()).isEqualTo(-2.0f);
-      assertThat(record.get().posZ()).isEqualTo(-10.0f);
+      assertThat(record.get().posX()).isEqualTo(66.5f);
+      assertThat(record.get().posY()).isEqualTo(-1.0f);
+      assertThat(record.get().posZ()).isEqualTo(-40.0f);
       assertThat(record.get().zoneId()).isEqualTo(230);
     });
   }
 
   @Test
-  @DisplayName("20 Hz Multiplayer AoI: Moving in S. San d'Oria streams updates to nearby Elvaan & Tarutaru observers")
+  @DisplayName("20 Hz Multiplayer AoI: Moving in S. San d'Oria streams updates to distinct account observer")
   void testMultiplayerSpatialAoIBroadcast() throws Exception {
+    // 1. Client A (Account 1: admin, Character 1001: Elvaan WAR at 66.0, -1.0, -40.0)
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
     client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
@@ -78,15 +79,16 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
 
     CompletableFuture<PlayerMovementResponse> clientAMove1 = new CompletableFuture<>();
     client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> clientAMove1.complete((PlayerMovementResponse) packet));
-    client.send(new PlayerMovementRequest(0.0f, -2.0f, -10.0f, 0, 0, 0, 90.0f, 0, MovementFlags.IDLE, 1L));
+    client.send(new PlayerMovementRequest(66.0f, -1.0f, -40.0f, 0, 0, 0, 180.0f, 0, MovementFlags.IDLE, 1L));
     clientAMove1.get(5, TimeUnit.SECONDS);
 
+    // 2. Client B (Account 2: player2, Character 1002: Tarutaru BLM at 68.0, -1.0, -40.0 - 2m away in same AoI cell)
     QuicClient clientB = beanContext.createBean(QuicClient.class);
     clientB.registerDefaultHandlers();
     clientB.connect().sync();
 
     try {
-      clientB.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
+      clientB.send(new LoginRequest(TEST_USERNAME_2, TEST_PASSWORD_2));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
       clientB.send(new SelectCharacterRequest(clientB.getState().getAuthToken(), 1002L));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
@@ -95,11 +97,13 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
 
       CompletableFuture<PlayerMovementResponse> clientBMove1 = new CompletableFuture<>();
       clientB.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> clientBMove1.complete((PlayerMovementResponse) packet));
-      clientB.send(new PlayerMovementRequest(2.0f, -2.0f, -10.0f, 0, 0, 0, 0, 0, MovementFlags.IDLE, 1L));
+      clientB.send(new PlayerMovementRequest(68.0f, -1.0f, -40.0f, 0, 0, 0, 0, 0, MovementFlags.IDLE, 1L));
       clientBMove1.get(5, TimeUnit.SECONDS);
 
-      client.send(new PlayerMovementRequest(0.8f, -2.0f, -10.0f, 2.0f, 0.0f, 0.0f, 90.0f, 0.0f, MovementFlags.FORWARD, 2L));
+      // 3. Client A moves slightly within Client B's AoI
+      client.send(new PlayerMovementRequest(66.8f, -1.0f, -40.0f, 2.0f, 0.0f, 0.0f, 180.0f, 0.0f, MovementFlags.FORWARD, 2L));
 
+      // 4. Verify Client B receives AoI delta with Client A's state
       await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
         assertThat(clientB.getState().getRemoteEntities()).containsKey(1001L);
         ClientState.RemoteEntityState warriorRemote = clientB.getState().getRemoteEntities().get(1001L);

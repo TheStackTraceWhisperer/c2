@@ -155,11 +155,13 @@ function wait_for_pod {
 wait_for_pod "world-1"
 wait_for_pod "world-2"
 
-# Wait for Starter City Zone Pods (World 1)
-wait_for_pod "zone-230"
-wait_for_pod "zone-231"
-wait_for_pod "zone-234"
-wait_for_pod "zone-238"
+# Wait for Starter City Static Shards (World 1: Instances 1-6)
+wait_for_pod "w1-inst-1-z230"
+wait_for_pod "w1-inst-2-z231"
+wait_for_pod "w1-inst-3-z234"
+wait_for_pod "w1-inst-4-z235"
+wait_for_pod "w1-inst-5-z238"
+wait_for_pod "w1-inst-6-z239"
 
 # 8. Run Integration Test Suite against live k3d endpoints
 echo "[test] Executing Integration Test Suite (IT) against live k3d cluster..."

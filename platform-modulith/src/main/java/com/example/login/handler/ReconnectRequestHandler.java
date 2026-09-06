@@ -6,12 +6,15 @@ import com.example.login.dto.ReconnectResponse;
 import com.example.server.SessionContext;
 import com.example.server.auth.TokenClaims;
 import com.example.server.auth.TokenVerifier;
+import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.protocol.SetSessionAuthStateControlMessage;
+import com.example.server.repository.ActiveSessionJdbcRepository;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Instant;
 import java.util.Optional;
 
 @Slf4j
@@ -20,6 +23,8 @@ import java.util.Optional;
 public class ReconnectRequestHandler implements PacketHandler<ReconnectRequest> {
 
   private final TokenVerifier tokenVerifier;
+  private final ActiveSessionJdbcRepository activeSessionRepository;
+  private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
   public void handle(ChannelHandlerContext ctx, ReconnectRequest packet) {
@@ -30,19 +35,32 @@ public class ReconnectRequestHandler implements PacketHandler<ReconnectRequest> 
       return;
     }
 
-    log.info("[LOGIN-SERVER] Reconnection attempt from Session #{}", newSessionId);
+    dispatcher.dispatch(ctx, () -> {
+      log.info("[LOGIN-SERVER] Reconnection attempt from Session #{}", newSessionId);
 
-    Optional<TokenClaims> claimsOpt = tokenVerifier.verify(packet.authToken());
-    if (claimsOpt.isEmpty()) {
-      log.warn("[LOGIN-SERVER] Reconnection rejected for Session #{}: invalid or expired JWT", newSessionId);
-      ctx.writeAndFlush(new ReconnectResponse(false, 0L, 0L, "Invalid or expired session token"));
-      return;
-    }
+      Optional<TokenClaims> claimsOpt = tokenVerifier.verify(packet.authToken());
+      if (claimsOpt.isEmpty()) {
+        log.warn("[LOGIN-SERVER] Reconnection rejected for Session #{}: invalid or expired JWT", newSessionId);
+        ctx.writeAndFlush(new ReconnectResponse(false, 0L, 0L, "Invalid or expired session token"));
+        return;
+      }
 
-    TokenClaims claims = claimsOpt.get();
-    log.info("[LOGIN-SERVER] Reconnection approved for Session #{}: accountId={}", newSessionId, claims.accountId());
+      TokenClaims claims = claimsOpt.get();
+      long accountId = claims.accountId();
 
-    ctx.write(new SetSessionAuthStateControlMessage(true, claims.accountId()));
-    ctx.writeAndFlush(new ReconnectResponse(true, claims.accountId(), 0L, ""));
+      // Rebind active session to new session ID
+      activeSessionRepository.upsert(
+        accountId,
+        newSessionId,
+        1,
+        null,
+        Instant.now(),
+        Instant.now()
+      );
+
+      log.info("[LOGIN-SERVER] Reconnection approved for Session #{}: accountId={}", newSessionId, accountId);
+      ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
+      ctx.writeAndFlush(new ReconnectResponse(true, accountId, 0L, ""));
+    });
   }
 }

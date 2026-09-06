@@ -23,6 +23,8 @@ public final class MessageType {
   public static final short CHARACTER_LIST_RESPONSE = 201;
   public static final short SELECT_CHARACTER_REQUEST = 202;
   public static final short SELECT_CHARACTER_RESPONSE = 203;
+  public static final short CREATE_CHARACTER_REQUEST = 204;
+  public static final short CREATE_CHARACTER_RESPONSE = 205;
 
   // World Service / Realm Orchestration (300 - 399)
   public static final short JOIN_WORLD_REQUEST = 300;

@@ -43,25 +43,7 @@ VALUES
     (241, 'Windurst Woods',       'ROM/0/81.DAT', false)
     ON CONFLICT (id) DO NOTHING;
 
--- 1.2 Nation Starting Points (Character Creation Initial Spawns)
-CREATE TABLE game.nation_starting_points (
-                                             nation_id   INT PRIMARY KEY, -- 0: San d'Oria, 1: Bastok, 2: Windurst
-                                             zone_id     INT  NOT NULL REFERENCES game.zones (id),
-                                             pos_x       REAL NOT NULL,
-                                             pos_y       REAL NOT NULL,
-                                             pos_z       REAL NOT NULL,
-                                             rot_yaw     REAL NOT NULL DEFAULT 0.0,
-                                             rot_pitch   REAL NOT NULL DEFAULT 0.0
-);
-
-INSERT INTO game.nation_starting_points (nation_id, zone_id, pos_x, pos_y, pos_z, rot_yaw, rot_pitch)
-VALUES
-    (0, 230,   0.0, -2.0,  -10.0,   0.0, 0.0), -- San d'Oria: Southern San d'Oria
-    (1, 234, -80.0,  0.0,  -40.0,   0.0, 0.0), -- Bastok: Bastok Mines
-    (2, 238, -60.0, -5.0,  -20.0,   0.0, 0.0)  -- Windurst: Windurst Waters
-    ON CONFLICT (nation_id) DO NOTHING;
-
--- 1.3 Zone Lines (Oriented Bounding Box Trigger Volumes)
+-- 1.2 Zone Lines (Oriented Bounding Box Trigger Volumes)
 CREATE TABLE game.zone_lines (
                                  id                INT PRIMARY KEY,
                                  source_zone_id    INT          NOT NULL REFERENCES game.zones (id) ON DELETE CASCADE,
@@ -235,9 +217,10 @@ VALUES
     ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE infra.zone_instances (
-                                      id             INT PRIMARY KEY,
+                                      id             SERIAL PRIMARY KEY,
                                       world_id       INT                NOT NULL REFERENCES infra.worlds (id) ON DELETE CASCADE,
                                       zone_id        INT                NOT NULL REFERENCES game.zones (id),
+                                      instance_tag   VARCHAR(64)        NOT NULL DEFAULT 'DEFAULT',
                                       host           VARCHAR(128)       NOT NULL DEFAULT '',
                                       port           INT                NOT NULL DEFAULT 9997,
                                       status         VARCHAR(32)        NOT NULL DEFAULT 'PENDING',
@@ -245,13 +228,20 @@ CREATE TABLE infra.zone_instances (
                                       last_heartbeat TIMESTAMPTZ        NOT NULL DEFAULT NOW()
 );
 
--- Seed Starter City Instances on World 1 (Asura)
-INSERT INTO infra.zone_instances (id, world_id, zone_id, is_static)
+-- Guarantees strictly ONE static instance per (world_id, zone_id),
+-- while allowing UNLIMITED dynamic instances (is_static = false)!
+CREATE UNIQUE INDEX uq_static_world_zone ON infra.zone_instances (world_id, zone_id)
+    WHERE (is_static = true);
+
+CREATE INDEX idx_zone_instances_lookup ON infra.zone_instances (world_id, zone_id, is_static);
+
+-- Seed Starter City Static Shards on World 1 (Asura)
+INSERT INTO infra.zone_instances (world_id, zone_id, instance_tag, is_static)
 VALUES
-    (230, 1, 230, true), -- S. San d'Oria
-    (231, 1, 231, true), -- N. San d'Oria
-    (234, 1, 234, true), -- Bastok Mines
-    (235, 1, 235, true), -- Bastok Markets
-    (238, 1, 238, true), -- Windurst Waters
-    (239, 1, 239, true)  -- Windurst Walls
-    ON CONFLICT (id) DO NOTHING;
+    (1, 230, 'DEFAULT', true), -- S. San d'Oria
+    (1, 231, 'DEFAULT', true), -- N. San d'Oria
+    (1, 234, 'DEFAULT', true), -- Bastok Mines
+    (1, 235, 'DEFAULT', true), -- Bastok Markets
+    (1, 238, 'DEFAULT', true), -- Windurst Waters
+    (1, 239, 'DEFAULT', true)  -- Windurst Walls
+    ON CONFLICT DO NOTHING;

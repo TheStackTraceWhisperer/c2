@@ -4,6 +4,7 @@ import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
 import com.example.config.LobbyServerProperties;
 import com.example.lobby.handler.CharacterListRequestHandler;
+import com.example.lobby.handler.CreateCharacterRequestHandler;
 import com.example.lobby.handler.SelectCharacterRequestHandler;
 import com.example.server.AbstractBackendServer;
 import com.example.server.handler.SessionDisconnectedHandler;
@@ -19,6 +20,7 @@ public class LobbyServer extends AbstractBackendServer {
 
   private final CharacterListRequestHandler characterListHandler;
   private final SelectCharacterRequestHandler selectCharacterHandler;
+  private final CreateCharacterRequestHandler createCharacterHandler;
   private final SessionDisconnectedHandler sessionDisconnectedHandler;
 
   public LobbyServer(
@@ -26,17 +28,20 @@ public class LobbyServer extends AbstractBackendServer {
     IndexedPacketRouter router,
     CharacterListRequestHandler characterListHandler,
     SelectCharacterRequestHandler selectCharacterHandler,
+    CreateCharacterRequestHandler createCharacterHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler) {
     super("LOBBY", properties.getHost(), properties.getPort(), router);
     this.characterListHandler = characterListHandler;
-    this.sessionDisconnectedHandler = sessionDisconnectedHandler;
     this.selectCharacterHandler = selectCharacterHandler;
+    this.createCharacterHandler = createCharacterHandler;
+    this.sessionDisconnectedHandler = sessionDisconnectedHandler;
   }
 
   @PostConstruct
   public void init() throws Exception {
     router.register(MessageType.CHARACTER_LIST_REQUEST, characterListHandler);
     router.register(MessageType.SELECT_CHARACTER_REQUEST, selectCharacterHandler);
+    router.register(MessageType.CREATE_CHARACTER_REQUEST, createCharacterHandler);
     router.register(MessageType.SESSION_DISCONNECTED, sessionDisconnectedHandler);
     start();
   }

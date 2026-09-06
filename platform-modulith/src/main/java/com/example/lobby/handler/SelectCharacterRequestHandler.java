@@ -11,6 +11,7 @@ import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.WorldRecord;
 import com.example.server.protocol.SetSessionCharacterControlMessage;
 import com.example.server.protocol.SetSessionWorldControlMessage;
+import com.example.server.repository.ActiveSessionJdbcRepository;
 import com.example.server.repository.CharacterRepository;
 import com.example.server.repository.WorldJdbcRepository;
 import io.netty.channel.ChannelHandlerContext;
@@ -28,6 +29,7 @@ public class SelectCharacterRequestHandler implements PacketHandler<SelectCharac
   private final TokenVerifier tokenVerifier;
   private final CharacterRepository characterRepository;
   private final WorldJdbcRepository worldRepository;
+  private final ActiveSessionJdbcRepository activeSessionRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
 
   @Override
@@ -68,6 +70,10 @@ public class SelectCharacterRequestHandler implements PacketHandler<SelectCharac
       }
 
       WorldRecord world = worldOpt.get();
+
+      // Bind selected character in active session table
+      activeSessionRepository.updateCharacterId(claims.accountId(), character.characterId());
+
       ctx.write(new SetSessionCharacterControlMessage(character.characterId()));
 
       log.info("[LOBBY-SERVER] Binding Session #{} to World #{} ({}:{}) from database",

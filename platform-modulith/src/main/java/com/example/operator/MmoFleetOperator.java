@@ -101,12 +101,14 @@ public class MmoFleetOperator {
   private void reconcileZones() {
     Iterable<ZoneInstanceRecord> desiredZones = zoneInstanceRepository.findAll();
 
+    // Map keyed uniquely by surrogate instance ID
     Map<Integer, Pod> zonePods = k8s.pods().inNamespace(namespace)
       .withLabel("app.mmo/component", "zone")
       .list().getItems().stream()
-      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/zone-instance-id"))
+      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null
+        && p.getMetadata().getLabels().containsKey("app.mmo/instance-id"))
       .collect(Collectors.toMap(
-        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/zone-instance-id")),
+        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/instance-id")),
         p -> p,
         (existing, duplicate) -> existing
       ));
@@ -114,8 +116,8 @@ public class MmoFleetOperator {
     for (ZoneInstanceRecord instance : desiredZones) {
       Pod pod = zonePods.get(instance.id());
       if (pod == null) {
-        log.info("[OPERATOR] Provisioning missing Zone Pod for Instance #{} (Zone #{}, World #{})",
-          instance.id(), instance.zoneId(), instance.worldId());
+        log.info("[OPERATOR] Provisioning missing Zone Pod for Instance #{} (World #{}, Zone #{}, Tag '{}')",
+          instance.id(), instance.worldId(), instance.zoneId(), instance.instanceTag());
         spawnZonePod(instance);
       } else {
         String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
@@ -123,7 +125,8 @@ public class MmoFleetOperator {
 
         if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
           if (!podIp.equals(instance.host()) || !"ONLINE".equals(instance.status())) {
-            log.info("[OPERATOR] Zone Instance #{} is RUNNING. Syncing host={}:{} to DB", instance.id(), podIp, instance.port());
+            log.info("[OPERATOR] Zone Instance #{} (w{}-zone-{}) is RUNNING. Syncing host={}:{} to DB",
+              instance.id(), instance.worldId(), instance.zoneId(), podIp, instance.port());
             zoneInstanceRepository.updateEndpoint(instance.id(), podIp, instance.port(), "ONLINE");
           }
         }
@@ -166,6 +169,8 @@ public class MmoFleetOperator {
   }
 
   private void spawnZonePod(ZoneInstanceRecord instance) {
+    String podName = "w" + instance.worldId() + "-inst-" + instance.id() + "-z" + instance.zoneId();
+
     Container container = new ContainerBuilder()
       .withName("zone")
       .withImage(getImage())
@@ -185,11 +190,13 @@ public class MmoFleetOperator {
 
     Pod pod = new PodBuilder()
       .withNewMetadata()
-      .withName("zone-" + instance.id())
+      .withName(podName)
       .withNamespace(namespace)
       .addToLabels("app.mmo/component", "zone")
-      .addToLabels("app.mmo/zone-instance-id", String.valueOf(instance.id()))
+      .addToLabels("app.mmo/instance-id", String.valueOf(instance.id()))
+      .addToLabels("app.mmo/zone-id", String.valueOf(instance.zoneId()))
       .addToLabels("app.mmo/world-id", String.valueOf(instance.worldId()))
+      .addToLabels("app.mmo/is-static", String.valueOf(instance.isStatic()))
       .endMetadata()
       .withNewSpec()
       .withContainers(container)

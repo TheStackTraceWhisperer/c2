@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and baseline environment verification
 
-- [ ] T001 Verify build environment, Java 25 compatibility, and baseline compilation with `./mvnw clean compile`
+- [X] T001 Verify build environment, Java 25 compatibility, and baseline compilation with `./mvnw clean compile`
 
 ---
 
@@ -26,10 +26,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 [P] Update wire message type constants in `common-protocol/src/main/java/com/example/common/protocol/MessageType.java` (reserve 1-49 for control plane, shift 50-99 for diagnostics, add `GATEWAY_ERROR_RESPONSE = 52`, set `ZONE_STATE_DELTA_BROADCAST = 404`)
-- [ ] T003 [P] Create structured error response DTO `GatewayErrorResponse` in `common-protocol/src/main/java/com/example/common/dto/GatewayErrorResponse.java`
-- [ ] T004 Centralize common DTO registrations (IDs 50..499) and expose `registerCommon` in `common-protocol/src/main/java/com/example/common/codec/ForySerializationProvider.java`
-- [ ] T005 Refactor `platform-modulith/src/main/java/com/example/server/codec/BackendForySerializationProvider.java` to inherit common registrations from `ForySerializationProvider` and register backend control plane IDs (1..4) and `SessionDisconnectedEvent` (99)
+- [X] T002 [P] Update wire message type constants in `common-protocol/src/main/java/com/example/common/protocol/MessageType.java` (reserve 1-49 for control plane, shift 50-99 for diagnostics, add `GATEWAY_ERROR_RESPONSE = 52`, set `ZONE_STATE_DELTA_BROADCAST = 404`)
+- [X] T003 [P] Create structured error response DTO `GatewayErrorResponse` in `common-protocol/src/main/java/com/example/common/dto/GatewayErrorResponse.java`
+- [X] T004 Centralize common DTO registrations (IDs 50..499) and expose `registerCommon` in `common-protocol/src/main/java/com/example/common/codec/ForySerializationProvider.java`
+- [X] T005 Refactor `platform-modulith/src/main/java/com/example/server/codec/BackendForySerializationProvider.java` to inherit common registrations from `ForySerializationProvider` and register backend control plane IDs (1..4) and `SessionDisconnectedEvent` (99)
 
 **Checkpoint**: Base wire protocol constants and serialization providers aligned — user story implementation can now begin in parallel
 
@@ -45,21 +45,21 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T006 [P] [US1] Add test cases for unauthenticated packet rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
-- [ ] T007 [P] [US1] Add test cases for rate-limit rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
-- [ ] T008 [P] [US1] Add test cases for out-of-state packet injection rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
+- [X] T006 [P] [US1] Add test cases for unauthenticated packet rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
+- [X] T007 [P] [US1] Add test cases for rate-limit rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
+- [X] T008 [P] [US1] Add test cases for out-of-state packet injection rejection and channel closure in `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [P] [US1] Implement `GatewayErrorResponseHandler` in `client-sdk/src/main/java/com/example/client/handler/GatewayErrorResponseHandler.java`
-- [ ] T010 [P] [US1] Add error tracking fields (`lastErrorCode`, `lastErrorMessage`) and state handling in `client-sdk/src/main/java/com/example/client/state/ClientState.java`
-- [ ] T011 [US1] Register `GatewayErrorResponseHandler` for `MessageType.GATEWAY_ERROR_RESPONSE` in `client-sdk/src/main/java/com/example/client/QuicClient.java`
-- [ ] T012 [US1] Implement defensive error dispatch and connection termination helper in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
-- [ ] T013 [US1] Enforce defensive termination for rate-limit breaches in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
-- [ ] T014 [US1] Enforce defensive termination for unauthenticated requests in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
-- [ ] T015 [US1] Enforce non-terminating `GatewayErrorResponse(SERVICE_UNAVAILABLE)` on unresolvable endpoints in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
-- [ ] T016 [US1] Add defensive error handling and connection termination for framing/corruption errors in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
-- [ ] T017 [US1] Verify Netty `ByteBuf` release guarantees in `finally` blocks in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T009 [P] [US1] Implement `GatewayErrorResponseHandler` in `client-sdk/src/main/java/com/example/client/handler/GatewayErrorResponseHandler.java`
+- [X] T010 [P] [US1] Add error tracking fields (`lastErrorCode`, `lastErrorMessage`) and state handling in `client-sdk/src/main/java/com/example/client/state/ClientState.java`
+- [X] T011 [US1] Register `GatewayErrorResponseHandler` for `MessageType.GATEWAY_ERROR_RESPONSE` in `client-sdk/src/main/java/com/example/client/QuicClient.java`
+- [X] T012 [US1] Implement defensive error dispatch and connection termination helper in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T013 [US1] Enforce defensive termination for rate-limit breaches in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T014 [US1] Enforce defensive termination for unauthenticated requests in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T015 [US1] Enforce non-terminating `GatewayErrorResponse(SERVICE_UNAVAILABLE)` on unresolvable endpoints in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T016 [US1] Add defensive error handling and connection termination for framing/corruption errors in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
+- [X] T017 [US1] Verify Netty `ByteBuf` release guarantees in `finally` blocks in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java`
 
 **Checkpoint**: User Story 1 is fully functional and testable independently — Gateway emits structured errors and severs abusive connections immediately.
 
@@ -73,15 +73,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T018 [P] [US2] Update test fixture and assertions in `platform-modulith/src/test/java/com/example/PlayerJourneyIT.java` to verify character context resolution without client-supplied actor ID
-- [ ] T019 [P] [US2] Add concurrent multi-player isolation test in `platform-modulith/src/test/java/com/example/ZoneSimulationIT.java` verifying separate sessions cannot bleed or spoof character IDs
+- [X] T018 [P] [US2] Update test fixture and assertions in `platform-modulith/src/test/java/com/example/PlayerJourneyIT.java` to verify character context resolution without client-supplied actor ID
+- [X] T019 [P] [US2] Add concurrent multi-player isolation test in `platform-modulith/src/test/java/com/example/ZoneSimulationIT.java` verifying separate sessions cannot bleed or spoof character IDs
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Refactor `JoinWorldRequest` record in `common-protocol/src/main/java/com/example/world/dto/JoinWorldRequest.java` to remove caller-asserted `characterId` field
-- [ ] T021 [US2] Refactor `JoinWorldRequestHandler` in `platform-modulith/src/main/java/com/example/world/handler/JoinWorldRequestHandler.java` to derive character identity strictly from `SessionContext.CHARACTER_ID`
-- [ ] T022 [US2] Enforce out-of-state character validation in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` returning `INVALID_SESSION_STATE` and terminating connection if in-world packet received with unselected character (`session.getCharacterId() == 0L`)
-- [ ] T023 [US2] Update `JoinWorldRequest` call sites in `platform-modulith/src/test/java/com/example/GatewayRoutingIT.java` and `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
+- [X] T020 [US2] Refactor `JoinWorldRequest` record in `common-protocol/src/main/java/com/example/world/dto/JoinWorldRequest.java` to remove caller-asserted `characterId` field
+- [X] T021 [US2] Refactor `JoinWorldRequestHandler` in `platform-modulith/src/main/java/com/example/world/handler/JoinWorldRequestHandler.java` to derive character identity strictly from `SessionContext.CHARACTER_ID`
+- [X] T022 [US2] Enforce out-of-state character validation in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` returning `INVALID_SESSION_STATE` and terminating connection if in-world packet received with unselected character (`session.getCharacterId() == 0L`)
+- [X] T023 [US2] Update `JoinWorldRequest` call sites in `platform-modulith/src/test/java/com/example/GatewayRoutingIT.java` and `platform-modulith/src/test/java/com/example/GatewaySecurityIT.java`
 
 **Checkpoint**: User Stories 1 AND 2 both work independently — character identities are strictly authoritative with zero spoofing vectors.
 
@@ -95,14 +95,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T024 [P] [US3] Create automated wire registry collision and completeness unit test in `common-protocol/src/test/java/com/example/serialization/ForyRegistryTest.java`
-- [ ] T025 [P] [US3] Add end-to-end round-trip serialization test in `platform-modulith/src/test/java/com/example/serialization/ForySyncIT.java`
+- [X] T024 [P] [US3] Create automated wire registry collision and completeness unit test in `common-protocol/src/test/java/com/example/serialization/ForyRegistryTest.java`
+- [X] T025 [P] [US3] Add end-to-end round-trip serialization test in `platform-modulith/src/test/java/com/example/serialization/ForySyncIT.java`
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Align all message ID constant references in `client-sdk/src/main/java/com/example/client/QuicClient.java` (including `PING = 50`, `PONG = 51`, `ZONE_STATE_DELTA_BROADCAST = 404`)
-- [ ] T027 [US3] Align all message ID constant references in `platform-modulith/src/main/java/com/example/server/codec/` and domain handlers to unified `MessageType` constants
-- [ ] T028 [US3] Enforce strict registration checks (`requireClassRegistration(true)`) in `platform-modulith/src/main/java/com/example/server/codec/BackendForySerializationProvider.java`
+- [X] T026 [US3] Align all message ID constant references in `client-sdk/src/main/java/com/example/client/QuicClient.java` (including `PING = 50`, `PONG = 51`, `ZONE_STATE_DELTA_BROADCAST = 404`)
+- [X] T027 [US3] Align all message ID constant references in `platform-modulith/src/main/java/com/example/server/codec/` and domain handlers to unified `MessageType` constants
+- [X] T028 [US3] Enforce strict registration checks (`requireClassRegistration(true)`) in `platform-modulith/src/main/java/com/example/server/codec/BackendForySerializationProvider.java`
 
 **Checkpoint**: All user stories are independently functional with zero protocol drift across modules.
 
@@ -112,9 +112,9 @@
 
 **Purpose**: Architecture conformance, resource leak validation, and quickstart scenario verification.
 
-- [ ] T029 [P] Execute ArchUnit verification in `platform-modulith/src/test/java/com/example/ArchitectureTest.java` to verify modular boundaries and zero architecture violations
-- [ ] T030 Execute test suite with Netty leak detection enabled via `./mvnw clean test -Dio.netty.leakDetection.level=PARANOID`
-- [ ] T031 Execute and validate all scenarios in `specs/001-protocol-session-integrity/quickstart.md`
+- [X] T029 [P] Execute ArchUnit verification in `platform-modulith/src/test/java/com/example/ArchitectureTest.java` to verify modular boundaries and zero architecture violations
+- [X] T030 Execute test suite with Netty leak detection enabled via `./mvnw clean test -Dio.netty.leakDetection.level=PARANOID`
+- [X] T031 Execute and validate all scenarios in `specs/001-protocol-session-integrity/quickstart.md`
 
 ---
 

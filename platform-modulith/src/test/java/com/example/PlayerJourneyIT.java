@@ -120,7 +120,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
     );
     assertThat(client.getState().getSelectedCharacterId()).isEqualTo(1001L);
 
-    client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
+    client.send(new JoinWorldRequest(client.getState().getAuthToken()));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );

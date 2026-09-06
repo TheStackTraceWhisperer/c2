@@ -42,7 +42,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
+    client.send(new JoinWorldRequest(client.getState().getAuthToken()));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );
@@ -74,7 +74,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
     client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
-    client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
+    client.send(new JoinWorldRequest(client.getState().getAuthToken()));
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_ZONE);
 
     CompletableFuture<PlayerMovementResponse> clientAMove1 = new CompletableFuture<>();
@@ -92,7 +92,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
       clientB.send(new SelectCharacterRequest(clientB.getState().getAuthToken(), 1002L));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
-      clientB.send(new JoinWorldRequest(clientB.getState().getAuthToken(), 1002L));
+      clientB.send(new JoinWorldRequest(clientB.getState().getAuthToken()));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_ZONE);
 
       CompletableFuture<PlayerMovementResponse> clientBMove1 = new CompletableFuture<>();
@@ -110,6 +110,55 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
         assertThat(warriorRemote.mainJobId()).isEqualTo((short) 1);
         assertThat(warriorRemote.name()).isEqualTo("ElvaanKnight");
       });
+    } finally {
+      clientB.close();
+    }
+  }
+
+  @Test
+  @DisplayName("Identity Isolation: Concurrent sessions independently resolve authoritative character context without spoofing")
+  void testConcurrentMultiPlayerSessionCharacterIsolation() throws Exception {
+    // 1. Setup Session A (Account 1 -> Character 1001)
+    client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
+    await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+    client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
+    await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
+    client.send(new JoinWorldRequest(client.getState().getAuthToken()));
+    await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_ZONE);
+
+    // 2. Setup Session B (Account 2 -> Character 1002)
+    QuicClient clientB = beanContext.createBean(QuicClient.class);
+    clientB.registerDefaultHandlers();
+    clientB.connect().sync();
+
+    try {
+      clientB.send(new LoginRequest(TEST_USERNAME_2, TEST_PASSWORD_2));
+      await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+      clientB.send(new SelectCharacterRequest(clientB.getState().getAuthToken(), 1002L));
+      await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
+      clientB.send(new JoinWorldRequest(clientB.getState().getAuthToken()));
+      await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_ZONE);
+
+      CompletableFuture<PlayerMovementResponse> clientARespFuture = new CompletableFuture<>();
+      client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> clientARespFuture.complete((PlayerMovementResponse) packet));
+
+      CompletableFuture<PlayerMovementResponse> clientBRespFuture = new CompletableFuture<>();
+      clientB.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> clientBRespFuture.complete((PlayerMovementResponse) packet));
+
+      // 3. Dispatch movements without any client-asserted character IDs in the payload
+      client.send(new PlayerMovementRequest(66.0f, -1.0f, -40.0f, 0, 0, 0, 180.0f, 0, MovementFlags.IDLE, 1L));
+      clientB.send(new PlayerMovementRequest(68.0f, -1.0f, -40.0f, 0, 0, 0, 0, 0, MovementFlags.IDLE, 1L));
+
+      PlayerMovementResponse respA = clientARespFuture.get(5, TimeUnit.SECONDS);
+      PlayerMovementResponse respB = clientBRespFuture.get(5, TimeUnit.SECONDS);
+
+      // 4. Assert responses strictly reflect each session's authoritative context
+      assertThat(respA.characterId()).isEqualTo(1001L);
+      assertThat(respB.characterId()).isEqualTo(1002L);
+
+      // Verify session states remain strictly isolated
+      assertThat(client.getState().getSelectedCharacterId()).isEqualTo(1001L);
+      assertThat(clientB.getState().getSelectedCharacterId()).isEqualTo(1002L);
     } finally {
       clientB.close();
     }

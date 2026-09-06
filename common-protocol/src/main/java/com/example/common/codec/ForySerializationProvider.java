@@ -1,5 +1,6 @@
 package com.example.common.codec;
 
+import com.example.common.dto.GatewayErrorResponse;
 import com.example.common.dto.PingMessage;
 import com.example.common.dto.PongMessage;
 import com.example.lobby.dto.*;
@@ -26,36 +27,41 @@ public final class ForySerializationProvider {
     .buildThreadSafeFory();
 
   static {
-    // System / Diagnostic DTOs (10 - 99)
-    FORY.register(PingMessage.class, 10);
-    FORY.register(PongMessage.class, 11);
+    registerCommon(FORY);
+  }
+
+  public static void registerCommon(ThreadSafeFory fory) {
+    // System / Diagnostic DTOs (50 - 99)
+    fory.register(PingMessage.class, 50);
+    fory.register(PongMessage.class, 51);
+    fory.register(GatewayErrorResponse.class, 52);
 
     // Auth Service (100 - 199)
-    FORY.register(LoginRequest.class, 100);
-    FORY.register(LoginResponse.class, 101);
-    FORY.register(ReconnectRequest.class, 102);
-    FORY.register(ReconnectResponse.class, 103);
+    fory.register(LoginRequest.class, 100);
+    fory.register(LoginResponse.class, 101);
+    fory.register(ReconnectRequest.class, 102);
+    fory.register(ReconnectResponse.class, 103);
 
     // Lobby Service (200 - 299)
-    FORY.register(CharacterListRequest.class, 200);
-    FORY.register(CharacterListResponse.class, 201);
-    FORY.register(CharacterSummary.class, 202);
-    FORY.register(SelectCharacterRequest.class, 203);
-    FORY.register(SelectCharacterResponse.class, 204);
-    FORY.register(CreateCharacterRequest.class, 205);
-    FORY.register(CreateCharacterResponse.class, 206);
+    fory.register(CharacterListRequest.class, 200);
+    fory.register(CharacterListResponse.class, 201);
+    fory.register(CharacterSummary.class, 202);
+    fory.register(SelectCharacterRequest.class, 203);
+    fory.register(SelectCharacterResponse.class, 204);
+    fory.register(CreateCharacterRequest.class, 205);
+    fory.register(CreateCharacterResponse.class, 206);
 
     // World Service / Realm Orchestration (300 - 399)
-    FORY.register(JoinWorldRequest.class, 300);
-    FORY.register(JoinWorldResponse.class, 301);
-    FORY.register(ZoneTransferNotification.class, 302);
+    fory.register(JoinWorldRequest.class, 300);
+    fory.register(JoinWorldResponse.class, 301);
+    fory.register(ZoneTransferNotification.class, 302);
 
     // Zone Service / Simulation (400 - 499)
-    FORY.register(PlayerMovementRequest.class, 400);
-    FORY.register(PlayerMovementResponse.class, 401);
-    FORY.register(EntitySpawnRecord.class, 402);
-    FORY.register(EntityMovementUpdate.class, 403);
-    FORY.register(ZoneStateDeltaMessage.class, 404);
+    fory.register(PlayerMovementRequest.class, 400);
+    fory.register(PlayerMovementResponse.class, 401);
+    fory.register(EntitySpawnRecord.class, 402);
+    fory.register(EntityMovementUpdate.class, 403);
+    fory.register(ZoneStateDeltaMessage.class, 404);
   }
 
   public static ThreadSafeFory get() {

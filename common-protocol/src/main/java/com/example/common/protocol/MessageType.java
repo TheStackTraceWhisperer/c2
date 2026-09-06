@@ -1,15 +1,16 @@
 package com.example.common.protocol;
 
 public final class MessageType {
-  // Gateway Control Plane (1 - 9)
+  // Gateway Control Plane (1 - 49)
   public static final short CTRL_SET_AUTH_STATE = 1;
   public static final short CTRL_SET_CHARACTER = 2;
   public static final short CTRL_SET_WORLD = 3;
   public static final short CTRL_SET_ZONE = 4;
 
-  // Diagnostics / System (10 - 99)
-  public static final short PING = 10;
-  public static final short PONG = 11;
+  // Diagnostics / System (50 - 99)
+  public static final short PING = 50;
+  public static final short PONG = 51;
+  public static final short GATEWAY_ERROR_RESPONSE = 52;
   public static final short SESSION_DISCONNECTED = 99;
 
   // Auth / Login Service (100 - 199)
@@ -21,10 +22,11 @@ public final class MessageType {
   // Lobby Service (200 - 299)
   public static final short CHARACTER_LIST_REQUEST = 200;
   public static final short CHARACTER_LIST_RESPONSE = 201;
-  public static final short SELECT_CHARACTER_REQUEST = 202;
-  public static final short SELECT_CHARACTER_RESPONSE = 203;
-  public static final short CREATE_CHARACTER_REQUEST = 204;
-  public static final short CREATE_CHARACTER_RESPONSE = 205;
+  public static final short CHARACTER_SUMMARY = 202;
+  public static final short SELECT_CHARACTER_REQUEST = 203;
+  public static final short SELECT_CHARACTER_RESPONSE = 204;
+  public static final short CREATE_CHARACTER_REQUEST = 205;
+  public static final short CREATE_CHARACTER_RESPONSE = 206;
 
   // World Service / Realm Orchestration (300 - 399)
   public static final short JOIN_WORLD_REQUEST = 300;
@@ -34,7 +36,9 @@ public final class MessageType {
   // Zone Service / Authoritative Simulation (400 - 499)
   public static final short PLAYER_MOVEMENT_REQUEST = 400;
   public static final short PLAYER_MOVEMENT_RESPONSE = 401;
-  public static final short ZONE_STATE_DELTA_BROADCAST = 402;
+  public static final short ENTITY_SPAWN_RECORD = 402;
+  public static final short ENTITY_MOVEMENT_UPDATE = 403;
+  public static final short ZONE_STATE_DELTA_BROADCAST = 404;
 
   private MessageType() {}
 }

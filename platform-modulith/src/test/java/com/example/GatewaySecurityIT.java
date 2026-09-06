@@ -1,6 +1,8 @@
 package com.example;
 
 import com.example.client.state.ClientConnectionState;
+import com.example.common.dto.GatewayErrorResponse;
+import com.example.common.dto.PingMessage;
 import com.example.common.protocol.MessageType;
 import com.example.common.protocol.MovementFlags;
 import com.example.common.protocol.ServiceType;
@@ -27,28 +29,31 @@ import static org.awaitility.Awaitility.await;
 public class GatewaySecurityIT extends BaseIntegrationTest {
 
   @Test
-  @DisplayName("Security: Gateway drops Lobby requests if session is unauthenticated")
-  void testSecurityGateBlocksUnauthenticatedLobbyRequest() {
-    CompletableFuture<CharacterListResponse> characterListFuture = new CompletableFuture<>();
+  @DisplayName("Security: Gateway returns GatewayErrorResponse(UNAUTHENTICATED) and terminates connection when unauthenticated")
+  void unauthenticatedPacketTriggersRejectionAndDisconnect() {
+    CompletableFuture<GatewayErrorResponse> errorFuture = new CompletableFuture<>();
 
-    client.on(MessageType.CHARACTER_LIST_RESPONSE, (ctx, packet) ->
-      characterListFuture.complete((CharacterListResponse) packet)
+    client.on(MessageType.GATEWAY_ERROR_RESPONSE, (ctx, packet) ->
+      errorFuture.complete((GatewayErrorResponse) packet)
     );
 
     client.send(new CharacterListRequest(999L, "fake-token"));
 
-    await()
-      .during(2, TimeUnit.SECONDS)
-      .atMost(3, TimeUnit.SECONDS)
-      .until(() -> !characterListFuture.isDone() && client.getState().getCharacters().isEmpty());
+    await().atMost(3, TimeUnit.SECONDS).until(errorFuture::isDone);
+    GatewayErrorResponse error = errorFuture.join();
+    assertThat(error.errorCode()).isEqualTo(GatewayErrorResponse.ERROR_UNAUTHENTICATED);
+    assertThat(error.rejectedServiceId()).isEqualTo(ServiceType.LOBBY);
+
+    await().atMost(3, TimeUnit.SECONDS).until(() -> !client.isConnected());
+    assertThat(client.isConnected()).isFalse();
   }
 
   @Test
-  @DisplayName("Security: Gateway drops Zone movement requests if character is not selected")
-  void testSecurityGateBlocksWorldWithoutCharacterSelected() {
-    CompletableFuture<PlayerMovementResponse> movementFuture = new CompletableFuture<>();
-    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
-      movementFuture.complete((PlayerMovementResponse) packet)
+  @DisplayName("Security: Gateway returns GatewayErrorResponse(INVALID_SESSION_STATE) and severs connection for out-of-state packets")
+  void outOfStatePacketTriggersRejectionAndDisconnect() {
+    CompletableFuture<GatewayErrorResponse> errorFuture = new CompletableFuture<>();
+    client.on(MessageType.GATEWAY_ERROR_RESPONSE, (ctx, packet) ->
+      errorFuture.complete((GatewayErrorResponse) packet)
     );
 
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
@@ -56,53 +61,42 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
+    // Client sends in-world action without selecting character
     client.send(new PlayerMovementRequest(10.0f, 20.0f, 30.0f, 0, 0, 0, 0, 0, MovementFlags.IDLE, 1L));
 
-    await()
-      .during(2, TimeUnit.SECONDS)
-      .atMost(3, TimeUnit.SECONDS)
-      .until(() -> !movementFuture.isDone());
+    await().atMost(3, TimeUnit.SECONDS).until(errorFuture::isDone);
+    GatewayErrorResponse error = errorFuture.join();
+    assertThat(error.errorCode()).isEqualTo(GatewayErrorResponse.ERROR_INVALID_SESSION_STATE);
+    assertThat(error.rejectedServiceId()).isEqualTo(ServiceType.ZONE);
+
+    await().atMost(3, TimeUnit.SECONDS).until(() -> !client.isConnected());
+    assertThat(client.isConnected()).isFalse();
   }
 
   @Test
-  @DisplayName("Rate Limiter: Gateway drops packet bursts exceeding token bucket capacity")
-  void testRateLimiterDropsExcessiveBursts() throws Exception {
+  @DisplayName("Rate Limiter: Gateway returns GatewayErrorResponse(RATE_LIMITED) and severs connection when limit exceeded")
+  void rateLimitExceededTriggersRejectionAndDisconnect() throws Exception {
+    CompletableFuture<GatewayErrorResponse> errorFuture = new CompletableFuture<>();
+    client.on(MessageType.GATEWAY_ERROR_RESPONSE, (ctx, packet) ->
+      errorFuture.complete((GatewayErrorResponse) packet)
+    );
+
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
-    client.send(new SelectCharacterRequest(
-      client.getState().getAuthToken(),
-      1001L
-    ));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
-      client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
-    );
-
-    client.send(new JoinWorldRequest(client.getState().getAuthToken(), 1001L));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
-      client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
-    );
-
-    AtomicInteger acknowledgedMoves = new AtomicInteger(0);
-    client.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) ->
-      acknowledgedMoves.incrementAndGet()
-    );
-
-    int packetsSent = 100;
-    for (int i = 0; i < packetsSent; i++) {
-      client.send(new PlayerMovementRequest(66.0f + (i * 0.01f), -1.0f, -40.0f, 0, 0, 0, 180.0f, 0, MovementFlags.IDLE, i));
+    // Flood packets to exhaust rate limiter token bucket
+    for (int i = 0; i < 100; i++) {
+      client.send(new PingMessage(System.currentTimeMillis(), "flood-" + i));
     }
 
-    await()
-      .during(1, TimeUnit.SECONDS)
-      .atMost(2, TimeUnit.SECONDS)
-      .until(() -> true);
+    await().atMost(5, TimeUnit.SECONDS).until(errorFuture::isDone);
+    GatewayErrorResponse error = errorFuture.join();
+    assertThat(error.errorCode()).isEqualTo(GatewayErrorResponse.ERROR_RATE_LIMITED);
 
-    assertThat(acknowledgedMoves.get())
-      .isGreaterThan(0)
-      .isLessThanOrEqualTo(55);
+    await().atMost(5, TimeUnit.SECONDS).until(() -> !client.isConnected());
+    assertThat(client.isConnected()).isFalse();
   }
 
   @Test

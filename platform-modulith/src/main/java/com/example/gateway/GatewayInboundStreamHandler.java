@@ -1,12 +1,16 @@
 package com.example.gateway;
 
+import com.example.common.dto.GatewayErrorResponse;
 import com.example.common.protocol.ClientEnvelope;
+import com.example.common.protocol.MessageType;
 import com.example.common.protocol.ProtocolConstants;
 import com.example.common.protocol.ServiceType;
 import com.example.gateway.session.ClientSession;
+import com.example.server.codec.BackendForySerializationProvider;
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.BackendEnvelopeCodec;
 import com.example.server.protocol.EndpointTarget;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.handler.codec.CorruptedFrameException;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
@@ -40,26 +44,52 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
 
     try {
       if (session != null && !session.getRateLimiter().tryConsume()) {
-        log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded)",
+        log.warn("[GATEWAY-RATELIMIT] Dropped packet svc: {}, msg: {} from Session #{} (Rate limit exceeded). Terminating connection.",
           msg.serviceId(), msg.messageId(), sessionId);
+        sendErrorAndSever(ctx, clientStream, new GatewayErrorResponse(
+          GatewayErrorResponse.ERROR_RATE_LIMITED,
+          msg.serviceId(),
+          msg.messageId(),
+          "Rate limit exceeded"
+        ));
         return;
       }
 
       if ((msg.serviceId() == ServiceType.LOBBY || msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
         && (session == null || !session.isAuthenticated())) {
-        log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}", msg.serviceId(), sessionId);
+        log.warn("[GATEWAY-SECURITY] Blocked unauthenticated access to svc {} from Session #{}. Terminating connection.",
+          msg.serviceId(), sessionId);
+        sendErrorAndSever(ctx, clientStream, new GatewayErrorResponse(
+          GatewayErrorResponse.ERROR_UNAUTHENTICATED,
+          msg.serviceId(),
+          msg.messageId(),
+          "Unauthenticated request"
+        ));
         return;
       }
 
       if ((msg.serviceId() == ServiceType.WORLD || msg.serviceId() == ServiceType.ZONE)
         && (session == null || session.getCharacterId() == 0L)) {
-        log.warn("[GATEWAY-SECURITY] Blocked unselected character access to svc {} from Session #{}", msg.serviceId(), sessionId);
+        log.warn("[GATEWAY-SECURITY] Blocked out-of-state packet to svc {} from Session #{}. Terminating connection.",
+          msg.serviceId(), sessionId);
+        sendErrorAndSever(ctx, clientStream, new GatewayErrorResponse(
+          GatewayErrorResponse.ERROR_INVALID_SESSION_STATE,
+          msg.serviceId(),
+          msg.messageId(),
+          "Character not selected"
+        ));
         return;
       }
 
       EndpointTarget endpoint = gateway.getConnectionManager().resolveEndpoint(msg.serviceId(), session);
       if (endpoint == null) {
         log.error("[GATEWAY] No destination endpoint resolved for svc: {} on Session #{}", msg.serviceId(), sessionId);
+        sendError(ctx, new GatewayErrorResponse(
+          GatewayErrorResponse.ERROR_SERVICE_UNAVAILABLE,
+          msg.serviceId(),
+          msg.messageId(),
+          "Service unavailable"
+        ));
         return;
       }
 
@@ -212,17 +242,61 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     pendingQueues.keySet().forEach(this::drainAndRelease);
   }
 
+  private void sendError(ChannelHandlerContext ctx, GatewayErrorResponse errorResponse) {
+    byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
+    ByteBuf payload = ctx.alloc().buffer(bytes.length);
+    payload.writeBytes(bytes);
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
+    ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
+      if (!f.isSuccess()) {
+        log.error("[GATEWAY] Failed to send error frame to client: {}", f.cause().getMessage());
+        if (payload.refCnt() > 0) {
+          payload.release();
+        }
+      }
+    });
+  }
+
+  private void sendErrorAndSever(ChannelHandlerContext ctx, QuicStreamChannel clientStream, GatewayErrorResponse errorResponse) {
+    byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
+    ByteBuf payload = ctx.alloc().buffer(bytes.length);
+    payload.writeBytes(bytes);
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
+    ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
+      if (!f.isSuccess()) {
+        log.error("[GATEWAY] Failed to send error frame before severing: {}", f.cause().getMessage());
+        if (payload.refCnt() > 0) {
+          payload.release();
+        }
+      }
+      clientStream.close();
+      if (clientStream.parent() != null && clientStream.parent().isActive()) {
+        log.warn("[GATEWAY-SECURITY] Defensively closing QuicChannel for session after security violation");
+        clientStream.parent().close();
+      }
+    });
+  }
+
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     log.error("[GATEWAY] Inbound stream error: {}", cause.getMessage(), cause);
-    ctx.close();
 
     if (cause instanceof TooLongFrameException || cause instanceof CorruptedFrameException) {
       QuicStreamChannel streamChannel = (QuicStreamChannel) ctx.channel();
+      if (streamChannel.isActive()) {
+        sendErrorAndSever(ctx, streamChannel, new GatewayErrorResponse(
+          GatewayErrorResponse.ERROR_MALFORMED_PAYLOAD,
+          ServiceType.GATEWAY,
+          (short) 0,
+          "Malformed or oversized payload: " + cause.getMessage()
+        ));
+        return;
+      }
       if (streamChannel.parent() != null && streamChannel.parent().isActive()) {
         log.warn("[GATEWAY-SECURITY] Terminating QuicChannel due to protocol violation from stream {}", streamChannel);
         streamChannel.parent().close();
       }
     }
+    ctx.close();
   }
 }

@@ -47,6 +47,7 @@ public class QuicClient implements AutoCloseable {
   private final ZoneTransferNotificationHandler defaultZoneTransferHandler;
   private final PlayerMovementResponseHandler defaultPlayerMovementHandler;
   private final ZoneStateDeltaHandler defaultZoneStateDeltaHandler;
+  private final GatewayErrorResponseHandler defaultGatewayErrorHandler;
 
   private EventLoopGroup group;
   private Channel datagramChannel;
@@ -65,7 +66,8 @@ public class QuicClient implements AutoCloseable {
     JoinWorldResponseHandler joinWorldHandler,
     ZoneTransferNotificationHandler zoneTransferHandler,
     PlayerMovementResponseHandler playerMovementHandler,
-    ZoneStateDeltaHandler zoneStateDeltaHandler) {
+    ZoneStateDeltaHandler zoneStateDeltaHandler,
+    GatewayErrorResponseHandler gatewayErrorHandler) {
     this.properties = properties;
     this.state = state;
     this.router = new IndexedPacketRouter();
@@ -80,6 +82,7 @@ public class QuicClient implements AutoCloseable {
     this.defaultZoneTransferHandler = zoneTransferHandler;
     this.defaultPlayerMovementHandler = playerMovementHandler;
     this.defaultZoneStateDeltaHandler = zoneStateDeltaHandler;
+    this.defaultGatewayErrorHandler = gatewayErrorHandler;
 
     registerDefaultHandlers();
   }
@@ -89,6 +92,7 @@ public class QuicClient implements AutoCloseable {
     this.router.register(MessageType.CHARACTER_LIST_RESPONSE, defaultCharacterListHandler);
     this.router.register(MessageType.CREATE_CHARACTER_RESPONSE, defaultCreateCharacterHandler);
     this.router.register(MessageType.PONG, defaultPongHandler);
+    this.router.register(MessageType.GATEWAY_ERROR_RESPONSE, defaultGatewayErrorHandler);
     this.router.register(MessageType.SELECT_CHARACTER_RESPONSE, defaultSelectCharacterHandler);
     this.router.register(MessageType.RECONNECT_RESPONSE, defaultReconnectHandler);
     this.router.register(MessageType.JOIN_WORLD_RESPONSE, defaultJoinWorldHandler);

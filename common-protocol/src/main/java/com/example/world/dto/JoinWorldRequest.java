@@ -4,7 +4,7 @@ import com.example.common.protocol.MessageType;
 import com.example.common.protocol.PacketMessage;
 import com.example.common.protocol.ServiceType;
 
-public record JoinWorldRequest(String authToken, long characterId) implements PacketMessage {
+public record JoinWorldRequest(String authToken) implements PacketMessage {
   @Override public short serviceId() { return ServiceType.WORLD; }
   @Override public short messageId() { return MessageType.JOIN_WORLD_REQUEST; }
 }

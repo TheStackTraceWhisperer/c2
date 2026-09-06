@@ -79,4 +79,7 @@ public interface CharacterJdbcRepository extends CrudRepository<CharacterRecord,
     float hpPosY,
     float hpPosZ
   );
+
+  @Query("DELETE FROM player.characters WHERE id NOT IN (1001, 1002, 1003)")
+  void deleteTestCharacters();
 }

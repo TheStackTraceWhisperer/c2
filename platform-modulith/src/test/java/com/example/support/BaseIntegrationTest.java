@@ -99,7 +99,8 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       new JoinWorldResponseHandler(state),
       new ZoneTransferNotificationHandler(state),
       new PlayerMovementResponseHandler(state),
-      new ZoneStateDeltaHandler(state)
+      new ZoneStateDeltaHandler(state),
+      new GatewayErrorResponseHandler(state)
     );
 
     client.connect().sync();
@@ -107,6 +108,7 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
 
   protected void seedDatabase() {
     activeSessionRepository.deleteAll();
+    characterRepository.deleteTestCharacters();
 
     // Account 1: Admin
     if (accountRepository.findByUsername(TEST_USERNAME).isEmpty()) {

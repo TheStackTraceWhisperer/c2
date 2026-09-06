@@ -51,7 +51,7 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    client.send(new JoinWorldRequest(authToken, 1001L));
+    client.send(new JoinWorldRequest(authToken));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );
@@ -72,7 +72,7 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
       client.getState().getConnectionState() == ClientConnectionState.IN_WORLD
     );
 
-    client.send(new JoinWorldRequest(authToken, 1001L));
+    client.send(new JoinWorldRequest(authToken));
     await().atMost(5, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.IN_ZONE
     );

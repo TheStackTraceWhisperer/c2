@@ -21,6 +21,8 @@ public class ClientState {
   @Setter private volatile long accountId = 0L;
   @Setter private volatile String authToken = "";
   @Setter private volatile long selectedCharacterId = 0L;
+  @Setter private volatile short lastErrorCode = 0;
+  @Setter private volatile String lastErrorMessage = "";
 
   // Local Player Coordinates
   @Setter private volatile int currentWorldId = 0;
@@ -101,6 +103,8 @@ public class ClientState {
     this.accountId = 0L;
     this.authToken = "";
     this.selectedCharacterId = 0L;
+    this.lastErrorCode = 0;
+    this.lastErrorMessage = "";
     this.currentWorldId = 0;
     this.currentZoneId = 0;
     this.x = 0.0f;

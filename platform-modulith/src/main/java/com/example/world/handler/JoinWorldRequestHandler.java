@@ -33,18 +33,20 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
   @Override
   public void handle(ChannelHandlerContext ctx, JoinWorldRequest packet) {
     Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
-    if (sessionId == null || sessionId <= 0L) {
-      log.error("[WORLD-SERVER] Security violation: Received JoinWorldRequest with missing or invalid SessionContext. Terminating connection.");
+    Long characterId = ctx.channel().attr(SessionContext.CHARACTER_ID).get();
+    if (sessionId == null || sessionId <= 0L || characterId == null || characterId <= 0L) {
+      log.error("[WORLD-SERVER] Security violation: Received JoinWorldRequest with missing or invalid SessionContext (sessionId={}, characterId={}). Terminating connection.",
+        sessionId, characterId);
       ctx.close();
       return;
     }
 
     dispatcher.dispatch(ctx, () -> {
-      log.info("[WORLD-SERVER] JoinWorld attempt: Session #{}, characterId={}", sessionId, packet.characterId());
+      log.info("[WORLD-SERVER] JoinWorld attempt: Session #{}, characterId={}", sessionId, characterId);
 
-      Optional<CharacterRecord> characterOpt = characterRepository.findById(packet.characterId());
+      Optional<CharacterRecord> characterOpt = characterRepository.findById(characterId);
       if (characterOpt.isEmpty()) {
-        log.error("[WORLD-SERVER] Character #{} not found in repository", packet.characterId());
+        log.error("[WORLD-SERVER] Character #{} not found in repository", characterId);
         ctx.writeAndFlush(new JoinWorldResponse(false, 0, "", 0, "Character does not exist"));
         return;
       }
@@ -60,7 +62,7 @@ public class JoinWorldRequestHandler implements PacketHandler<JoinWorldRequest> 
         return;
       }
 
-      sessionRegistry.registerSession(sessionId, packet.characterId(), targetZoneId, zoneEndpoint, ctx);
+      sessionRegistry.registerSession(sessionId, characterId, targetZoneId, zoneEndpoint, ctx);
 
       log.info("[WORLD-SERVER] Dispatching CTRL_SET_ZONE -> Gateway: Session #{} -> Zone #{} ({}:{})",
         sessionId, targetZoneId, zoneEndpoint.host(), zoneEndpoint.port());

@@ -14,6 +14,10 @@
   <artifactId>client-desktop</artifactId>
   <packaging>jar</packaging>
 
+  <properties>
+    <exec.mainClass>com.example.client.desktop.Launcher</exec.mainClass>
+  </properties>
+
   <dependencies>
     <!-- Internal Modules -->
     <dependency>

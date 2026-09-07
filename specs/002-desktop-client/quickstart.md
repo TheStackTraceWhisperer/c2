@@ -43,7 +43,9 @@ In a dedicated terminal:
 ### Step 2: Launch Desktop Client Application
 In another terminal:
 ```bash
-./mvnw exec:java -pl client-desktop -Dexec.mainClass="com.example.client.desktop.Launcher"
+./scripts/launch-client.sh
+# Or alternatively:
+# ./mvnw exec:exec -pl client-desktop
 ```
 *Expected Outcome*: A desktop window opens (`1280x720`) with dark theme background, displaying the `Login` panel and `Debug Log` console.
 

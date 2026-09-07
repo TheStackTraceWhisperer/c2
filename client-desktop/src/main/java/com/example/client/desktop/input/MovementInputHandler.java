@@ -52,6 +52,19 @@ public class MovementInputHandler {
         this.initialized = true;
     }
 
+    public void reset() {
+        this.simX = 0.0f;
+        this.simY = 0.0f;
+        this.simZ = 0.0f;
+        this.errorOffsetX = 0.0f;
+        this.errorOffsetY = 0.0f;
+        this.errorOffsetZ = 0.0f;
+        this.initialized = false;
+        this.wasMoving = false;
+        this.clientTickCounter = 0L;
+        this.lastPacketTimeMs = -1000L;
+    }
+
     /**
      * Reconciles client position with authoritative server response.
      * Absorbs deviation into visual error offset so visible movement remains completely smooth.

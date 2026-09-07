@@ -143,4 +143,50 @@ class ClientStateTest {
         assertTrue(clientState.getRemoteEntities().isEmpty());
         assertTrue(clientState.getCharacterList().isEmpty());
     }
+
+    @Test
+    @DisplayName("clearRemoteEntities purges tracked players while preserving player position and account session")
+    void testClearRemoteEntities() {
+        clientState.setAccountId(100L);
+        clientState.setSelectedCharacterId(1001L);
+        clientState.updatePosition(50.0f, 0.0f, 50.0f, 10L);
+        clientState.addOrUpdateRemoteEntity(new EntitySpawnRecord(
+                2001L, "OtherPlayer", (short) 1, (short) 0, 10,
+                55.0f, 0.0f, 55.0f, 0, 0, 0, 0, 0
+        ));
+        assertEquals(1, clientState.getRemoteEntities().size());
+
+        clientState.clearRemoteEntities();
+
+        assertTrue(clientState.getRemoteEntities().isEmpty());
+        assertEquals(1001L, clientState.getSelectedCharacterId());
+        assertEquals(50.0f, clientState.getX());
+    }
+
+    @Test
+    @DisplayName("resetZoneSession purges zone coordinates and remote entities but preserves account and characters")
+    void testResetZoneSession() {
+        clientState.setAccountId(100L);
+        clientState.setAuthToken("valid-token");
+        clientState.setSelectedCharacterId(1001L);
+        clientState.setCurrentZoneId(230);
+        clientState.updatePosition(66.0f, -1.0f, -40.0f, 180.0f, 0.0f, 10L);
+        clientState.addOrUpdateRemoteEntity(new EntitySpawnRecord(
+                2001L, "ZoneNeighbor", (short) 2, (short) 0, 20,
+                68.0f, -1.0f, -40.0f, 0, 0, 0, 0, 0
+        ));
+
+        clientState.resetZoneSession();
+
+        assertEquals(0, clientState.getCurrentZoneId());
+        assertEquals(0.0f, clientState.getX());
+        assertEquals(0.0f, clientState.getY());
+        assertEquals(0.0f, clientState.getZ());
+        assertEquals(0.0f, clientState.getYaw());
+        assertEquals(0L, clientState.getLastServerTick());
+        assertTrue(clientState.getRemoteEntities().isEmpty());
+        // Preserves session
+        assertEquals(100L, clientState.getAccountId());
+        assertEquals("valid-token", clientState.getAuthToken());
+    }
 }

@@ -21,6 +21,7 @@ public class JoinWorldResponseHandler implements PacketHandler<JoinWorldResponse
     log.info("[CLIENT-HANDLER] JoinWorldResponse received: success={}, initialZoneId={}",
       packet.success(), packet.initialZoneId());
     if (packet.success()) {
+      clientState.clearRemoteEntities();
       clientState.setCurrentZoneId(packet.initialZoneId());
       clientState.setConnectionState(ClientConnectionState.IN_ZONE);
       clientState.notifyListeners();

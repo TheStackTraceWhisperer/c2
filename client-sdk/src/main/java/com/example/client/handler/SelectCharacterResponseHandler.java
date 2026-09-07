@@ -22,6 +22,7 @@ public class SelectCharacterResponseHandler implements PacketHandler<SelectChara
       packet.success(), packet.characterId());
 
     if (packet.success()) {
+      clientState.resetZoneSession();
       clientState.setSelectedCharacterId(packet.characterId());
       clientState.setConnectionState(ClientConnectionState.IN_WORLD);
       clientState.notifyListeners();

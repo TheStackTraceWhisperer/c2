@@ -122,6 +122,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
 
     public void onCharacterSelectResponse(SelectCharacterResponse resp) {
         if (resp.success()) {
+            clientState.resetZoneSession();
             clientState.setSelectedCharacterId(resp.characterId());
             clientState.setLastErrorMessage("");
             clientState.setConnectionState(ClientConnectionState.IN_WORLD);
@@ -134,6 +135,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
 
     public void onJoinWorldResponse(JoinWorldResponse resp) {
         if (resp.success()) {
+            clientState.clearRemoteEntities();
             clientState.setCurrentZoneId(resp.initialZoneId());
             clientState.setLastErrorMessage("");
             clientState.setConnectionState(ClientConnectionState.IN_ZONE);

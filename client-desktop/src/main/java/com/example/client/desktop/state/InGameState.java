@@ -59,6 +59,7 @@ public class InGameState implements ApplicationState {
 
     @Override
     public void onEnter() {
+        clientState.clearRemoteEntities();
         networkAdapter.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
         movementHandler.setPosition(clientState.getX(), clientState.getY(), clientState.getZ());
@@ -155,6 +156,8 @@ public class InGameState implements ApplicationState {
     public void onExit() {
         networkAdapter.setPongListener(null);
         keepAlive.stop();
+        movementHandler.reset();
+        clientState.resetZoneSession();
     }
 
     @Override
@@ -189,6 +192,8 @@ public class InGameState implements ApplicationState {
 
     private void doLogout() {
         keepAlive.stop();
+        movementHandler.reset();
+        clientState.reset();
         debugLog.log("Signing out...");
         networkAdapter.sendLogout();
         stateService.changeState(unauthProvider::get);
@@ -196,6 +201,8 @@ public class InGameState implements ApplicationState {
 
     private void doCharacterSelect() {
         keepAlive.stop();
+        movementHandler.reset();
+        clientState.resetZoneSession();
         clientState.setSelectedCharacterId(null);
         clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
         debugLog.log("Returning to Character Selection...");

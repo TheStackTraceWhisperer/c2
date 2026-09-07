@@ -138,6 +138,23 @@ public class ClientState {
     }
   }
 
+  public void clearRemoteEntities() {
+    this.remoteEntities.clear();
+    notifyListeners();
+  }
+
+  public void resetZoneSession() {
+    this.currentZoneId = 0;
+    this.x = 0.0f;
+    this.y = 0.0f;
+    this.z = 0.0f;
+    this.yaw = 0.0f;
+    this.pitch = 0.0f;
+    this.lastServerTick = 0L;
+    this.remoteEntities.clear();
+    notifyListeners();
+  }
+
   public void reset() {
     this.connectionState = ClientConnectionState.DISCONNECTED;
     this.accountId = 0L;

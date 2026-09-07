@@ -55,6 +55,7 @@ public class CharacterSelectedState implements ApplicationState {
         panel.clearIntents();
 
         if (deselect || clientState.getSelectedCharacterId() == null) {
+            clientState.resetZoneSession();
             clientState.setSelectedCharacterId(null);
             clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
             AuthenticatedState next = authProvider.get();

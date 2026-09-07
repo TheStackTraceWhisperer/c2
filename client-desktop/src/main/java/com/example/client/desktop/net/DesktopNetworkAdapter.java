@@ -32,6 +32,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
     private final ClientState clientState;
     private final DesktopClientProperties properties;
     private final ClientConfiguration clientConfiguration;
+    private final com.example.client.desktop.engine.services.state.ApplicationStateService stateService;
 
     @PostConstruct
     public void init() {
@@ -62,6 +63,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
                 case GatewayErrorResponse err -> clientState.onErrorResponse(err);
                 default -> log.warn("Unhandled wire packet: {}", packet.getClass().getSimpleName());
             }
+            stateService.handlePacket(packet);
         });
     }
 

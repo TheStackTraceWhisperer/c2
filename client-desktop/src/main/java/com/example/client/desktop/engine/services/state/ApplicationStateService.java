@@ -95,4 +95,10 @@ public class ApplicationStateService implements IService {
         stack.push(next);
         next.onEnter();
     }
+
+    public void handlePacket(Object packet) {
+        if (!stack.isEmpty()) {
+            stack.peek().onHandlePacket(packet);
+        }
+    }
 }

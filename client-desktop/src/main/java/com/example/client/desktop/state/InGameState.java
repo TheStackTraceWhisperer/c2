@@ -24,6 +24,7 @@ public class InGameState implements ApplicationState {
     private final ClientState clientState;
     private final ApplicationStateService stateService;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
+    private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
     private long accountId;
@@ -31,7 +32,6 @@ public class InGameState implements ApplicationState {
     private String characterName;
     private int currentZoneId;
     private long keepaliveIntervalMs;
-    private boolean sessionClosed;
 
     public void init(long accountId, long characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
         this.accountId = accountId;
@@ -39,7 +39,6 @@ public class InGameState implements ApplicationState {
         this.characterName = characterName;
         this.currentZoneId = zoneId;
         this.keepaliveIntervalMs = keepaliveIntervalMs;
-        this.sessionClosed = false;
 
         panel.setContext(characterName, Long.toString(characterId));
         debugLog.log("Entered zone " + zoneId + " as " + characterName);
@@ -47,6 +46,7 @@ public class InGameState implements ApplicationState {
 
     @Override
     public void onEnter() {
+        clientState.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
     }
 
@@ -60,6 +60,7 @@ public class InGameState implements ApplicationState {
         debugLog.render();
 
         if (panel.isPingRequested()) {
+            debugLog.log("PING sent");
             keepAlive.sendPing();
         }
         if (panel.isCharacterSelectRequested()) {
@@ -70,40 +71,43 @@ public class InGameState implements ApplicationState {
         }
         panel.clearIntents();
 
-        if (clientState.getPhase() == ClientState.AppPhase.DISCONNECTED && sessionClosed) {
+        if (clientState.getPhase() == ClientState.AppPhase.DISCONNECTED) {
             stateService.changeState(unauthProvider::get);
         }
     }
 
     @Override
     public void onExit() {
+        clientState.setPongListener(null);
         keepAlive.stop();
-        closeSession();
     }
 
     @Override
     public void onHandlePacket(Object packet) {
         if (packet instanceof PongMessage pong) {
-            keepAlive.handlePong(pong);
+            handlePongPacket(pong);
         }
     }
 
+    private void handlePongPacket(PongMessage pong) {
+        keepAlive.handlePong(pong);
+        debugLog.log(String.format("PONG received (RTT: %dms)", keepAlive.getLastRttMs()));
+    }
+
     private void doLogout() {
-        closeSession();
+        keepAlive.stop();
+        debugLog.log("Signing out...");
+        clientState.sendLogout();
         stateService.changeState(unauthProvider::get);
     }
 
     private void doCharacterSelect() {
-        closeSession();
-        CharacterSelectedState next = selectedProvider.get();
-        next.init(accountId, characterId, characterName, currentZoneId);
-        stateService.changeState(() -> next);
-    }
-
-    private void closeSession() {
-        if (sessionClosed) return;
-        sessionClosed = true;
         keepAlive.stop();
-        clientState.sendLogout();
+        clientState.setSelectedCharacterId(null);
+        clientState.setPhase(ClientState.AppPhase.LOBBY_CHAR_SELECT);
+        debugLog.log("Returning to Character Selection...");
+        AuthenticatedState next = authProvider.get();
+        next.init(accountId);
+        stateService.changeState(() -> next);
     }
 }

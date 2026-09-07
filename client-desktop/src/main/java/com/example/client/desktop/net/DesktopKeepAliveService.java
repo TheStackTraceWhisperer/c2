@@ -87,11 +87,14 @@ public class DesktopKeepAliveService {
     }
 
     public void handlePong(PongMessage resp) {
-        long rtt = Math.max(0, System.currentTimeMillis() - resp.timestamp());
+        long now = System.currentTimeMillis();
+        long rtt = lastPingSentTimeMs > 0
+                ? Math.max(0, now - lastPingSentTimeMs)
+                : Math.max(0, now - resp.timestamp());
         status = "ok";
         lastRttMs = rtt;
         lastOkAt = Instant.now();
-        log.debug("PONG session={} rtt={}ms", sessionId, rtt);
+        log.info("PONG session={} rtt={}ms", sessionId, rtt);
     }
 
     public boolean isActive() {

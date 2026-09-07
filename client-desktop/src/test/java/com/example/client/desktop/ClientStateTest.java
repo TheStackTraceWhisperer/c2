@@ -110,9 +110,13 @@ class ClientStateTest {
     @Test
     void testPongAndLatencyCalculation() {
         long sendTime = System.currentTimeMillis() - 45;
+        AtomicBoolean listenerCalled = new AtomicBoolean(false);
+        clientState.setPongListener(p -> listenerCalled.set(true));
+
         clientState.onPongResponse(new PongMessage(sendTime, "ping-test"));
 
         assertTrue(clientState.getCurrentLatencyMs() >= 40);
+        assertTrue(listenerCalled.get());
     }
 
     @Test

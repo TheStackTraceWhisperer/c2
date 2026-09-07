@@ -32,7 +32,8 @@ public class InGamePanel {
         ImGui.setNextWindowSize(500, 200, ImGuiCond.Once);
         ImGui.begin("In Game");
         ImGui.text(status);
-        ImGui.text("KeepAlive: " + keepAliveStatus + (lastRttMs >= 0 ? "  RTT=" + lastRttMs + "ms" : ""));
+        String rttDisplay = lastRttMs >= 0 ? "  RTT=" + lastRttMs + "ms" : "  (pinging...)";
+        ImGui.text("KeepAlive: " + keepAliveStatus + rttDisplay);
         ImGui.separator();
         if (ImGui.button("Ping Now")) pingRequested = true;
         ImGui.sameLine();

@@ -42,6 +42,7 @@ public class CharacterPanel {
     @Getter private boolean createSubmitted;
     @Getter private boolean refreshRequested;
     @Getter private boolean signOutRequested;
+    @Getter private boolean deselectRequested;
     @Getter private Long selectCharacterId;
     @Getter private Long deleteCharacterId;
     @Getter private boolean playRequested;
@@ -97,6 +98,8 @@ public class CharacterPanel {
         if (selectedId != null) {
             ImGui.separator();
             if (ImGui.button("Play")) playRequested = true;
+            ImGui.sameLine();
+            if (ImGui.button("Deselect")) deselectRequested = true;
             ImGui.sameLine();
             ImGui.text("Ready (ID=" + selectedId + ")");
         }
@@ -171,6 +174,7 @@ public class CharacterPanel {
         createSubmitted = false;
         refreshRequested = false;
         signOutRequested = false;
+        deselectRequested = false;
         selectCharacterId = null;
         deleteCharacterId = null;
         playRequested = false;

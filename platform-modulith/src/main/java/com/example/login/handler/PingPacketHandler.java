@@ -21,7 +21,7 @@ public class PingPacketHandler implements PacketHandler<PingMessage> {
 
     ctx.executor().schedule(() -> {
       log.info("[LOGIN-SERVER] Replying PONG to Session #{}", sessionId);
-      ctx.writeAndFlush(new PongMessage(System.currentTimeMillis(), "PONG"));
-    }, 500, TimeUnit.MILLISECONDS);
+      ctx.writeAndFlush(new PongMessage(packet.timestamp(), "PONG"));
+    }, 100, TimeUnit.MILLISECONDS);
   }
 }

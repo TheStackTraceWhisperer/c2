@@ -43,6 +43,9 @@ public class ClientState {
     @Setter
     private DesktopNetworkAdapter networkAdapter;
 
+    @Setter
+    private volatile Consumer<PongMessage> pongListener;
+
     public void onStateChange(Consumer<ClientState> listener) {
         stateListeners.add(listener);
     }
@@ -55,6 +58,11 @@ public class ClientState {
 
     public void setPhase(AppPhase phase) {
         this.phase = phase;
+        notifyListeners();
+    }
+
+    public void setSelectedCharacterId(Long characterId) {
+        this.selectedCharacterId = characterId;
         notifyListeners();
     }
 
@@ -192,6 +200,9 @@ public class ClientState {
     public void onPongResponse(PongMessage resp) {
         this.currentLatencyMs = Math.max(0, System.currentTimeMillis() - resp.timestamp());
         log.debug("ClientState -> Pong received, latency={}ms", currentLatencyMs);
+        if (pongListener != null) {
+            pongListener.accept(resp);
+        }
         notifyListeners();
     }
 

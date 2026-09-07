@@ -19,6 +19,7 @@ public class CharacterSelectedState implements ApplicationState {
     private final ApplicationStateService stateService;
     private final ClientState clientState;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
+    private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<InGameState> inGameProvider;
 
     private long accountId;
@@ -47,8 +48,30 @@ public class CharacterSelectedState implements ApplicationState {
         panel.render(clientState);
         debugLog.render();
 
+        boolean deselect = panel.isDeselectRequested();
         processIntents();
         panel.clearIntents();
+
+        if (deselect || clientState.getSelectedCharacterId() == null) {
+            clientState.setSelectedCharacterId(null);
+            AuthenticatedState next = authProvider.get();
+            next.init(accountId);
+            stateService.changeState(() -> next);
+            return;
+        }
+
+        Long selectedId = clientState.getSelectedCharacterId();
+        if (selectedId != null && selectedId != this.characterId) {
+            var selectedChar = clientState.getCharacterList().stream()
+                    .filter(c -> c.characterId() == selectedId)
+                    .findFirst()
+                    .orElse(null);
+            if (selectedChar != null) {
+                this.characterId = selectedChar.characterId();
+                this.characterName = selectedChar.name();
+                this.currentZoneId = selectedChar.zoneId();
+            }
+        }
 
         // Transition to InGameState when bound to world
         if (clientState.getPhase() == ClientState.AppPhase.IN_WORLD) {

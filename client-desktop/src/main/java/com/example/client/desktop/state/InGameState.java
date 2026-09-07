@@ -87,6 +87,17 @@ public class InGameState implements ApplicationState {
         camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
         camera.update(handle, dt);
 
+        // Radar zoom via PageUp / PageDown keys
+        if (handle != 0L) {
+            float zoomRate = 50.0f; // meters per second
+            if (org.lwjgl.glfw.GLFW.glfwGetKey(handle, org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+                radarPanel.getConfig().zoomSmooth(-zoomRate * dt);
+            }
+            if (org.lwjgl.glfw.GLFW.glfwGetKey(handle, org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN) == org.lwjgl.glfw.GLFW.GLFW_PRESS) {
+                radarPanel.getConfig().zoomSmooth(zoomRate * dt);
+            }
+        }
+
         var moveResult = movementHandler.pollAndCompute(
                 handle,
                 camera,

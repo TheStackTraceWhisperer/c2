@@ -74,4 +74,40 @@ class WorldRadarPanelTest {
         config.zoomOut();
         assertEquals(200.0f, config.getRadarRadiusMeters()); // Clamped to max 200m
     }
+
+    @Test
+    @DisplayName("Smooth zoom adjusts continuous radius and clamps within [25m, 200m]")
+    void testSmoothZoom() {
+        RadarViewportConfig config = new RadarViewportConfig();
+        assertEquals(50.0f, config.getRadarRadiusMeters());
+
+        config.zoomSmooth(-15.0f);
+        assertEquals(35.0f, config.getRadarRadiusMeters(), 0.001f);
+
+        config.zoomSmooth(-50.0f);
+        assertEquals(RadarViewportConfig.MIN_ZOOM_RADIUS, config.getRadarRadiusMeters(), 0.001f);
+
+        config.zoomSmooth(300.0f);
+        assertEquals(RadarViewportConfig.MAX_ZOOM_RADIUS, config.getRadarRadiusMeters(), 0.001f);
+    }
+
+    @Test
+    @DisplayName("Fixed world grid lines shift across screen as player translates")
+    void testFixedWorldGridProjection() {
+        float centerX = 200.0f;
+        float centerY = 200.0f;
+        float pixelsPerMeter = 2.0f;
+
+        // When player is at (0, 0), world line X=10m projects to screen X = 200 + 20 = 220px
+        float[] atOrigin = WorldRadarPanel.worldToScreen(10.0f, 0.0f, 0.0f, 0.0f, centerX, centerY, pixelsPerMeter);
+        assertEquals(220.0f, atOrigin[0], 0.001f);
+
+        // When player moves East to (10, 0), world line X=10m projects directly under player at screen center (200px)
+        float[] playerAt10 = WorldRadarPanel.worldToScreen(10.0f, 0.0f, 10.0f, 0.0f, centerX, centerY, pixelsPerMeter);
+        assertEquals(200.0f, playerAt10[0], 0.001f);
+
+        // When player moves further East to (20, 0), world line X=10m projects to the left at screen X = 200 - 20 = 180px
+        float[] playerAt20 = WorldRadarPanel.worldToScreen(10.0f, 0.0f, 20.0f, 0.0f, centerX, centerY, pixelsPerMeter);
+        assertEquals(180.0f, playerAt20[0], 0.001f);
+    }
 }

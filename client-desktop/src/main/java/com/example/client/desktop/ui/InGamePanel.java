@@ -63,7 +63,7 @@ public class InGamePanel {
         ImGui.bulletText("Left / Right Arrow (or Q / E): Orbit Cam");
         ImGui.bulletText("Up / Down Arrow: Tilt Cam");
         ImGui.bulletText("Right Mouse Drag: Free-Look Orbit");
-        ImGui.bulletText("PageUp / PageDown: Zoom In / Out");
+        ImGui.bulletText("PageUp / PageDown (or Mouse Scroll): Zoom In / Out");
         ImGui.bulletText("Home: Reset Camera to North");
 
         ImGui.separator();

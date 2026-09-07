@@ -48,8 +48,17 @@ public class WorldRadarPanel {
         ImGui.text(String.format("Zone: %s (ID: %d)  |  World: %d  |  Nearby Players: %d",
                 zoneName, zoneId, worldId, nearbyCount));
 
-        ImGui.text(String.format("Position: X: %.2f  Y: %.2f  Z: %.2f  |  Yaw: %.1f°  |  Cam: %.1f°",
-                clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(), camera.getYaw()));
+        // Calculate 50m region cell bounds in world coordinates
+        int regionX0 = (int) (Math.floor(clientState.getX() / 50.0) * 50);
+        int regionX1 = regionX0 + 50;
+        int regionZ0 = (int) (Math.floor(clientState.getZ() / 50.0) * 50);
+        int regionZ1 = regionZ0 + 50;
+
+        ImGui.text(String.format("Pos: X: %.2f  Y: %.2f  Z: %.2f  |  Region: [X: %d..%d, Z: %d..%d]",
+                clientState.getX(), clientState.getY(), clientState.getZ(), regionX0, regionX1, regionZ0, regionZ1));
+
+        ImGui.text(String.format("Facing: %.1f°  |  Cam: %.1f°  |  Radius: %.0fm (PageUp/Down to zoom)",
+                clientState.getYaw(), camera.getYaw(), config.getRadarRadiusMeters()));
 
         ImGui.separator();
 
@@ -89,6 +98,12 @@ public class WorldRadarPanel {
 
         ImGui.separator();
 
+        // Mouse wheel scroll zoom when hovering radar window
+        float mouseWheel = ImGui.getIO().getMouseWheel();
+        if (mouseWheel != 0.0f && ImGui.isWindowHovered()) {
+            config.zoomSmooth(-mouseWheel * 10.0f);
+        }
+
         // 3. Radar Viewport Canvas via ImDrawList
         ImDrawList drawList = ImGui.getWindowDrawList();
         float canvasX0 = ImGui.getCursorScreenPosX();
@@ -114,34 +129,108 @@ public class WorldRadarPanel {
         drawList.addCircle(centerX, centerY, radarRadiusPixels, colBorder, 64, 2.0f);
 
         float pixelsPerMeter = radarRadiusPixels / config.getRadarRadiusMeters();
+        float radarRadiusMeters = config.getRadarRadiusMeters();
+        float localX = clientState.getX();
+        float localZ = clientState.getZ();
 
-        // Grid lines (10m spacing)
+        // Fixed World-Space Grid lines (fixed in world coordinates, scrolling as character moves)
         if (config.isShowGrid()) {
-            int colGrid = ImColor.rgba(42, 51, 69, 96);
-            float stepPixels = 10.0f * pixelsPerMeter;
-            if (stepPixels >= 8.0f) {
-                for (float off = stepPixels; off < radarRadiusPixels; off += stepPixels) {
-                    float chord = (float) Math.sqrt(radarRadiusPixels * radarRadiusPixels - off * off);
-                    // Vertical lines
-                    drawList.addLine(centerX + off, centerY - chord, centerX + off, centerY + chord, colGrid, 1.0f);
-                    drawList.addLine(centerX - off, centerY - chord, centerX - off, centerY + chord, colGrid, 1.0f);
-                    // Horizontal lines
-                    drawList.addLine(centerX - chord, centerY + off, centerX + chord, centerY + off, colGrid, 1.0f);
-                    drawList.addLine(centerX - chord, centerY - off, centerX + chord, centerY - off, colGrid, 1.0f);
+            float minorStep = (radarRadiusMeters <= 60.0f) ? 10.0f : (radarRadiusMeters <= 120.0f ? 20.0f : 50.0f);
+            float majorStep = (radarRadiusMeters <= 60.0f) ? 50.0f : 100.0f;
+
+            int colGridMinor = ImColor.rgba(45, 55, 75, 80);
+            int colGridMajor = ImColor.rgba(75, 95, 125, 140);
+            int colOriginAxis = ImColor.rgba(234, 179, 8, 180); // Gold origin axes
+            int colCoordText = ImColor.rgba(148, 163, 184, 180);
+
+            float minX = localX - radarRadiusMeters;
+            float maxX = localX + radarRadiusMeters;
+            float minZ = localZ - radarRadiusMeters;
+            float maxZ = localZ + radarRadiusMeters;
+
+            // --- Vertical Grid Lines (Constant World X) ---
+            float startX = (float) Math.floor(minX / minorStep) * minorStep;
+            float endX = (float) Math.ceil(maxX / minorStep) * minorStep;
+
+            for (float wx = startX; wx <= endX; wx += minorStep) {
+                float dx = (wx - localX) * pixelsPerMeter;
+                if (Math.abs(dx) >= radarRadiusPixels) {
+                    continue;
                 }
+
+                float chord = (float) Math.sqrt(radarRadiusPixels * radarRadiusPixels - dx * dx);
+                float lineX = centerX + dx;
+                float y1 = centerY - chord;
+                float y2 = centerY + chord;
+
+                boolean isOrigin = Math.abs(wx) < 0.01f;
+                boolean isMajor = Math.abs(Math.round(wx / minorStep) % Math.round(majorStep / minorStep)) == 0;
+
+                int col = isOrigin ? colOriginAxis : (isMajor ? colGridMajor : colGridMinor);
+                float thickness = isOrigin ? 1.8f : (isMajor ? 1.4f : 1.0f);
+
+                drawList.addLine(lineX, y1, lineX, y2, col, thickness);
+
+                if (isMajor && chord > 24.0f) {
+                    String lbl = ((int) wx) + "m";
+                    drawList.addText(lineX + 3.0f, centerY - chord + 4.0f, colCoordText, lbl);
+                }
+            }
+
+            // --- Horizontal Grid Lines (Constant World Z, +Z is North/Up) ---
+            float startZ = (float) Math.floor(minZ / minorStep) * minorStep;
+            float endZ = (float) Math.ceil(maxZ / minorStep) * minorStep;
+
+            for (float wz = startZ; wz <= endZ; wz += minorStep) {
+                float dz = (wz - localZ) * pixelsPerMeter;
+                float dy = -dz; // Screen Y is inverted (+Z is up)
+                if (Math.abs(dy) >= radarRadiusPixels) {
+                    continue;
+                }
+
+                float chord = (float) Math.sqrt(radarRadiusPixels * radarRadiusPixels - dy * dy);
+                float lineY = centerY + dy;
+                float x1 = centerX - chord;
+                float x2 = centerX + chord;
+
+                boolean isOrigin = Math.abs(wz) < 0.01f;
+                boolean isMajor = Math.abs(Math.round(wz / minorStep) % Math.round(majorStep / minorStep)) == 0;
+
+                int col = isOrigin ? colOriginAxis : (isMajor ? colGridMajor : colGridMinor);
+                float thickness = isOrigin ? 1.8f : (isMajor ? 1.4f : 1.0f);
+
+                drawList.addLine(x1, lineY, x2, lineY, col, thickness);
+
+                if (isMajor && chord > 24.0f) {
+                    String lbl = ((int) wz) + "m";
+                    drawList.addText(centerX - chord + 4.0f, lineY - 14.0f, colCoordText, lbl);
+                }
+            }
+
+            // --- Origin Marker (0, 0) if visible within radar viewport ---
+            float originDx = (0.0f - localX) * pixelsPerMeter;
+            float originDy = -(0.0f - localZ) * pixelsPerMeter;
+            if (originDx * originDx + originDy * originDy < radarRadiusPixels * radarRadiusPixels) {
+                float ox = centerX + originDx;
+                float oy = centerY + originDy;
+                drawList.addCircleFilled(ox, oy, 4.0f, colOriginAxis, 12);
+                drawList.addCircle(ox, oy, 7.0f, colOriginAxis, 12, 1.2f);
+                drawList.addText(ox + 9.0f, oy - 7.0f, colOriginAxis, "(0,0)");
             }
         }
 
-        // Cardinal Crosshairs
-        int colAxis = ImColor.rgba(85, 101, 128, 128);
-        drawList.addLine(centerX - radarRadiusPixels, centerY, centerX + radarRadiusPixels, centerY, colAxis, 1.0f);
-        drawList.addLine(centerX, centerY - radarRadiusPixels, centerX, centerY + radarRadiusPixels, colAxis, 1.0f);
+        // Rim Cardinal Tick Marks & Labels
+        int colRimTick = ImColor.rgba(148, 163, 184, 160);
+        drawList.addLine(centerX, centerY - radarRadiusPixels, centerX, centerY - radarRadiusPixels + 8.0f, colRimTick, 1.5f);
+        drawList.addLine(centerX, centerY + radarRadiusPixels - 8.0f, centerX, centerY + radarRadiusPixels, colRimTick, 1.5f);
+        drawList.addLine(centerX + radarRadiusPixels - 8.0f, centerY, centerX + radarRadiusPixels, centerY, colRimTick, 1.5f);
+        drawList.addLine(centerX - radarRadiusPixels, centerY, centerX - radarRadiusPixels + 8.0f, centerY, colRimTick, 1.5f);
 
         int colCardinalText = ImColor.rgba(148, 163, 184, 220);
-        drawList.addText(centerX - 4.0f, centerY - radarRadiusPixels + 4.0f, colCardinalText, "N");
-        drawList.addText(centerX - 4.0f, centerY + radarRadiusPixels - 16.0f, colCardinalText, "S");
-        drawList.addText(centerX + radarRadiusPixels - 14.0f, centerY - 7.0f, colCardinalText, "E");
-        drawList.addText(centerX - radarRadiusPixels + 5.0f, centerY - 7.0f, colCardinalText, "W");
+        drawList.addText(centerX - 4.0f, centerY - radarRadiusPixels + 10.0f, colCardinalText, "N");
+        drawList.addText(centerX - 4.0f, centerY + radarRadiusPixels - 22.0f, colCardinalText, "S");
+        drawList.addText(centerX + radarRadiusPixels - 18.0f, centerY - 7.0f, colCardinalText, "E");
+        drawList.addText(centerX - radarRadiusPixels + 10.0f, centerY - 7.0f, colCardinalText, "W");
 
         // Range Rings (25m, 50m, 100m, 200m)
         int colRing = ImColor.rgba(56, 68, 94, 112);
@@ -200,8 +289,6 @@ public class WorldRadarPanel {
         drawList.addLine(centerX, centerY, tipX, tipY, colLocalYaw, 2.5f);
 
         // Remote Player Characters within AoI
-        float localX = clientState.getX();
-        float localZ = clientState.getZ();
         int colRemote = ImColor.rgba(56, 189, 248, 255);
         int colRemoteYaw = ImColor.rgba(125, 211, 252, 255);
         int colRemoteText = ImColor.rgba(248, 250, 252, 230);

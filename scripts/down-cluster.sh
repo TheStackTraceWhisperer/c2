@@ -8,5 +8,5 @@ if command -v k3d &>/dev/null && k3d cluster list | grep -q "${CLUSTER_NAME}"; t
   k3d cluster delete "${CLUSTER_NAME}"
 fi
 
-docker image rm -f mmo-platform:latest mmo-tests:latest 2>/dev/null || true
+docker image rm -f platform-modulith:latest mmo-platform:latest mmo-tests:latest 2>/dev/null || true
 echo "Cleanup complete."

@@ -39,8 +39,7 @@ public class CharacterSelectedState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
-        debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
+        debugLog.log("Character selected: " + characterName + " (ID=" + characterId + ", zone=" + currentZoneId + ")");
     }
 
     @Override
@@ -57,6 +56,7 @@ public class CharacterSelectedState implements ApplicationState {
 
         if (deselect || clientState.getSelectedCharacterId() == null) {
             clientState.setSelectedCharacterId(null);
+            clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
             AuthenticatedState next = authProvider.get();
             next.init(accountId);
             stateService.changeState(() -> next);
@@ -76,9 +76,8 @@ public class CharacterSelectedState implements ApplicationState {
             }
         }
 
-        // Transition to InGameState when bound to world/zone
-        if (clientState.getConnectionState() == ClientConnectionState.IN_ZONE
-                || clientState.getConnectionState() == ClientConnectionState.IN_WORLD) {
+        // Transition to InGameState when bound to zone via JoinWorldResponse
+        if (clientState.getConnectionState() == ClientConnectionState.IN_ZONE) {
             int finalZone = clientState.getCurrentZoneId() > 0 ? clientState.getCurrentZoneId() : currentZoneId;
             InGameState next = inGameProvider.get();
             next.init(accountId, characterId, characterName, finalZone, 5000L);
@@ -120,6 +119,7 @@ public class CharacterSelectedState implements ApplicationState {
             panel.hideCreateForm();
         }
         if (panel.isPlayRequested()) {
+            debugLog.log("Entering world as " + characterName + " (Zone #" + currentZoneId + ")...");
             networkAdapter.sendPlay(clientState.getAuthToken());
         }
     }

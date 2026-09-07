@@ -21,7 +21,9 @@ public class CharacterListResponseHandler implements PacketHandler<CharacterList
     int count = (packet.characters() != null) ? packet.characters().size() : 0;
     log.info("[CLIENT-HANDLER] Character list received: {} characters", count);
 
-    clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+    if (clientState.getSelectedCharacterId() == null) {
+      clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+    }
     clientState.updateCharacters(packet.characters());
   }
 }

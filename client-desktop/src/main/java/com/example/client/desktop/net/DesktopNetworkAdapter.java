@@ -102,7 +102,9 @@ public class DesktopNetworkAdapter implements ClientCallback {
     public void onCharacterListResponse(CharacterListResponse resp) {
         clientState.updateCharacters(resp.characters());
         clientState.setLastErrorMessage("");
-        clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+        if (clientState.getSelectedCharacterId() == null) {
+            clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+        }
         log.info("DesktopNetworkAdapter -> Received {} characters", clientState.getCharacters().size());
     }
 
@@ -138,7 +140,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
             log.info("DesktopNetworkAdapter -> IN_ZONE zoneId={}", resp.initialZoneId());
         } else {
             clientState.setLastErrorMessage(resp.errorMessage());
-            clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
+            clientState.setConnectionState(ClientConnectionState.IN_WORLD);
             log.error("DesktopNetworkAdapter -> Join world failed: {}", resp.errorMessage());
         }
     }
@@ -229,7 +231,6 @@ public class DesktopNetworkAdapter implements ClientCallback {
     }
 
     public void sendPlay(String authToken) {
-        clientState.setConnectionState(ClientConnectionState.IN_WORLD);
         sendPacket(new JoinWorldRequest(authToken));
     }
 

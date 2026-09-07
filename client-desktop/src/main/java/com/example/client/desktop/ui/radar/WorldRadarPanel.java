@@ -1,5 +1,6 @@
 package com.example.client.desktop.ui.radar;
 
+import com.example.client.desktop.camera.Camera;
 import com.example.client.desktop.util.ZoneNameRegistry;
 import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
@@ -18,6 +19,7 @@ public class WorldRadarPanel {
 
     @Getter private final RadarViewportConfig config;
     private final ClientState clientState;
+    private final Camera camera;
 
     private final ImBoolean showGridWrapper = new ImBoolean(true);
     private final ImBoolean showAoiWrapper = new ImBoolean(true);
@@ -46,8 +48,8 @@ public class WorldRadarPanel {
         ImGui.text(String.format("Zone: %s (ID: %d)  |  World: %d  |  Nearby Players: %d",
                 zoneName, zoneId, worldId, nearbyCount));
 
-        ImGui.text(String.format("Position: X: %.2f  Y: %.2f  Z: %.2f  |  Yaw: %.1f°",
-                clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw()));
+        ImGui.text(String.format("Position: X: %.2f  Y: %.2f  Z: %.2f  |  Yaw: %.1f°  |  Cam: %.1f°",
+                clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(), camera.getYaw()));
 
         ImGui.separator();
 
@@ -61,6 +63,11 @@ public class WorldRadarPanel {
         }
         ImGui.sameLine();
         ImGui.text(String.format("Radius: %.0fm", config.getRadarRadiusMeters()));
+
+        ImGui.sameLine();
+        if (ImGui.button("Reset Cam")) {
+            camera.reset();
+        }
 
         ImGui.sameLine();
         showGridWrapper.set(config.isShowGrid());
@@ -153,6 +160,31 @@ public class WorldRadarPanel {
             int colAoi = ImColor.rgba(0, 170, 204, 80);
             drawList.addCircle(centerX, centerY, aoiPixels, colAoi, 48, 1.5f);
         }
+
+        // Camera View Frustum Cone
+        double camRad = Math.toRadians(camera.getYaw());
+        double leftRad = Math.toRadians(camera.getYaw() - 25.0);
+        double rightRad = Math.toRadians(camera.getYaw() + 25.0);
+        float coneLength = Math.min(radarRadiusPixels * 0.45f, 60.0f);
+
+        float camTipX = centerX + (float) (coneLength * Math.sin(camRad));
+        float camTipY = centerY - (float) (coneLength * Math.cos(camRad));
+
+        float leftConeX = centerX + (float) (coneLength * Math.sin(leftRad));
+        float leftConeY = centerY - (float) (coneLength * Math.cos(leftRad));
+
+        float rightConeX = centerX + (float) (coneLength * Math.sin(rightRad));
+        float rightConeY = centerY - (float) (coneLength * Math.cos(rightRad));
+
+        int colFrustumFill = ImColor.rgba(96, 165, 250, 35);
+        int colFrustumLine = ImColor.rgba(147, 197, 253, 110);
+        int colFrustumCenter = ImColor.rgba(191, 219, 254, 160);
+
+        drawList.addTriangleFilled(centerX, centerY, leftConeX, leftConeY, rightConeX, rightConeY, colFrustumFill);
+        drawList.addLine(centerX, centerY, leftConeX, leftConeY, colFrustumLine, 1.2f);
+        drawList.addLine(centerX, centerY, rightConeX, rightConeY, colFrustumLine, 1.2f);
+        drawList.addLine(leftConeX, leftConeY, rightConeX, rightConeY, colFrustumLine, 1.0f);
+        drawList.addLine(centerX, centerY, camTipX, camTipY, colFrustumCenter, 1.5f);
 
         // Local Player (centered)
         int colLocal = ImColor.rgba(34, 197, 94, 255);

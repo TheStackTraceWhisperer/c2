@@ -1,5 +1,6 @@
 package com.example.client.desktop.state;
 
+import com.example.client.desktop.camera.Camera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
@@ -12,6 +13,7 @@ import com.example.client.desktop.ui.radar.WorldRadarPanel;
 import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
+import com.example.common.protocol.MovementFlags;
 import com.example.zone.dto.PlayerMovementResponse;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
@@ -33,6 +35,7 @@ public class InGameState implements ApplicationState {
     private final ApplicationStateService stateService;
     private final WindowService windowService;
     private final MovementInputHandler movementHandler;
+    private final Camera camera;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
@@ -58,6 +61,18 @@ public class InGameState implements ApplicationState {
     public void onEnter() {
         networkAdapter.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
+        camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
+
+        // Authoritative initial spawn sync: probe server if local position is default (0, 0, 0)
+        if (clientState.getX() == 0.0f && clientState.getY() == 0.0f && clientState.getZ() == 0.0f) {
+            networkAdapter.sendMovement(
+                    0.0f, 0.0f, 0.0f,
+                    0.0f, 0.0f, 0.0f,
+                    0.0f, 0.0f,
+                    MovementFlags.IDLE,
+                    0L
+            );
+        }
     }
 
     @Override
@@ -65,11 +80,16 @@ public class InGameState implements ApplicationState {
         GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
-        // 1. Process keyboard movement inputs
+        // 1. Process camera orientation and keyboard/mouse movement inputs
         long handle = windowService.getHandle();
         long now = System.currentTimeMillis();
+
+        camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
+        camera.update(handle, dt);
+
         var moveResult = movementHandler.pollAndCompute(
                 handle,
+                camera,
                 clientState.getX(),
                 clientState.getY(),
                 clientState.getZ(),
@@ -85,6 +105,7 @@ public class InGameState implements ApplicationState {
                     moveResult.yaw(), moveResult.pitch(),
                     clientState.getLastServerTick()
             );
+            camera.setTarget(moveResult.x(), moveResult.y(), moveResult.z());
         }
 
         if (moveResult.shouldSendPacket()) {
@@ -155,6 +176,7 @@ public class InGameState implements ApplicationState {
                     moveResp.yaw(), moveResp.pitch(),
                     moveResp.serverTick()
             );
+            camera.setTarget(moveResp.x(), moveResp.y(), moveResp.z());
             debugLog.log(String.format("Position reconciled with server (delta=%.2fm)", dist));
         }
     }

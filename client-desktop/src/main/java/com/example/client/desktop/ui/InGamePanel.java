@@ -57,12 +57,14 @@ public class InGamePanel {
         }
 
         ImGui.separator();
-        ImGui.text("Movement Controls:");
-        ImGui.bulletText("W / Up Arrow: Forward");
-        ImGui.bulletText("S / Down Arrow: Backward");
-        ImGui.bulletText("A / Left Arrow: Turn Left");
-        ImGui.bulletText("D / Right Arrow: Turn Right");
-        ImGui.bulletText("Q / E: Strafe Left / Right");
+        ImGui.text("Movement Controls (Camera-Relative):");
+        ImGui.bulletText("W / S: Move Forward / Backward");
+        ImGui.bulletText("A / D: Move Left / Right");
+        ImGui.bulletText("Left / Right Arrow (or Q / E): Orbit Cam");
+        ImGui.bulletText("Up / Down Arrow: Tilt Cam");
+        ImGui.bulletText("Right Mouse Drag: Free-Look Orbit");
+        ImGui.bulletText("PageUp / PageDown: Zoom In / Out");
+        ImGui.bulletText("Home: Reset Camera to North");
 
         ImGui.separator();
         ImGui.text("Tactical Radar:");

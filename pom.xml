@@ -19,6 +19,7 @@
     <module>common-protocol</module>
     <module>client-sdk</module>
     <module>platform-modulith</module>
+    <module>client-desktop</module>
   </modules>
 
   <properties>
@@ -34,6 +35,8 @@
     <awaitility.version>4.3.0</awaitility.version>
     <testcontainers.version>1.20.4</testcontainers.version>
     <fabric8.version>6.13.4</fabric8.version>
+    <lwjgl.version>3.4.2</lwjgl.version>
+    <imgui.version>1.86.11</imgui.version>
   </properties>
 
   <dependencyManagement>
@@ -53,6 +56,37 @@
         <groupId>com.example</groupId>
         <artifactId>platform-modulith</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>client-desktop</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- LWJGL 3 BOM -->
+      <dependency>
+        <groupId>org.lwjgl</groupId>
+        <artifactId>lwjgl-bom</artifactId>
+        <version>${lwjgl.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Dear ImGui -->
+      <dependency>
+        <groupId>io.github.spair</groupId>
+        <artifactId>imgui-java-binding</artifactId>
+        <version>${imgui.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.spair</groupId>
+        <artifactId>imgui-java-lwjgl3</artifactId>
+        <version>${imgui.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.spair</groupId>
+        <artifactId>imgui-java-natives-linux</artifactId>
+        <version>${imgui.version}</version>
       </dependency>
 
       <!-- Kubernetes Operator SDK -->

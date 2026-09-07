@@ -1,0 +1,6 @@
+client:
+  default-server-host: "127.0.0.1"
+  default-server-port: 8888
+  gateway:
+    hostname: "127.0.0.1"
+    port: 8888

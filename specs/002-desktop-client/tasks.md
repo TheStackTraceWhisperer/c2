@@ -10,10 +10,10 @@
 
 **Purpose**: Initialize the `client-desktop` module, Maven dependency management, and logging infrastructure.
 
-- [ ] T001 Configure parent `pom.xml` to declare `client-desktop` module and manage LWJGL 3.4.2 and Dear ImGui 1.86.11 dependencies in `pom.xml`
-- [ ] T002 Create `client-desktop/pom.xml` declaring dependencies on `client-sdk`, `common-protocol`, LWJGL 3.4.2 (core, glfw, opengl with platform native classifiers), Dear ImGui 1.86.11, and Micronaut in `client-desktop/pom.xml`
-- [ ] T003 [P] Create desktop client configuration properties in `client-desktop/src/main/java/com/example/client/desktop/properties/DesktopClientProperties.java`
-- [ ] T004 [P] Create desktop client logback configuration in `client-desktop/src/main/resources/logback.xml`
+- [x] T001 Configure parent `pom.xml` to declare `client-desktop` module and manage LWJGL 3.4.2 and Dear ImGui 1.86.11 dependencies in `pom.xml`
+- [x] T002 Create `client-desktop/pom.xml` declaring dependencies on `client-sdk`, `common-protocol`, LWJGL 3.4.2 (core, glfw, opengl with platform native classifiers), Dear ImGui 1.86.11, and Micronaut in `client-desktop/pom.xml`
+- [x] T003 [P] Create desktop client configuration properties in `client-desktop/src/main/java/com/example/client/desktop/properties/DesktopClientProperties.java`
+- [x] T004 [P] Create desktop client logback configuration in `client-desktop/src/main/resources/logback.xml`
 
 ---
 
@@ -21,16 +21,16 @@
 
 **Purpose**: Core engine, main-thread task scheduler, GLFW windowing, and Dear ImGui rendering loop that MUST be complete before UI states can execute.
 
-- [ ] T005 [P] Transplant task scheduling contracts in `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskHandle.java`, `client-desktop/src/main/java/com/example/client/desktop/concurrent/DefaultTaskHandle.java`, `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskStatus.java`, and `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskScheduler.java`
-- [ ] T006 Implement virtual-thread task scheduler and main-thread foreground queue dispatching in `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskSchedulerService.java`
-- [ ] T007 [P] Transplant service lifecycle contracts and application loop policies in `client-desktop/src/main/java/com/example/client/desktop/engine/IService.java`, `client-desktop/src/main/java/com/example/client/desktop/engine/ApplicationLoopPolicy.java`, and `client-desktop/src/main/java/com/example/client/desktop/engine/DefaultEngineConfiguration.java`
-- [ ] T008 [P] Transplant GLFW context management and error callbacks in `client-desktop/src/main/java/com/example/client/desktop/engine/services/glfw/GlfwContextService.java`
-- [ ] T009 [P] Transplant window service and buffer swapping in `client-desktop/src/main/java/com/example/client/desktop/engine/services/window/WindowProperties.java` and `client-desktop/src/main/java/com/example/client/desktop/engine/services/window/WindowService.java`
-- [ ] T010 [P] Transplant Dear ImGui GLFW/OpenGL render pipeline in `client-desktop/src/main/java/com/example/client/desktop/engine/services/imgui/ImGuiService.java`
-- [ ] T011 [P] Transplant delta time and FPS tracking in `client-desktop/src/main/java/com/example/client/desktop/engine/services/time/FrameTimeService.java`
-- [ ] T012 Implement core display loop with MPSC foreground queue draining in `client-desktop/src/main/java/com/example/client/desktop/engine/Engine.java`
-- [ ] T013 [P] Transplant application state machine contracts and service in `client-desktop/src/main/java/com/example/client/desktop/engine/services/state/ApplicationState.java` and `client-desktop/src/main/java/com/example/client/desktop/engine/services/state/ApplicationStateService.java`
-- [ ] T014 Implement unit tests for task scheduler virtual-thread execution and main-thread queue processing in `client-desktop/src/test/java/com/example/client/desktop/TaskSchedulerServiceTest.java`
+- [x] T005 [P] Transplant task scheduling contracts in `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskHandle.java`, `client-desktop/src/main/java/com/example/client/desktop/concurrent/DefaultTaskHandle.java`, `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskStatus.java`, and `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskScheduler.java`
+- [x] T006 Implement virtual-thread task scheduler and main-thread foreground queue dispatching in `client-desktop/src/main/java/com/example/client/desktop/concurrent/TaskSchedulerService.java`
+- [x] T007 [P] Transplant service lifecycle contracts and application loop policies in `client-desktop/src/main/java/com/example/client/desktop/engine/IService.java`, `client-desktop/src/main/java/com/example/client/desktop/engine/ApplicationLoopPolicy.java`, and `client-desktop/src/main/java/com/example/client/desktop/engine/DefaultEngineConfiguration.java`
+- [x] T008 [P] Transplant GLFW context management and error callbacks in `client-desktop/src/main/java/com/example/client/desktop/engine/services/glfw/GlfwContextService.java`
+- [x] T009 [P] Transplant window service and buffer swapping in `client-desktop/src/main/java/com/example/client/desktop/engine/services/window/WindowProperties.java` and `client-desktop/src/main/java/com/example/client/desktop/engine/services/window/WindowService.java`
+- [x] T010 [P] Transplant Dear ImGui GLFW/OpenGL render pipeline in `client-desktop/src/main/java/com/example/client/desktop/engine/services/imgui/ImGuiService.java`
+- [x] T011 [P] Transplant delta time and FPS tracking in `client-desktop/src/main/java/com/example/client/desktop/engine/services/time/FrameTimeService.java`
+- [x] T012 Implement core display loop with MPSC foreground queue draining in `client-desktop/src/main/java/com/example/client/desktop/engine/Engine.java`
+- [x] T013 [P] Transplant application state machine contracts and service in `client-desktop/src/main/java/com/example/client/desktop/engine/services/state/ApplicationState.java` and `client-desktop/src/main/java/com/example/client/desktop/engine/services/state/ApplicationStateService.java`
+- [x] T014 Implement unit tests for task scheduler virtual-thread execution and main-thread queue processing in `client-desktop/src/test/java/com/example/client/desktop/TaskSchedulerServiceTest.java`
 
 **Checkpoint**: Core graphics and concurrency foundation ready.
 
@@ -42,12 +42,12 @@
 
 **Independent Test**: Run launcher, submit credentials, verify transition from `UnauthenticatedState` to `AuthenticatedState` on success or error display on failure.
 
-- [ ] T015 [P] [US1] Implement `ClientState` observable store maintaining `AppPhase`, `accountId`, `authToken`, and `lastErrorMessage` in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
-- [ ] T016 [P] [US1] Implement `DesktopNetworkAdapter` implementing `ClientCallback` from `client-sdk` and dispatching packet events to main thread in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java`
-- [ ] T017 [P] [US1] Transplant and adapt `LoginPanel` with credentials input, button state locking, error banners, and intent polling in `client-desktop/src/main/java/com/example/client/desktop/ui/LoginPanel.java`
-- [ ] T018 [US1] Transplant and adapt `UnauthenticatedState` binding `LoginPanel` to `ClientState.sendLogin` and transitioning on auth success in `client-desktop/src/main/java/com/example/client/desktop/state/UnauthenticatedState.java`
-- [ ] T019 [US1] Create client launcher entry-point with Micronaut DI bootstrap and application loop policy in `client-desktop/src/main/java/com/example/client/desktop/Launcher.java`
-- [ ] T020 [P] [US1] Implement unit test for authentication state transitions and error handling in `client-desktop/src/test/java/com/example/client/desktop/ClientStateTest.java`
+- [x] T015 [P] [US1] Implement `ClientState` observable store maintaining `AppPhase`, `accountId`, `authToken`, and `lastErrorMessage` in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
+- [x] T016 [P] [US1] Implement `DesktopNetworkAdapter` implementing `ClientCallback` from `client-sdk` and dispatching packet events to main thread in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java`
+- [x] T017 [P] [US1] Transplant and adapt `LoginPanel` with credentials input, button state locking, error banners, and intent polling in `client-desktop/src/main/java/com/example/client/desktop/ui/LoginPanel.java`
+- [x] T018 [US1] Transplant and adapt `UnauthenticatedState` binding `LoginPanel` to `ClientState.sendLogin` and transitioning on auth success in `client-desktop/src/main/java/com/example/client/desktop/state/UnauthenticatedState.java`
+- [x] T019 [US1] Create client launcher entry-point with Micronaut DI bootstrap and application loop policy in `client-desktop/src/main/java/com/example/client/desktop/Launcher.java`
+- [x] T020 [P] [US1] Implement unit test for authentication state transitions and error handling in `client-desktop/src/test/java/com/example/client/desktop/ClientStateTest.java`
 
 **Checkpoint**: User Story 1 MVP fully functional and testable.
 
@@ -59,10 +59,10 @@
 
 **Independent Test**: Open creation form, verify Tarutaru size is locked to Small (0), Galka locked to Large (2), Hume/Elvaan/Mithra selectable (0..2), face variant toggle calculates 0..15, and valid submission creates character in database.
 
-- [ ] T021 [P] [US2] Add domain enums `RaceId` and `NationId` in `common-protocol/src/main/java/com/example/common/protocol/RaceId.java` and `common-protocol/src/main/java/com/example/common/protocol/NationId.java`
-- [ ] T022 [US2] Transplant and adapt `CharacterPanel` creation form enforcing 8 races, forced sizes, 16 face permutations, 6 jobs, and 3 nations in `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java`
-- [ ] T023 [US2] Implement `sendCharacterCreate` in `ClientState` dispatching `CreateCharacterRequest` with separate `raceId` and `gender` in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
-- [ ] T024 [P] [US2] Implement unit tests for character creation validation rules (race-locked sizes, face encoding, gender derivation) in `client-desktop/src/test/java/com/example/client/desktop/CharacterCreationValidationTest.java`
+- [x] T021 [P] [US2] Add domain enums `RaceId` and `NationId` in `common-protocol/src/main/java/com/example/common/protocol/RaceId.java` and `common-protocol/src/main/java/com/example/common/protocol/NationId.java`
+- [x] T022 [US2] Transplant and adapt `CharacterPanel` creation form enforcing 8 races, forced sizes, 16 face permutations, 6 jobs, and 3 nations in `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java`
+- [x] T023 [US2] Implement `sendCharacterCreate` in `ClientState` dispatching `CreateCharacterRequest` with separate `raceId` and `gender` in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
+- [x] T024 [P] [US2] Implement unit tests for character creation validation rules (race-locked sizes, face encoding, gender derivation) in `client-desktop/src/test/java/com/example/client/desktop/CharacterCreationValidationTest.java`
 
 **Checkpoint**: User Story 2 complete with 100% domain parity.
 
@@ -74,10 +74,10 @@
 
 **Independent Test**: Load character roster with existing characters, click select/delete, and verify "Play" dispatches world entry without sending `characterId` from client.
 
-- [ ] T025 [US3] Extend `CharacterPanel` to render character cards with name, race label, job label, level, zone ID, and select/delete/play actions in `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java`
-- [ ] T026 [P] [US3] Transplant and adapt `AuthenticatedState` handling character list retrieval, selection intents, and sign out in `client-desktop/src/main/java/com/example/client/desktop/state/AuthenticatedState.java`
-- [ ] T027 [US3] Transplant and adapt `CharacterSelectedState` handling play request dispatch and transition to in-game state in `client-desktop/src/main/java/com/example/client/desktop/state/CharacterSelectedState.java`
-- [ ] T028 [US3] Implement `sendCharacterSelect`, `sendCharacterDelete`, and `sendPlay` (dispatching `JoinWorldRequest(authToken)`) in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
+- [x] T025 [US3] Extend `CharacterPanel` to render character cards with name, race label, job label, level, zone ID, and select/delete/play actions in `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java`
+- [x] T026 [P] [US3] Transplant and adapt `AuthenticatedState` handling character list retrieval, selection intents, and sign out in `client-desktop/src/main/java/com/example/client/desktop/state/AuthenticatedState.java`
+- [x] T027 [US3] Transplant and adapt `CharacterSelectedState` handling play request dispatch and transition to in-game state in `client-desktop/src/main/java/com/example/client/desktop/state/CharacterSelectedState.java`
+- [x] T028 [US3] Implement `sendCharacterSelect`, `sendCharacterDelete`, and `sendPlay` (dispatching `JoinWorldRequest(authToken)`) in `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
 
 **Checkpoint**: User Story 3 complete.
 
@@ -89,9 +89,9 @@
 
 **Independent Test**: Enter in-game state, observe live RTT latency updating continuously, click "Ping Now", and click "Logout" to return to login.
 
-- [ ] T029 [P] [US4] Transplant and adapt `InGamePanel` displaying active character, session ID, live RTT latency, manual ping button, and logout in `client-desktop/src/main/java/com/example/client/desktop/ui/InGamePanel.java`
-- [ ] T030 [US4] Implement keepalive telemetry and periodic `PingMessage` loop in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopKeepAliveService.java`
-- [ ] T031 [US4] Transplant and adapt `InGameState` binding HUD to keepalive telemetry and handling `PongMessage` packets in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java`
+- [x] T029 [P] [US4] Transplant and adapt `InGamePanel` displaying active character, session ID, live RTT latency, manual ping button, and logout in `client-desktop/src/main/java/com/example/client/desktop/ui/InGamePanel.java`
+- [x] T030 [US4] Implement keepalive telemetry and periodic `PingMessage` loop in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopKeepAliveService.java`
+- [x] T031 [US4] Transplant and adapt `InGameState` binding HUD to keepalive telemetry and handling `PongMessage` packets in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java`
 
 **Checkpoint**: User Story 4 complete.
 
@@ -103,8 +103,8 @@
 
 **Independent Test**: Trigger client events and verify chronological log entries appear in the debug window with auto-scrolling.
 
-- [ ] T032 [P] [US5] Transplant and adapt `DebugLogPanel` with timestamped log formatting and auto-scroll in `client-desktop/src/main/java/com/example/client/desktop/ui/DebugLogPanel.java`
-- [ ] T033 [US5] Wire `DebugLogPanel` rendering across `UnauthenticatedState`, `AuthenticatedState`, `CharacterSelectedState`, and `InGameState` in `client-desktop/src/main/java/com/example/client/desktop/state/`
+- [x] T032 [P] [US5] Transplant and adapt `DebugLogPanel` with timestamped log formatting and auto-scroll in `client-desktop/src/main/java/com/example/client/desktop/ui/DebugLogPanel.java`
+- [x] T033 [US5] Wire `DebugLogPanel` rendering across `UnauthenticatedState`, `AuthenticatedState`, `CharacterSelectedState`, and `InGameState` in `client-desktop/src/main/java/com/example/client/desktop/state/`
 
 **Checkpoint**: User Story 5 complete.
 
@@ -114,9 +114,9 @@
 
 **Purpose**: Architectural fitness verification, headless test execution safety, and end-to-end quickstart validation.
 
-- [ ] T034 [P] Add ArchUnit test verifying `client-desktop` never leaks into server modules in `platform-modulith/src/test/java/com/example/architecture/ClientDesktopIsolationArchTest.java`
-- [ ] T035 Execute headless build validation and unit test suites across all modules via `./mvnw clean test`
-- [ ] T036 Run quickstart validation scenario against running modulith per `specs/002-desktop-client/quickstart.md`
+- [x] T034 [P] Add ArchUnit test verifying `client-desktop` never leaks into server modules in `platform-modulith/src/test/java/com/example/architecture/ClientDesktopIsolationArchTest.java`
+- [x] T035 Execute headless build validation and unit test suites across all modules via `./mvnw clean test`
+- [x] T036 Run quickstart validation scenario against running modulith per `specs/002-desktop-client/quickstart.md`
 
 ---
 

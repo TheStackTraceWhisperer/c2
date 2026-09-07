@@ -46,9 +46,12 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
       Optional<AccountRecord> accountOpt = accountRepository.findByUsername(packet.username());
 
       if (accountOpt.isEmpty()) {
-        log.warn("[LOGIN-SERVER] Auth failed: user='{}' does not exist", packet.username());
-        ctx.writeAndFlush(new LoginResponse(false, 0L, "", "Invalid credentials"));
-        return;
+        log.info("[LOGIN-SERVER] Account '{}' does not exist. Auto-registering new account...", packet.username());
+        String hash = passwordEncoder.encode(packet.password());
+        AccountRecord created = accountRepository.save(AccountRecord.of(
+          packet.username(), packet.username() + "@ffxi.internal", hash
+        ));
+        accountOpt = Optional.of(created);
       }
 
       AccountRecord account = accountOpt.get();

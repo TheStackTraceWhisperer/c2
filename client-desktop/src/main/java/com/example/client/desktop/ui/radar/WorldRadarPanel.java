@@ -33,8 +33,8 @@ public class WorldRadarPanel {
     }
 
     public void render() {
-        ImGui.setNextWindowPos(540, 20, ImGuiCond.Once);
-        ImGui.setNextWindowSize(520, 600, ImGuiCond.Once);
+        ImGui.setNextWindowPos(390, 20, ImGuiCond.Once);
+        ImGui.setNextWindowSize(520, 680, ImGuiCond.Once);
         ImGui.begin("World Radar");
 
         // 1. Telemetry Header Overlay

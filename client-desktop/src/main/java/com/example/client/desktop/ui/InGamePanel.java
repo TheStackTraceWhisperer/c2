@@ -19,7 +19,7 @@ public class InGamePanel {
 
     public void setContext(String characterName, String sessionId) {
         this.characterName = characterName;
-        this.status = "Playing as " + characterName + " (session=" + sessionId + ")";
+        this.status = "Playing as " + characterName + "\n(session=" + sessionId + ")";
     }
 
     public void updateKeepAlive(String ks, long rtt) {
@@ -29,17 +29,48 @@ public class InGamePanel {
 
     public void render() {
         ImGui.setNextWindowPos(20, 20, ImGuiCond.Once);
-        ImGui.setNextWindowSize(500, 200, ImGuiCond.Once);
-        ImGui.begin("In Game");
+        ImGui.setNextWindowSize(360, 680, ImGuiCond.Once);
+        ImGui.begin("In Game Session");
+
         ImGui.text(status);
-        String rttDisplay = lastRttMs >= 0 ? "  RTT=" + lastRttMs + "ms" : "  (pinging...)";
-        ImGui.text("KeepAlive: " + keepAliveStatus + rttDisplay);
         ImGui.separator();
-        if (ImGui.button("Ping Now")) pingRequested = true;
+
+        ImGui.text("Connection & Heartbeat:");
+        if (lastRttMs >= 0) {
+            ImGui.textColored(0.2f, 0.9f, 0.3f, 1.0f, "Status: " + keepAliveStatus + " (RTT: " + lastRttMs + "ms)");
+        } else {
+            ImGui.textColored(0.9f, 0.8f, 0.2f, 1.0f, "Status: " + keepAliveStatus + " (measuring...)");
+        }
+
+        if (ImGui.button("Ping Gateway")) {
+            pingRequested = true;
+        }
+
+        ImGui.separator();
+        ImGui.text("Session Navigation:");
+        if (ImGui.button("Character Select")) {
+            characterSelectRequested = true;
+        }
         ImGui.sameLine();
-        if (ImGui.button("Character Select")) characterSelectRequested = true;
-        ImGui.sameLine();
-        if (ImGui.button("Logout")) logoutRequested = true;
+        if (ImGui.button("Sign Out")) {
+            logoutRequested = true;
+        }
+
+        ImGui.separator();
+        ImGui.text("Movement Controls:");
+        ImGui.bulletText("W / Up Arrow: Forward");
+        ImGui.bulletText("S / Down Arrow: Backward");
+        ImGui.bulletText("A / Left Arrow: Turn Left");
+        ImGui.bulletText("D / Right Arrow: Turn Right");
+        ImGui.bulletText("Q / E: Strafe Left / Right");
+
+        ImGui.separator();
+        ImGui.text("Tactical Radar:");
+        ImGui.bulletText("Center Blip: Local Player");
+        ImGui.bulletText("Green Pointer: Facing Yaw");
+        ImGui.bulletText("Cyan Blips: Nearby Players");
+        ImGui.bulletText("Hover Blip: Player Telemetry");
+
         ImGui.end();
     }
 

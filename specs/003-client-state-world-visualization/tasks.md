@@ -75,10 +75,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T018 [P] [US3] Create `client-desktop/src/main/java/com/example/client/desktop/input/MovementInputHandler.java` to poll keyboard directional keys (WASD, arrows), calculate velocity vector `(vx, vy, vz)` and yaw rotation deltas, and accumulate movement flags (`MovementFlags`)
-- [ ] T019 [US3] Implement 20 Hz throttled network dispatch in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java` via `DesktopNetworkAdapter.sendMovement(x, y, z, vx, vy, vz, yaw, pitch, moveFlags, tick)` and dispatch immediate idle packet when stopping
-- [ ] T020 [US3] Implement authoritative position reconciliation in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java` upon receipt of `PlayerMovementResponse`, interpolating local coordinates if server distance delta exceeds 2.0 units
-- [ ] T021 [US3] Add unit test `client-desktop/src/test/java/com/example/client/desktop/input/MovementInputHandlerTest.java` verifying flag bitfield generation, velocity calculations, and 20 Hz throttling cadence
+- [x] T018 [P] [US3] Create `client-desktop/src/main/java/com/example/client/desktop/input/MovementInputHandler.java` to poll keyboard directional keys (WASD, arrows), calculate velocity vector `(vx, vy, vz)` and yaw rotation deltas, and accumulate movement flags (`MovementFlags`)
+- [x] T019 [US3] Implement 20 Hz throttled network dispatch in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java` via `DesktopNetworkAdapter.sendMovement(x, y, z, vx, vy, vz, yaw, pitch, moveFlags, tick)` and dispatch immediate idle packet when stopping
+- [x] T020 [US3] Implement authoritative position reconciliation in `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java` upon receipt of `PlayerMovementResponse`, interpolating local coordinates if server distance delta exceeds 2.0 units
+- [x] T021 [US3] Add unit test `client-desktop/src/test/java/com/example/client/desktop/input/MovementInputHandlerTest.java` verifying flag bitfield generation, velocity calculations, and 20 Hz throttling cadence
 
 **Checkpoint**: At this point, User Stories 1, 2, and 3 are fully functional with interactive movement and server synchronization.
 
@@ -92,9 +92,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T022 [P] [US4] Create zone registry helper `client-desktop/src/main/java/com/example/client/desktop/util/ZoneNameRegistry.java` mapping canonical zone IDs (e.g. 100: "West Ronfaure", 230: "Southern San d'Oria") to human-readable zone names
-- [ ] T023 [US4] Add telemetry HUD overlay and interactive zoom controls (`+` / `-` buttons, grid toggle, AoI ring toggle) to `client-desktop/src/main/java/com/example/client/desktop/ui/radar/WorldRadarPanel.java`
-- [ ] T024 [US4] Update `client-desktop/src/main/java/com/example/client/desktop/ui/InGamePanel.java` to integrate cleanly with `WorldRadarPanel` layout and session controls
+- [x] T022 [P] [US4] Create zone registry helper `client-desktop/src/main/java/com/example/client/desktop/util/ZoneNameRegistry.java` mapping canonical zone IDs (e.g. 100: "West Ronfaure", 230: "Southern San d'Oria") to human-readable zone names
+- [x] T023 [US4] Add telemetry HUD overlay and interactive zoom controls (`+` / `-` buttons, grid toggle, AoI ring toggle) to `client-desktop/src/main/java/com/example/client/desktop/ui/radar/WorldRadarPanel.java`
+- [x] T024 [US4] Update `client-desktop/src/main/java/com/example/client/desktop/ui/InGamePanel.java` to integrate cleanly with `WorldRadarPanel` layout and session controls
 
 **Checkpoint**: All user stories are functional with complete telemetry and viewport controls.
 
@@ -104,9 +104,9 @@
 
 **Purpose**: Codebase hygiene, architectural fitness verification, and quickstart validation.
 
-- [ ] T025 [P] Run static verification to ensure exactly zero duplicate `ClientState` classes exist (`git grep -l "class ClientState"`)
-- [ ] T026 Run full unit and architecture test suite across all modules (`./mvnw clean test`)
-- [ ] T027 Validate against `specs/003-client-state-world-visualization/quickstart.md` scenarios
+- [x] T025 [P] Run static verification to ensure exactly zero duplicate `ClientState` classes exist (`git grep -l "class ClientState"`)
+- [x] T026 Run full unit and architecture test suite across all modules (`./mvnw clean test`)
+- [x] T027 Validate against `specs/003-client-state-world-visualization/quickstart.md` scenarios
 
 ---
 

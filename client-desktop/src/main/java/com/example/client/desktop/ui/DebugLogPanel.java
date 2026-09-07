@@ -24,8 +24,8 @@ public class DebugLogPanel {
     }
 
     public void render() {
-        ImGui.setNextWindowPos(800, 20, ImGuiCond.Once);
-        ImGui.setNextWindowSize(460, 680, ImGuiCond.Once);
+        ImGui.setNextWindowPos(920, 20, ImGuiCond.Once);
+        ImGui.setNextWindowSize(340, 680, ImGuiCond.Once);
         ImGui.begin("Debug Log");
         ImGui.checkbox("Auto scroll", autoScroll);
         ImGui.sameLine();

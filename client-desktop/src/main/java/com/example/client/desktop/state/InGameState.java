@@ -2,6 +2,8 @@ package com.example.client.desktop.state;
 
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
+import com.example.client.desktop.engine.services.window.WindowService;
+import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.ui.DebugLogPanel;
@@ -10,6 +12,7 @@ import com.example.client.desktop.ui.radar.WorldRadarPanel;
 import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
+import com.example.zone.dto.PlayerMovementResponse;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,8 @@ public class InGameState implements ApplicationState {
     private final ClientState clientState;
     private final DesktopNetworkAdapter networkAdapter;
     private final ApplicationStateService stateService;
+    private final WindowService windowService;
+    private final MovementInputHandler movementHandler;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
@@ -60,11 +65,45 @@ public class InGameState implements ApplicationState {
         GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
 
+        // 1. Process keyboard movement inputs
+        long handle = windowService.getHandle();
+        long now = System.currentTimeMillis();
+        var moveResult = movementHandler.pollAndCompute(
+                handle,
+                clientState.getX(),
+                clientState.getY(),
+                clientState.getZ(),
+                clientState.getYaw(),
+                clientState.getPitch(),
+                dt,
+                now
+        );
+
+        if (moveResult.isMoving()) {
+            clientState.updatePosition(
+                    moveResult.x(), moveResult.y(), moveResult.z(),
+                    moveResult.yaw(), moveResult.pitch(),
+                    clientState.getLastServerTick()
+            );
+        }
+
+        if (moveResult.shouldSendPacket()) {
+            networkAdapter.sendMovement(
+                    moveResult.x(), moveResult.y(), moveResult.z(),
+                    moveResult.vx(), moveResult.vy(), moveResult.vz(),
+                    moveResult.yaw(), moveResult.pitch(),
+                    moveResult.moveFlags(),
+                    movementHandler.getClientTickCounter()
+            );
+        }
+
+        // 2. Render UI Panels
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
         panel.render();
         radarPanel.render();
         debugLog.render();
 
+        // 3. User Intent Processing
         if (panel.isPingRequested()) {
             debugLog.log("PING sent");
             keepAlive.sendPing();
@@ -92,12 +131,32 @@ public class InGameState implements ApplicationState {
     public void onHandlePacket(Object packet) {
         if (packet instanceof PongMessage pong) {
             handlePongPacket(pong);
+        } else if (packet instanceof PlayerMovementResponse moveResp) {
+            handleMovementResponse(moveResp);
         }
     }
 
     private void handlePongPacket(PongMessage pong) {
         keepAlive.handlePong(pong);
         debugLog.log(String.format("PONG received (RTT: %dms)", keepAlive.getLastRttMs()));
+    }
+
+    private void handleMovementResponse(PlayerMovementResponse moveResp) {
+        float dx = clientState.getX() - moveResp.x();
+        float dz = clientState.getZ() - moveResp.z();
+        float dist = (float) Math.hypot(dx, dz);
+
+        if (moveResp.reconciled() || dist > 2.0f) {
+            log.warn("Authoritative position reconciliation (dist={}): correcting ({}, {}, {}) -> ({}, {}, {})",
+                    dist, clientState.getX(), clientState.getY(), clientState.getZ(),
+                    moveResp.x(), moveResp.y(), moveResp.z());
+            clientState.updatePosition(
+                    moveResp.x(), moveResp.y(), moveResp.z(),
+                    moveResp.yaw(), moveResp.pitch(),
+                    moveResp.serverTick()
+            );
+            debugLog.log(String.format("Position reconciled with server (delta=%.2fm)", dist));
+        }
     }
 
     private void doLogout() {

@@ -93,7 +93,7 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
       new LoginResponseHandler(state),
       new CharacterListResponseHandler(state),
       new CreateCharacterResponseHandler(),
-      new PongPacketHandler(),
+      new PongPacketHandler(state),
       new SelectCharacterResponseHandler(state),
       new ReconnectResponseHandler(state),
       new JoinWorldResponseHandler(state),

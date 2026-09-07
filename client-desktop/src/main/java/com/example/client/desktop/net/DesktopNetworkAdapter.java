@@ -175,7 +175,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
     }
 
     public void onPlayerMovementResponse(PlayerMovementResponse resp) {
-        clientState.updatePosition(resp.x(), resp.y(), resp.z(), resp.yaw(), resp.pitch(), resp.serverTick());
+        clientState.setLastServerTick(resp.serverTick());
     }
 
     // --- Outbound Network Operations ---

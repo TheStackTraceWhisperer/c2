@@ -170,4 +170,76 @@ class MovementInputHandlerTest {
         assertFalse(r5.shouldSendPacket());
         assertEquals(3L, handler.getClientTickCounter());
     }
+
+    @Test
+    @DisplayName("Server drift within tolerance is ignored to avoid jitter")
+    void testDriftWithinToleranceIgnored() {
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(10.0f, 0.0f, 20.0f);
+
+        // Drift delta is ~0.094m, less than DRIFT_TOLERANCE (0.15m)
+        handler.reconcile(10.05f, 0.0f, 20.08f, false);
+
+        assertEquals(10.0f, handler.getSimX(), 0.001f);
+        assertEquals(20.0f, handler.getSimZ(), 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetX(), 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetZ(), 0.001f);
+    }
+
+    @Test
+    @DisplayName("Authoritative reconciliation produces zero visual pop and decays smoothly")
+    void testAuthoritativeReconciliationSmoothDecay() {
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(10.0f, 0.0f, 20.0f);
+
+        // Server reconciles position to (9.0, 0, 19.0)
+        handler.reconcile(9.0f, 0.0f, 19.0f, true);
+
+        // Authoritative physics state instantly updates to server
+        assertEquals(9.0f, handler.getSimX(), 0.001f);
+        assertEquals(19.0f, handler.getSimZ(), 0.001f);
+
+        // Visual error offset absorbs difference: dx = 9 - 10 = -1, dz = 19 - 20 = -1
+        assertEquals(-1.0f, handler.getErrorOffsetX(), 0.001f);
+        assertEquals(-1.0f, handler.getErrorOffsetZ(), 0.001f);
+
+        // Immediate frame (dt ~ 0): rendered visible position (sim - error) is STILL (10.0, 20.0) -> ZERO POP!
+        var immediate = handler.compute(false, false, false, false, false, null,
+                handler.getSimX(), handler.getSimY(), handler.getSimZ(), 0, 0, 0.00001f, 0L);
+        assertEquals(10.0f, immediate.x(), 0.005f);
+        assertEquals(20.0f, immediate.z(), 0.005f);
+
+        // Over time (dt = 0.05s * 4 = 0.2s), error offset decays exponentially towards 0
+        for (int i = 0; i < 4; i++) {
+            handler.compute(false, false, false, false, false, null,
+                    handler.getSimX(), handler.getSimY(), handler.getSimZ(), 0, 0, 0.05f, 50L * (i + 1));
+        }
+
+        // After 200ms with decay rate 15.0: exp(-15 * 0.2) = exp(-3) ~ 0.0498
+        assertTrue(Math.abs(handler.getErrorOffsetX()) < 0.1f);
+        assertTrue(Math.abs(handler.getErrorOffsetZ()) < 0.1f);
+
+        // Run until fully decayed (e.g. another 0.3s)
+        var settled = handler.compute(false, false, false, false, false, null,
+                handler.getSimX(), handler.getSimY(), handler.getSimZ(), 0, 0, 0.3f, 500L);
+        assertEquals(0.0f, handler.getErrorOffsetX(), 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetZ(), 0.001f);
+        assertEquals(9.0f, settled.x(), 0.001f);
+        assertEquals(19.0f, settled.z(), 0.001f);
+    }
+
+    @Test
+    @DisplayName("Massive position deviation (teleport/spawn) hard-snaps without interpolation")
+    void testMassiveDriftHardSnaps() {
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(0.0f, 0.0f, 0.0f);
+
+        // Teleport to (50, 0, 50) - distance ~ 70.7m > HARD_SNAP_DISTANCE (10m)
+        handler.reconcile(50.0f, 0.0f, 50.0f, true);
+
+        assertEquals(50.0f, handler.getSimX(), 0.001f);
+        assertEquals(50.0f, handler.getSimZ(), 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetX(), 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetZ(), 0.001f);
+    }
 }

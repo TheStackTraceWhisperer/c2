@@ -168,9 +168,26 @@ public class ZoneSimulationEngine {
       float startY = state.getY();
       float startZ = state.getZ();
 
-      float dx = req.x() - startX;
-      float dy = req.y() - startY;
-      float dz = req.z() - startZ;
+      // Transmission delay compensation: predict position forward along velocity
+      float vx = req.vx();
+      float vy = req.vy();
+      float vz = req.vz();
+      float vSq = vx * vx + vy * vy + vz * vz;
+
+      float predX = req.x();
+      float predY = req.y();
+      float predZ = req.z();
+
+      float delayLeadSec = (float) TICK_INTERVAL_MS / 1000.0f; // 50ms lead time (1 simulation tick)
+      if (vSq > 1e-4f) {
+        predX += vx * delayLeadSec;
+        predY += vy * delayLeadSec;
+        predZ += vz * delayLeadSec;
+      }
+
+      float dx = predX - startX;
+      float dy = predY - startY;
+      float dz = predZ - startZ;
       double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
       boolean reconciled = false;
@@ -179,9 +196,9 @@ public class ZoneSimulationEngine {
           charId, String.format("%.2f", dist), MAX_DISTANCE_PER_TICK);
         reconciled = true;
       } else {
-        state.setX(req.x());
-        state.setY(req.y());
-        state.setZ(req.z());
+        state.setX(predX);
+        state.setY(predY);
+        state.setZ(predZ);
       }
 
       state.setVx(req.vx());

@@ -59,7 +59,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
     await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
       Optional<CharacterRecord> record = characterRepository.findById(1001L);
       assertThat(record).isPresent();
-      assertThat(record.get().posX()).isEqualTo(66.5f);
+      assertThat(record.get().posX()).isCloseTo(66.55f, org.assertj.core.data.Offset.offset(0.01f));
       assertThat(record.get().posY()).isEqualTo(-1.0f);
       assertThat(record.get().posZ()).isEqualTo(-40.0f);
       assertThat(record.get().zoneId()).isEqualTo(230);

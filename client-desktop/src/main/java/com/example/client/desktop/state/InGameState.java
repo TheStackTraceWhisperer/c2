@@ -61,6 +61,7 @@ public class InGameState implements ApplicationState {
     public void onEnter() {
         networkAdapter.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
+        movementHandler.setPosition(clientState.getX(), clientState.getY(), clientState.getZ());
         camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
 
         // Authoritative initial spawn sync: probe server if local position is default (0, 0, 0)
@@ -84,7 +85,6 @@ public class InGameState implements ApplicationState {
         long handle = windowService.getHandle();
         long now = System.currentTimeMillis();
 
-        camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
         camera.update(handle, dt);
 
         // Radar zoom via PageUp / PageDown keys
@@ -110,18 +110,16 @@ public class InGameState implements ApplicationState {
                 now
         );
 
-        if (moveResult.isMoving()) {
-            clientState.updatePosition(
-                    moveResult.x(), moveResult.y(), moveResult.z(),
-                    moveResult.yaw(), moveResult.pitch(),
-                    clientState.getLastServerTick()
-            );
-            camera.setTarget(moveResult.x(), moveResult.y(), moveResult.z());
-        }
+        clientState.updatePosition(
+                moveResult.x(), moveResult.y(), moveResult.z(),
+                moveResult.yaw(), moveResult.pitch(),
+                clientState.getLastServerTick()
+        );
+        camera.setTarget(moveResult.x(), moveResult.y(), moveResult.z());
 
         if (moveResult.shouldSendPacket()) {
             networkAdapter.sendMovement(
-                    moveResult.x(), moveResult.y(), moveResult.z(),
+                    moveResult.simX(), moveResult.simY(), moveResult.simZ(),
                     moveResult.vx(), moveResult.vy(), moveResult.vz(),
                     moveResult.yaw(), moveResult.pitch(),
                     moveResult.moveFlags(),
@@ -174,20 +172,17 @@ public class InGameState implements ApplicationState {
     }
 
     private void handleMovementResponse(PlayerMovementResponse moveResp) {
-        float dx = clientState.getX() - moveResp.x();
-        float dz = clientState.getZ() - moveResp.z();
+        float dx = movementHandler.getSimX() - moveResp.x();
+        float dz = movementHandler.getSimZ() - moveResp.z();
         float dist = (float) Math.hypot(dx, dz);
 
+        movementHandler.reconcile(moveResp.x(), moveResp.y(), moveResp.z(), moveResp.reconciled());
+        clientState.setLastServerTick(moveResp.serverTick());
+
         if (moveResp.reconciled() || dist > 2.0f) {
-            log.warn("Authoritative position reconciliation (dist={}): correcting ({}, {}, {}) -> ({}, {}, {})",
-                    dist, clientState.getX(), clientState.getY(), clientState.getZ(),
-                    moveResp.x(), moveResp.y(), moveResp.z());
-            clientState.updatePosition(
-                    moveResp.x(), moveResp.y(), moveResp.z(),
-                    moveResp.yaw(), moveResp.pitch(),
-                    moveResp.serverTick()
-            );
-            camera.setTarget(moveResp.x(), moveResp.y(), moveResp.z());
+            log.warn("Authoritative position reconciliation (dist={}): server=({}, {}, {}), sim=({}, {}, {})",
+                    dist, moveResp.x(), moveResp.y(), moveResp.z(),
+                    movementHandler.getSimX(), movementHandler.getSimY(), movementHandler.getSimZ());
             debugLog.log(String.format("Position reconciled with server (delta=%.2fm)", dist));
         }
     }

@@ -130,7 +130,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
 
     PlayerMovementResponse moveResp = movementFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
-    assertThat(moveResp.x()).isEqualTo(66.2f);
+    assertThat(moveResp.x()).isCloseTo(66.25f, org.assertj.core.data.Offset.offset(0.01f));
     assertThat(moveResp.serverTick()).isGreaterThan(0L);
   }
 }

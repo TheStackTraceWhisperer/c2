@@ -10,11 +10,16 @@ import org.lwjgl.glfw.GLFW;
 public class MovementInputHandler {
 
     public static final float MOVE_SPEED = 6.0f; // meters per second
-    public static final float TURN_SPEED = 180.0f; // degrees per second
     public static final long PACKET_DISPATCH_INTERVAL_MS = 50L; // 20 Hz target
 
+    // Client-side prediction and error-smoothing constants
+    public static final float ERROR_DECAY_RATE = 15.0f; // Exponential decay rate (s^-1), decays ~95% in 200ms
+    public static final float HARD_SNAP_DISTANCE = 10.0f; // Distance above which we hard snap instead of interpolating
+    public static final float DRIFT_TOLERANCE = 0.15f; // Threshold under which server diff is considered jitter and ignored
+
     public record MovementResult(
-            float x, float y, float z,
+            float x, float y, float z, // Rendered smoothed position
+            float simX, float simY, float simZ, // Authoritative physics simulated position
             float vx, float vy, float vz,
             float yaw, float pitch,
             int moveFlags,
@@ -22,9 +27,65 @@ public class MovementInputHandler {
             boolean shouldSendPacket
     ) {}
 
+    // Simulated authoritative position (client prediction)
+    @Getter private float simX = 0.0f;
+    @Getter private float simY = 0.0f;
+    @Getter private float simZ = 0.0f;
+
+    // Visual error offset (smoothly decays towards zero to eliminate rubberbanding)
+    @Getter private float errorOffsetX = 0.0f;
+    @Getter private float errorOffsetY = 0.0f;
+    @Getter private float errorOffsetZ = 0.0f;
+
+    @Getter private boolean initialized = false;
     @Getter private long lastPacketTimeMs = -1000L;
     @Getter private boolean wasMoving = false;
     @Getter private long clientTickCounter = 0L;
+
+    public void setPosition(float x, float y, float z) {
+        this.simX = x;
+        this.simY = y;
+        this.simZ = z;
+        this.errorOffsetX = 0.0f;
+        this.errorOffsetY = 0.0f;
+        this.errorOffsetZ = 0.0f;
+        this.initialized = true;
+    }
+
+    /**
+     * Reconciles client position with authoritative server response.
+     * Absorbs deviation into visual error offset so visible movement remains completely smooth.
+     */
+    public void reconcile(float serverX, float serverY, float serverZ, boolean serverReconciled) {
+        if (!initialized) {
+            setPosition(serverX, serverY, serverZ);
+            return;
+        }
+
+        float dx = serverX - simX;
+        float dy = serverY - simY;
+        float dz = serverZ - simZ;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // If distance is massive (e.g. initial spawn sync or teleport), hard snap immediately
+        if (dist > HARD_SNAP_DISTANCE) {
+            setPosition(serverX, serverY, serverZ);
+            return;
+        }
+
+        // If server explicitly flagged reconciliation or drift exceeds tolerance:
+        // Update simulated physics state to server position, and absorb difference into error offset.
+        // Rendered position (sim - error) remains identical at the moment of update: zero visual pop!
+        if (serverReconciled || dist > DRIFT_TOLERANCE) {
+            simX = serverX;
+            simY = serverY;
+            simZ = serverZ;
+
+            errorOffsetX += dx;
+            errorOffsetY += dy;
+            errorOffsetZ += dz;
+        }
+    }
 
     public MovementResult pollAndCompute(long windowHandle, Camera camera,
                                          float currentX, float currentY, float currentZ,
@@ -46,6 +107,10 @@ public class MovementInputHandler {
                                   float currentX, float currentY, float currentZ,
                                   float currentYaw, float currentPitch,
                                   float dt, long nowMs) {
+        if (!initialized || Math.hypot(currentX - simX, currentZ - simZ) > HARD_SNAP_DISTANCE) {
+            setPosition(currentX, currentY, currentZ);
+        }
+
         // 1. Calculate normalized horizontal input axes
         float inputForward = (forward ? 1.0f : 0.0f) - (backward ? 1.0f : 0.0f);
         float inputStrafe = (moveRight ? 1.0f : 0.0f) - (moveLeft ? 1.0f : 0.0f);
@@ -110,12 +175,29 @@ public class MovementInputHandler {
             newYaw = camera.getYaw();
         }
 
-        // 4. Local position integration
-        float newX = currentX + vx * dt;
-        float newY = currentY;
-        float newZ = currentZ + vz * dt;
+        // 4. Immediate local prediction: integrate velocity onto simulation state
+        simX += vx * dt;
+        simY = currentY;
+        simZ += vz * dt;
 
-        // 5. Rate-limited 20 Hz dispatch logic
+        // 5. Exponentially decay visual error offset towards zero
+        if (dt > 0.0f) {
+            float decay = (float) Math.exp(-ERROR_DECAY_RATE * dt);
+            errorOffsetX *= decay;
+            errorOffsetY *= decay;
+            errorOffsetZ *= decay;
+
+            if (Math.abs(errorOffsetX) < 0.0005f) errorOffsetX = 0.0f;
+            if (Math.abs(errorOffsetY) < 0.0005f) errorOffsetY = 0.0f;
+            if (Math.abs(errorOffsetZ) < 0.0005f) errorOffsetZ = 0.0f;
+        }
+
+        // 6. Visual smoothed position (simulation minus decaying error offset)
+        float visibleX = simX - errorOffsetX;
+        float visibleY = simY - errorOffsetY;
+        float visibleZ = simZ - errorOffsetZ;
+
+        // 7. Rate-limited 20 Hz dispatch logic
         boolean shouldSend = false;
         if (wasMoving && !isMoving) {
             // Immediate packet when stopping movement (IDLE)
@@ -131,7 +213,13 @@ public class MovementInputHandler {
             clientTickCounter++;
         }
 
-        return new MovementResult(newX, newY, newZ, vx, 0.0f, vz, newYaw, currentPitch, moveFlags, isMoving, shouldSend);
+        return new MovementResult(
+                visibleX, visibleY, visibleZ,
+                simX, simY, simZ,
+                vx, 0.0f, vz,
+                newYaw, currentPitch,
+                moveFlags, isMoving, shouldSend
+        );
     }
 
     /**

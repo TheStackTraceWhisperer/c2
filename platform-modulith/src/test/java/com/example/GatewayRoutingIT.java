@@ -86,6 +86,6 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
 
     PlayerMovementResponse moveResp = moveFuture.get(5, TimeUnit.SECONDS);
     assertThat(moveResp).isNotNull();
-    assertThat(moveResp.x()).isEqualTo(66.1f);
+    assertThat(moveResp.x()).isCloseTo(66.2f, org.assertj.core.data.Offset.offset(0.01f));
   }
 }

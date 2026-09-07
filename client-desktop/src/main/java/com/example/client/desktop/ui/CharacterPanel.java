@@ -1,6 +1,6 @@
 package com.example.client.desktop.ui;
 
-import com.example.client.desktop.net.ClientState;
+import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
 import com.example.common.protocol.NationId;
 import com.example.common.protocol.RaceId;

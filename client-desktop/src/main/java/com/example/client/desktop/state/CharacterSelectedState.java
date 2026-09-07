@@ -2,9 +2,11 @@ package com.example.client.desktop.state;
 
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
-import com.example.client.desktop.net.ClientState;
+import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.ui.CharacterPanel;
 import com.example.client.desktop.ui.DebugLogPanel;
+import com.example.client.state.ClientConnectionState;
+import com.example.client.state.ClientState;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ public class CharacterSelectedState implements ApplicationState {
     private final DebugLogPanel debugLog;
     private final ApplicationStateService stateService;
     private final ClientState clientState;
+    private final DesktopNetworkAdapter networkAdapter;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<InGameState> inGameProvider;
@@ -36,7 +39,7 @@ public class CharacterSelectedState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        clientState.sendCharacterList();
+        networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
         debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
     }
 
@@ -73,10 +76,10 @@ public class CharacterSelectedState implements ApplicationState {
             }
         }
 
-        // Transition to InGameState when bound to world
-        if (clientState.getPhase() == ClientState.AppPhase.IN_WORLD) {
-            Integer zoneId = clientState.getCurrentZoneId();
-            int finalZone = zoneId != null ? zoneId : currentZoneId;
+        // Transition to InGameState when bound to world/zone
+        if (clientState.getConnectionState() == ClientConnectionState.IN_ZONE
+                || clientState.getConnectionState() == ClientConnectionState.IN_WORLD) {
+            int finalZone = clientState.getCurrentZoneId() > 0 ? clientState.getCurrentZoneId() : currentZoneId;
             InGameState next = inGameProvider.get();
             next.init(accountId, characterId, characterName, finalZone, 5000L);
             stateService.changeState(() -> next);
@@ -88,20 +91,23 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void processIntents() {
         if (panel.isRefreshRequested()) {
-            clientState.sendCharacterList();
+            networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
         }
         if (panel.isSignOutRequested()) {
-            clientState.sendLogout();
+            networkAdapter.sendLogout();
             stateService.changeState(unauthProvider::get);
         }
         if (panel.getSelectCharacterId() != null) {
-            clientState.sendCharacterSelect(panel.getSelectCharacterId());
+            networkAdapter.sendCharacterSelect(clientState.getAuthToken(), panel.getSelectCharacterId());
         }
         if (panel.getDeleteCharacterId() != null) {
-            clientState.sendCharacterDelete(panel.getDeleteCharacterId());
+            networkAdapter.sendCharacterDelete(panel.getDeleteCharacterId());
         }
         if (panel.isCreateSubmitted()) {
-            clientState.sendCharacterCreate(
+            int worldId = clientState.getCurrentWorldId() > 0 ? clientState.getCurrentWorldId() : 1;
+            networkAdapter.sendCharacterCreate(
+                    clientState.getAuthToken(),
+                    worldId,
                     panel.getNewName(),
                     panel.getRaceId(),
                     panel.getGender(),
@@ -114,7 +120,7 @@ public class CharacterSelectedState implements ApplicationState {
             panel.hideCreateForm();
         }
         if (panel.isPlayRequested()) {
-            clientState.sendPlay();
+            networkAdapter.sendPlay(clientState.getAuthToken());
         }
     }
 }

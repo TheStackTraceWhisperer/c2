@@ -1,87 +1,63 @@
 package com.example.client.desktop;
 
-import com.example.client.desktop.net.ClientState;
-import com.example.client.desktop.net.DesktopNetworkAdapter;
-import com.example.common.dto.GatewayErrorResponse;
-import com.example.common.dto.PongMessage;
-import com.example.lobby.dto.CharacterListResponse;
+import com.example.client.state.ClientConnectionState;
+import com.example.client.state.ClientState;
 import com.example.lobby.dto.CharacterSummary;
-import com.example.lobby.dto.CreateCharacterResponse;
-import com.example.lobby.dto.SelectCharacterResponse;
-import com.example.login.dto.LoginResponse;
-import com.example.world.dto.JoinWorldResponse;
+import com.example.zone.dto.EntityMovementUpdate;
+import com.example.zone.dto.EntitySpawnRecord;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.verify;
 
 class ClientStateTest {
 
     private ClientState clientState;
-    private DesktopNetworkAdapter mockAdapter;
 
     @BeforeEach
     void setUp() {
         clientState = new ClientState();
-        mockAdapter = Mockito.mock(DesktopNetworkAdapter.class);
-        clientState.setNetworkAdapter(mockAdapter);
     }
 
     @Test
+    @DisplayName("Initial state has DISCONNECTED connection state and empty registries")
     void testInitialState() {
-        assertEquals(ClientState.AppPhase.DISCONNECTED, clientState.getPhase());
-        assertNull(clientState.getAccountId());
-        assertNull(clientState.getAuthToken());
+        assertEquals(ClientConnectionState.DISCONNECTED, clientState.getConnectionState());
+        assertEquals(0L, clientState.getAccountId());
+        assertEquals("", clientState.getAuthToken());
         assertNull(clientState.getSelectedCharacterId());
-        assertNull(clientState.getLastErrorMessage());
+        assertEquals("", clientState.getLastErrorMessage());
+        assertTrue(clientState.getCharacters().isEmpty());
         assertTrue(clientState.getCharacterList().isEmpty());
+        assertTrue(clientState.getRemoteEntities().isEmpty());
+        assertEquals(0.0f, clientState.getX());
+        assertEquals(0.0f, clientState.getY());
+        assertEquals(0.0f, clientState.getZ());
+        assertEquals(0.0f, clientState.getYaw());
+        assertEquals(0L, clientState.getCurrentLatencyMs());
     }
 
     @Test
-    void testSendLoginTransitionsToAuthenticating() {
+    @DisplayName("State transitions notify registered listeners")
+    void testStateTransitionsNotifyListeners() {
         AtomicBoolean listenerCalled = new AtomicBoolean(false);
         clientState.onStateChange(state -> listenerCalled.set(true));
 
-        clientState.sendLogin("testUser", "testPass");
+        clientState.setConnectionState(ClientConnectionState.AUTHENTICATED);
 
-        assertEquals(ClientState.AppPhase.AUTHENTICATING, clientState.getPhase());
-        assertNull(clientState.getLastErrorMessage());
+        assertEquals(ClientConnectionState.AUTHENTICATED, clientState.getConnectionState());
         assertTrue(listenerCalled.get());
-        verify(mockAdapter).sendLogin("testUser", "testPass");
     }
 
     @Test
-    void testSuccessfulLoginResponse() {
-        LoginResponse successResp = new LoginResponse(true, 42L, "mock-jwt-token", "");
-        clientState.onLoginResponse(successResp);
-
-        assertEquals(ClientState.AppPhase.LOBBY_CHAR_SELECT, clientState.getPhase());
-        assertEquals(42L, clientState.getAccountId());
-        assertEquals("mock-jwt-token", clientState.getAuthToken());
-        assertNull(clientState.getLastErrorMessage());
-        verify(mockAdapter).sendCharacterList(42L, "mock-jwt-token");
-    }
-
-    @Test
-    void testFailedLoginResponse() {
-        LoginResponse failResp = new LoginResponse(false, 0L, null, "Invalid credentials");
-        clientState.onLoginResponse(failResp);
-
-        assertEquals(ClientState.AppPhase.DISCONNECTED, clientState.getPhase());
-        assertEquals("Invalid credentials", clientState.getLastErrorMessage());
-    }
-
-    @Test
-    void testCharacterListResponse() {
+    @DisplayName("Character roster updates and clears correctly")
+    void testCharacterRosterUpdates() {
         CharacterSummary c1 = new CharacterSummary(101L, "WarriorHero", 1, (short) 1, (short) 0, 100, 10, (short) 0, (short) 1, (short) 0);
-        CharacterListResponse resp = new CharacterListResponse(42L, List.of(c1));
-
-        clientState.onCharacterListResponse(resp);
+        clientState.updateCharacters(List.of(c1));
 
         assertEquals(1, clientState.getCharacterList().size());
         assertEquals("WarriorHero", clientState.getCharacterList().get(0).name());
@@ -90,51 +66,81 @@ class ClientStateTest {
     }
 
     @Test
-    void testCreateCharacterResponseSuccess() {
-        clientState.onCharacterCreateResponse(new CreateCharacterResponse(true, 202L, ""));
+    @DisplayName("Remote player entity lifecycle: spawn, movement update, and despawn")
+    void testRemotePlayerEntityLifecycle() {
+        // 1. Spawn
+        EntitySpawnRecord spawn = new EntitySpawnRecord(
+                2001L, "TarutaruBLM", (short) 4, (short) 0, 15,
+                10.0f, 0.0f, 20.0f, 0.0f, 0.0f, 0.0f, 90.0f, 0.0f
+        );
+        clientState.addOrUpdateRemoteEntity(spawn);
 
-        assertEquals(ClientState.AppPhase.LOBBY_CHAR_SELECT, clientState.getPhase());
-        assertNull(clientState.getLastErrorMessage());
+        assertEquals(1, clientState.getRemoteEntities().size());
+        ClientState.RemoteEntityState entity = clientState.getRemoteEntities().get(2001L);
+        assertNotNull(entity);
+        assertEquals("TarutaruBLM", entity.name());
+        assertEquals((short) 4, entity.mainJobId());
+        assertEquals(15, entity.level());
+        assertEquals(10.0f, entity.x());
+        assertEquals(20.0f, entity.z());
+        assertEquals(90.0f, entity.yaw());
+
+        // 2. Movement update
+        EntityMovementUpdate move = new EntityMovementUpdate(
+                2001L, 12.5f, 0.0f, 22.0f, 1.0f, 0.0f, 1.0f, 135.0f, 0.0f, 1
+        );
+        clientState.updateRemoteEntityMovement(move);
+
+        entity = clientState.getRemoteEntities().get(2001L);
+        assertNotNull(entity);
+        assertEquals(12.5f, entity.x());
+        assertEquals(22.0f, entity.z());
+        assertEquals(135.0f, entity.yaw());
+        assertEquals("TarutaruBLM", entity.name()); // Name and job preserved
+
+        // 3. Despawn
+        clientState.removeRemoteEntity(2001L);
+        assertTrue(clientState.getRemoteEntities().isEmpty());
     }
 
     @Test
-    void testSelectCharacterAndJoinWorld() {
-        clientState.onCharacterSelectResponse(new SelectCharacterResponse(true, 303L, ""));
-        assertEquals(303L, clientState.getSelectedCharacterId());
+    @DisplayName("Local position and latency updates")
+    void testPositionAndLatencyUpdates() {
+        clientState.updatePosition(50.0f, -2.0f, -30.0f, 180.0f, 0.0f, 42L);
+        assertEquals(50.0f, clientState.getX());
+        assertEquals(-2.0f, clientState.getY());
+        assertEquals(-30.0f, clientState.getZ());
+        assertEquals(180.0f, clientState.getYaw());
+        assertEquals(42L, clientState.getLastServerTick());
 
-        clientState.onJoinWorldResponse(new JoinWorldResponse(true, 230, "127.0.0.1", 9000, ""));
-        assertEquals(ClientState.AppPhase.IN_WORLD, clientState.getPhase());
-        assertEquals(230, clientState.getCurrentZoneId());
+        clientState.updateLatency(35L);
+        assertEquals(35L, clientState.getCurrentLatencyMs());
     }
 
     @Test
-    void testPongAndLatencyCalculation() {
-        long sendTime = System.currentTimeMillis() - 45;
-        AtomicBoolean listenerCalled = new AtomicBoolean(false);
-        clientState.setPongListener(p -> listenerCalled.set(true));
+    @DisplayName("Reset flushes all credentials, entities, and resets connection to DISCONNECTED")
+    void testResetFlushesState() {
+        clientState.setAccountId(1234L);
+        clientState.setAuthToken("jwt-token");
+        clientState.setSelectedCharacterId(101L);
+        clientState.setConnectionState(ClientConnectionState.IN_ZONE);
+        clientState.setCurrentZoneId(230);
+        clientState.updatePosition(10.0f, 0.0f, 10.0f, 1L);
+        clientState.updateLatency(50L);
+        clientState.addOrUpdateRemoteEntity(new EntitySpawnRecord(
+                99L, "Friend", (short) 1, (short) 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+        ));
 
-        clientState.onPongResponse(new PongMessage(sendTime, "ping-test"));
-
-        assertTrue(clientState.getCurrentLatencyMs() >= 40);
-        assertTrue(listenerCalled.get());
-    }
-
-    @Test
-    void testGatewayErrorResponse() {
-        GatewayErrorResponse err = new GatewayErrorResponse((short) 1001, (short) 1, (short) 1, "Session expired");
-        clientState.onErrorResponse(err);
-
-        assertEquals("Session expired", clientState.getLastErrorMessage());
-        assertEquals(ClientState.AppPhase.DISCONNECTED, clientState.getPhase());
-    }
-
-    @Test
-    void testReset() {
-        clientState.onLoginResponse(new LoginResponse(true, 42L, "token", ""));
         clientState.reset();
 
-        assertEquals(ClientState.AppPhase.DISCONNECTED, clientState.getPhase());
-        assertNull(clientState.getAccountId());
-        assertNull(clientState.getAuthToken());
+        assertEquals(ClientConnectionState.DISCONNECTED, clientState.getConnectionState());
+        assertEquals(0L, clientState.getAccountId());
+        assertEquals("", clientState.getAuthToken());
+        assertNull(clientState.getSelectedCharacterId());
+        assertEquals(0, clientState.getCurrentZoneId());
+        assertEquals(0.0f, clientState.getX());
+        assertEquals(0L, clientState.getCurrentLatencyMs());
+        assertTrue(clientState.getRemoteEntities().isEmpty());
+        assertTrue(clientState.getCharacterList().isEmpty());
     }
 }

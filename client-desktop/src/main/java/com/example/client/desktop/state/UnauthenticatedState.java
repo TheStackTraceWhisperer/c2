@@ -2,11 +2,12 @@ package com.example.client.desktop.state;
 
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
-import com.example.client.desktop.net.ClientState;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.properties.DesktopClientProperties;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.LoginPanel;
+import com.example.client.state.ClientConnectionState;
+import com.example.client.state.ClientState;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import jakarta.inject.Named;
@@ -30,7 +31,6 @@ public class UnauthenticatedState implements ApplicationState {
 
     private String host;
     private int port;
-    private boolean connected = false;
 
     @Override
     public void onEnter() {
@@ -53,9 +53,10 @@ public class UnauthenticatedState implements ApplicationState {
         panel.clearIntents();
 
         // React to inbound state updates from authentication
-        if (clientState.getPhase() == ClientState.AppPhase.LOBBY_CHAR_SELECT) {
-            Long accId = clientState.getAccountId();
-            if (accId != null) {
+        if (clientState.getConnectionState() == ClientConnectionState.AUTHENTICATED
+                || clientState.getConnectionState() == ClientConnectionState.IN_LOBBY) {
+            long accId = clientState.getAccountId();
+            if (accId > 0) {
                 debugLog.log("LOGIN_OK account=" + accId);
                 AuthenticatedState next = authenticatedProvider.get();
                 next.init(accId);
@@ -69,6 +70,6 @@ public class UnauthenticatedState implements ApplicationState {
 
     private void doLogin() {
         debugLog.log("Connecting to " + host + ":" + port + "...");
-        clientState.sendLogin(panel.getUsername(), panel.getPassword());
+        gateway.sendLogin(panel.getUsername(), panel.getPassword());
     }
 }

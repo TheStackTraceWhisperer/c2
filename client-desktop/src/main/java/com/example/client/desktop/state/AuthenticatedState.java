@@ -2,9 +2,10 @@ package com.example.client.desktop.state;
 
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
-import com.example.client.desktop.net.ClientState;
+import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.ui.CharacterPanel;
 import com.example.client.desktop.ui.DebugLogPanel;
+import com.example.client.state.ClientState;
 import com.example.lobby.dto.CharacterSummary;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
@@ -19,6 +20,7 @@ public class AuthenticatedState implements ApplicationState {
     private final DebugLogPanel debugLog;
     private final ApplicationStateService stateService;
     private final ClientState clientState;
+    private final DesktopNetworkAdapter networkAdapter;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
@@ -30,7 +32,7 @@ public class AuthenticatedState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        clientState.sendCharacterList();
+        networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
     }
 
     @Override
@@ -65,21 +67,24 @@ public class AuthenticatedState implements ApplicationState {
 
     private void processIntents() {
         if (panel.isRefreshRequested()) {
-            clientState.sendCharacterList();
+            networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
         }
         if (panel.isSignOutRequested()) {
             debugLog.log("Signed out");
-            clientState.sendLogout();
+            networkAdapter.sendLogout();
             stateService.changeState(unauthProvider::get);
         }
         if (panel.getSelectCharacterId() != null) {
-            clientState.sendCharacterSelect(panel.getSelectCharacterId());
+            networkAdapter.sendCharacterSelect(clientState.getAuthToken(), panel.getSelectCharacterId());
         }
         if (panel.getDeleteCharacterId() != null) {
-            clientState.sendCharacterDelete(panel.getDeleteCharacterId());
+            networkAdapter.sendCharacterDelete(panel.getDeleteCharacterId());
         }
         if (panel.isCreateSubmitted()) {
-            clientState.sendCharacterCreate(
+            int worldId = clientState.getCurrentWorldId() > 0 ? clientState.getCurrentWorldId() : 1;
+            networkAdapter.sendCharacterCreate(
+                    clientState.getAuthToken(),
+                    worldId,
                     panel.getNewName(),
                     panel.getRaceId(),
                     panel.getGender(),

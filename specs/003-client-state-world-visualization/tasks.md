@@ -10,8 +10,8 @@
 
 **Purpose**: Verify project build dependencies, compiler flags, and test harness settings.
 
-- [ ] T001 Verify compiler configuration, Lombok annotation processing, and module dependencies in `pom.xml` and `client-desktop/pom.xml`
-- [ ] T002 [P] Verify test environment and Netty leak detection flags in `pom.xml`
+- [x] T001 Verify compiler configuration, Lombok annotation processing, and module dependencies in `pom.xml` and `client-desktop/pom.xml`
+- [x] T002 [P] Verify test environment and Netty leak detection flags in `pom.xml`
 
 ---
 
@@ -21,9 +21,9 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 Enhance canonical `ClientState` in `client-sdk/src/main/java/com/example/client/state/ClientState.java` with local player orientation (`yaw`, `pitch`), latency telemetry (`currentLatencyMs`), position update overload with yaw/pitch, and atomic reset flushes
-- [ ] T004 [P] Update `client-sdk/src/main/java/com/example/client/handler/PongPacketHandler.java` to record RTT latency on canonical `ClientState`
-- [ ] T005 Expand `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java` to provide outbound network dispatch methods (`sendLogin`, `sendCharacterList`, `sendCharacterCreate`, `sendCharacterDelete`, `sendCharacterSelect`, `sendPlay`, `sendMovement`, `sendPing`, `sendLogout`) and register main-thread callbacks for AoI delta broadcasts and movement responses
+- [x] T003 Enhance canonical `ClientState` in `client-sdk/src/main/java/com/example/client/state/ClientState.java` with local player orientation (`yaw`, `pitch`), latency telemetry (`currentLatencyMs`), position update overload with yaw/pitch, and atomic reset flushes
+- [x] T004 [P] Update `client-sdk/src/main/java/com/example/client/handler/PongPacketHandler.java` to record RTT latency on canonical `ClientState`
+- [x] T005 Expand `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java` to provide outbound network dispatch methods (`sendLogin`, `sendCharacterList`, `sendCharacterCreate`, `sendCharacterDelete`, `sendCharacterSelect`, `sendPlay`, `sendMovement`, `sendPing`, `sendLogout`) and register main-thread callbacks for AoI delta broadcasts and movement responses
 
 **Checkpoint**: Foundation ready — User Story 1 implementation can now begin.
 
@@ -37,13 +37,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Remove duplicate class `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
-- [ ] T007 [P] [US1] Rewire `client-desktop/src/main/java/com/example/client/desktop/ui/LoginPanel.java` to read credentials and error messages directly from canonical `com.example.client.state.ClientState`
-- [ ] T008 [P] [US1] Rewire `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java` to read character roster and selection directly from canonical `com.example.client.state.ClientState`
-- [ ] T009 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/UnauthenticatedState.java` to observe canonical `ClientState` and dispatch login actions via `DesktopNetworkAdapter`
-- [ ] T010 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/AuthenticatedState.java` to observe canonical `ClientState` and dispatch character actions via `DesktopNetworkAdapter`
-- [ ] T011 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/CharacterSelectedState.java` to observe canonical `ClientState` and dispatch play/select actions via `DesktopNetworkAdapter`
-- [ ] T012 [US1] Update unit tests in `client-desktop/src/test/java/com/example/client/desktop/ClientStateTest.java` to validate canonical `ClientState` operations, lifecycle transitions, and reset semantics
+- [x] T006 [US1] Remove duplicate class `client-desktop/src/main/java/com/example/client/desktop/net/ClientState.java`
+- [x] T007 [P] [US1] Rewire `client-desktop/src/main/java/com/example/client/desktop/ui/LoginPanel.java` to read credentials and error messages directly from canonical `com.example.client.state.ClientState`
+- [x] T008 [P] [US1] Rewire `client-desktop/src/main/java/com/example/client/desktop/ui/CharacterPanel.java` to read character roster and selection directly from canonical `com.example.client.state.ClientState`
+- [x] T009 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/UnauthenticatedState.java` to observe canonical `ClientState` and dispatch login actions via `DesktopNetworkAdapter`
+- [x] T010 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/AuthenticatedState.java` to observe canonical `ClientState` and dispatch character actions via `DesktopNetworkAdapter`
+- [x] T011 [P] [US1] Update `client-desktop/src/main/java/com/example/client/desktop/state/CharacterSelectedState.java` to observe canonical `ClientState` and dispatch play/select actions via `DesktopNetworkAdapter`
+- [x] T012 [US1] Update unit tests in `client-desktop/src/test/java/com/example/client/desktop/ClientStateTest.java` to validate canonical `ClientState` operations, lifecycle transitions, and reset semantics
 
 **Checkpoint**: At this point, User Story 1 (MVP) is fully functional and all unit tests pass with zero duplicate state classes.
 

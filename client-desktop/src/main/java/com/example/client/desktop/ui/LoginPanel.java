@@ -1,6 +1,7 @@
 package com.example.client.desktop.ui;
 
-import com.example.client.desktop.net.ClientState;
+import com.example.client.state.ClientConnectionState;
+import com.example.client.state.ClientState;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.type.ImString;
@@ -20,7 +21,7 @@ public class LoginPanel {
         ImGui.begin("Login");
 
         // Display errors or status from ClientState
-        if (clientState.getLastErrorMessage() != null) {
+        if (clientState.getLastErrorMessage() != null && !clientState.getLastErrorMessage().isEmpty()) {
             ImGui.textColored(1.0f, 0.2f, 0.2f, 1.0f, "Error: " + clientState.getLastErrorMessage());
             ImGui.separator();
         }
@@ -28,7 +29,7 @@ public class LoginPanel {
         ImGui.inputText("Username", username);
         ImGui.inputText("Password##pw", password);
 
-        if (clientState.getPhase() == ClientState.AppPhase.AUTHENTICATING) {
+        if (clientState.getConnectionState() == ClientConnectionState.CONNECTING) {
             ImGui.textDisabled("Connecting & Authenticating...");
         } else {
             if (ImGui.button("Login")) {

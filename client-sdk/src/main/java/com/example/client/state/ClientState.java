@@ -17,12 +17,12 @@ import java.util.function.Consumer;
 @Singleton
 public class ClientState {
 
-  @Setter private volatile ClientConnectionState connectionState = ClientConnectionState.DISCONNECTED;
+  private volatile ClientConnectionState connectionState = ClientConnectionState.DISCONNECTED;
   @Setter private volatile long accountId = 0L;
   @Setter private volatile String authToken = "";
-  @Setter private volatile long selectedCharacterId = 0L;
+  private volatile Long selectedCharacterId = null;
   @Setter private volatile short lastErrorCode = 0;
-  @Setter private volatile String lastErrorMessage = "";
+  private volatile String lastErrorMessage = "";
 
   // Local Player Coordinates
   @Setter private volatile int currentWorldId = 0;
@@ -30,7 +30,10 @@ public class ClientState {
   @Setter private volatile float x = 0.0f;
   @Setter private volatile float y = 0.0f;
   @Setter private volatile float z = 0.0f;
+  @Setter private volatile float yaw = 0.0f;
+  @Setter private volatile float pitch = 0.0f;
   @Setter private volatile long lastServerTick = 0L;
+  @Setter private volatile long currentLatencyMs = 0L;
 
   // Remote World Entities within AoI
   private final Map<Long, RemoteEntityState> remoteEntities = new ConcurrentHashMap<>();
@@ -50,6 +53,25 @@ public class ClientState {
     int moveFlags
   ) {}
 
+  public void setConnectionState(ClientConnectionState connectionState) {
+    this.connectionState = connectionState;
+    notifyListeners();
+  }
+
+  public void setSelectedCharacterId(Long selectedCharacterId) {
+    this.selectedCharacterId = selectedCharacterId;
+    notifyListeners();
+  }
+
+  public void setLastErrorMessage(String lastErrorMessage) {
+    this.lastErrorMessage = lastErrorMessage != null ? lastErrorMessage : "";
+    notifyListeners();
+  }
+
+  public List<CharacterSummary> getCharacterList() {
+    return characters;
+  }
+
   public void addOrUpdateRemoteEntity(EntitySpawnRecord spawn) {
     remoteEntities.put(spawn.characterId(), new RemoteEntityState(
       spawn.characterId(), spawn.name(), spawn.mainJobId(), spawn.subJobId(), spawn.level(),
@@ -57,6 +79,7 @@ public class ClientState {
       spawn.vx(), spawn.vy(), spawn.vz(),
       spawn.yaw(), spawn.pitch(), 0
     ));
+    notifyListeners();
   }
 
   public void updateRemoteEntityMovement(EntityMovementUpdate update) {
@@ -66,10 +89,12 @@ public class ClientState {
       update.vx(), update.vy(), update.vz(),
       update.yaw(), update.pitch(), update.moveFlags()
     ));
+    notifyListeners();
   }
 
   public void removeRemoteEntity(long characterId) {
     remoteEntities.remove(characterId);
+    notifyListeners();
   }
 
   public void updateCharacters(List<CharacterSummary> newCharacters) {
@@ -88,6 +113,21 @@ public class ClientState {
     notifyListeners();
   }
 
+  public void updatePosition(float x, float y, float z, float yaw, float pitch, long serverTick) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.yaw = yaw;
+    this.pitch = pitch;
+    this.lastServerTick = serverTick;
+    notifyListeners();
+  }
+
+  public void updateLatency(long latencyMs) {
+    this.currentLatencyMs = latencyMs;
+    notifyListeners();
+  }
+
   public void onStateChange(Consumer<ClientState> listener) {
     stateListeners.add(listener);
   }
@@ -102,7 +142,7 @@ public class ClientState {
     this.connectionState = ClientConnectionState.DISCONNECTED;
     this.accountId = 0L;
     this.authToken = "";
-    this.selectedCharacterId = 0L;
+    this.selectedCharacterId = null;
     this.lastErrorCode = 0;
     this.lastErrorMessage = "";
     this.currentWorldId = 0;
@@ -110,7 +150,10 @@ public class ClientState {
     this.x = 0.0f;
     this.y = 0.0f;
     this.z = 0.0f;
+    this.yaw = 0.0f;
+    this.pitch = 0.0f;
     this.lastServerTick = 0L;
+    this.currentLatencyMs = 0L;
     this.characters.clear();
     this.remoteEntities.clear();
     notifyListeners();

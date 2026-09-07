@@ -2,10 +2,12 @@ package com.example.client.desktop.state;
 
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
-import com.example.client.desktop.net.ClientState;
 import com.example.client.desktop.net.DesktopKeepAliveService;
+import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.InGamePanel;
+import com.example.client.state.ClientConnectionState;
+import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
@@ -22,6 +24,7 @@ public class InGameState implements ApplicationState {
     private final DebugLogPanel debugLog;
     private final DesktopKeepAliveService keepAlive;
     private final ClientState clientState;
+    private final DesktopNetworkAdapter networkAdapter;
     private final ApplicationStateService stateService;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<AuthenticatedState> authProvider;
@@ -46,7 +49,7 @@ public class InGameState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        clientState.setPongListener(this::handlePongPacket);
+        networkAdapter.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
     }
 
@@ -71,14 +74,14 @@ public class InGameState implements ApplicationState {
         }
         panel.clearIntents();
 
-        if (clientState.getPhase() == ClientState.AppPhase.DISCONNECTED) {
+        if (clientState.getConnectionState() == ClientConnectionState.DISCONNECTED) {
             stateService.changeState(unauthProvider::get);
         }
     }
 
     @Override
     public void onExit() {
-        clientState.setPongListener(null);
+        networkAdapter.setPongListener(null);
         keepAlive.stop();
     }
 
@@ -97,14 +100,14 @@ public class InGameState implements ApplicationState {
     private void doLogout() {
         keepAlive.stop();
         debugLog.log("Signing out...");
-        clientState.sendLogout();
+        networkAdapter.sendLogout();
         stateService.changeState(unauthProvider::get);
     }
 
     private void doCharacterSelect() {
         keepAlive.stop();
         clientState.setSelectedCharacterId(null);
-        clientState.setPhase(ClientState.AppPhase.LOBBY_CHAR_SELECT);
+        clientState.setConnectionState(ClientConnectionState.IN_LOBBY);
         debugLog.log("Returning to Character Selection...");
         AuthenticatedState next = authProvider.get();
         next.init(accountId);

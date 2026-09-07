@@ -4,6 +4,8 @@ set -euo pipefail
 CLUSTER_NAME="mmo-cluster"
 
 echo "=== Tearing Down MMO Cluster ==="
+pkill -f "kubectl port-forward.*kubernetes-dashboard" || true
+
 if command -v k3d &>/dev/null && k3d cluster list | grep -q "${CLUSTER_NAME}"; then
   k3d cluster delete "${CLUSTER_NAME}"
 fi

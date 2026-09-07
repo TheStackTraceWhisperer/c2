@@ -57,11 +57,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T013 [P] [US2] Create presentation configuration model `client-desktop/src/main/java/com/example/client/desktop/ui/radar/RadarViewportConfig.java` for radar radius, grid toggle, AoI ring, and nameplate settings
-- [ ] T014 [US2] Implement `client-desktop/src/main/java/com/example/client/desktop/ui/radar/WorldRadarPanel.java` rendering 2D tactical radar via Dear ImGui `ImDrawList`: canvas background, border ring, cardinal axes (N/S/E/W), concentric range rings (25m, 50m, 100m, 200m), local player marker with yaw heading indicator, and remote player character blips with floating nameplates (name, job abbreviation, level)
-- [ ] T015 [US2] Wire `WorldRadarPanel` into `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java`, reading `clientState.getRemoteEntities()` and local position `(x, y, z, yaw)` during `onUpdate(dt)`
-- [ ] T016 [US2] Connect `ZoneStateDeltaMessage` processing in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java` to update `clientState` remote player entities on the main thread and notify UI
-- [ ] T017 [US2] Create unit test `client-desktop/src/test/java/com/example/client/desktop/ui/radar/WorldRadarPanelTest.java` verifying coordinate projection logic and remote player marker positioning calculations
+- [x] T013 [P] [US2] Create presentation configuration model `client-desktop/src/main/java/com/example/client/desktop/ui/radar/RadarViewportConfig.java` for radar radius, grid toggle, AoI ring, and nameplate settings
+- [x] T014 [US2] Implement `client-desktop/src/main/java/com/example/client/desktop/ui/radar/WorldRadarPanel.java` rendering 2D tactical radar via Dear ImGui `ImDrawList`: canvas background, border ring, cardinal axes (N/S/E/W), concentric range rings (25m, 50m, 100m, 200m), local player marker with yaw heading indicator, and remote player character blips with floating nameplates (name, job abbreviation, level)
+- [x] T015 [US2] Wire `WorldRadarPanel` into `client-desktop/src/main/java/com/example/client/desktop/state/InGameState.java`, reading `clientState.getRemoteEntities()` and local position `(x, y, z, yaw)` during `onUpdate(dt)`
+- [x] T016 [US2] Connect `ZoneStateDeltaMessage` processing in `client-desktop/src/main/java/com/example/client/desktop/net/DesktopNetworkAdapter.java` to update `clientState` remote player entities on the main thread and notify UI
+- [x] T017 [US2] Create unit test `client-desktop/src/test/java/com/example/client/desktop/ui/radar/WorldRadarPanelTest.java` verifying coordinate projection logic and remote player marker positioning calculations
 
 **Checkpoint**: At this point, User Stories 1 AND 2 are functional, rendering active player characters on the radar viewport.
 

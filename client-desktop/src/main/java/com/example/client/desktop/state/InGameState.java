@@ -6,6 +6,7 @@ import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.InGamePanel;
+import com.example.client.desktop.ui.radar.WorldRadarPanel;
 import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
@@ -21,6 +22,7 @@ import org.lwjgl.opengl.GL11;
 public class InGameState implements ApplicationState {
 
     private final InGamePanel panel;
+    private final WorldRadarPanel radarPanel;
     private final DebugLogPanel debugLog;
     private final DesktopKeepAliveService keepAlive;
     private final ClientState clientState;
@@ -60,6 +62,7 @@ public class InGameState implements ApplicationState {
 
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
         panel.render();
+        radarPanel.render();
         debugLog.render();
 
         if (panel.isPingRequested()) {

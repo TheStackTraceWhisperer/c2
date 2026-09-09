@@ -39,7 +39,7 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
           }
         }
       } finally {
-        if (msg.payload() != null && msg.payload().refCnt() > 0) {
+        if (msg.payload() != null) {
           msg.payload().release();
         }
       }
@@ -61,13 +61,13 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
     ClientEnvelope clientEnvelope = new ClientEnvelope(
       msg.serviceId(),
       msg.messageId(),
-      msg.payload()
+      msg.payload().retain()
     );
 
     clientStreamChannel.writeAndFlush(clientEnvelope).addListener((ChannelFutureListener) future -> {
       if (!future.isSuccess()) {
         log.error("[GATEWAY-RELAY] Failed to relay to client stream: {}", future.cause().getMessage());
-        if (clientEnvelope.payload() != null && clientEnvelope.payload().refCnt() > 0) {
+        if (clientEnvelope.payload() != null) {
           clientEnvelope.payload().release();
         }
       }
@@ -89,6 +89,21 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
   @Override
   public void channelInactive(ChannelHandlerContext ctx) {
     log.info("[GATEWAY-RELAY] Backend stream inactive.");
+  }
+
+  @Override
+  public void handlerAdded(ChannelHandlerContext ctx) {
+    if (clientStreamChannel != null && clientStreamChannel.isActive()) {
+      clientStreamChannel.pipeline().addLast(new io.netty.channel.ChannelInboundHandlerAdapter() {
+        @Override
+        public void channelWritabilityChanged(ChannelHandlerContext clientCtx) throws Exception {
+          if (ctx.channel().isActive()) {
+            ctx.channel().config().setAutoRead(clientCtx.channel().isWritable());
+          }
+          super.channelWritabilityChanged(clientCtx);
+        }
+      });
+    }
   }
 
   @Override

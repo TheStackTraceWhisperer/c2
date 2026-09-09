@@ -107,11 +107,12 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(endpointKey) : null;
 
       if (backendStream != null && backendStream.isActive()) {
+        backendEnvelope.payload().retain();
         backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
           if (!future.isSuccess()) {
             log.error("[GATEWAY] Failed to forward to backend stream for key 0x{}: {}",
               Long.toHexString(endpointKey), future.cause().getMessage());
-            if (backendEnvelope.payload() != null && backendEnvelope.payload().refCnt() > 0) {
+            if (backendEnvelope.payload() != null) {
               backendEnvelope.payload().release();
             }
           }
@@ -124,7 +125,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         enqueueAndConnect(ctx, session, msg.serviceId(), endpoint.host(), endpoint.port(), endpointKey, backendEnvelope);
       }
     } finally {
-      if (msg.payload() != null && msg.payload().refCnt() > 0) {
+      if (msg.payload() != null) {
         msg.payload().release();
       }
     }
@@ -193,8 +194,9 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
             if (queue != null) {
               while (!queue.isEmpty()) {
                 BackendEnvelope queuedEnvelope = queue.poll();
+                queuedEnvelope.payload().retain();
                 ch.writeAndFlush(queuedEnvelope).addListener((ChannelFutureListener) wf -> {
-                  if (!wf.isSuccess() && queuedEnvelope.payload() != null && queuedEnvelope.payload().refCnt() > 0) {
+                  if (!wf.isSuccess() && queuedEnvelope.payload() != null) {
                     queuedEnvelope.payload().release();
                   }
                 });
@@ -230,7 +232,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     if (queue != null) {
       while (!queue.isEmpty()) {
         BackendEnvelope env = queue.poll();
-        if (env.payload() != null && env.payload().refCnt() > 0) {
+        if (env.payload() != null) {
           env.payload().release();
         }
       }
@@ -246,13 +248,11 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
     ByteBuf payload = ctx.alloc().buffer(bytes.length);
     payload.writeBytes(bytes);
-    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload.retain());
     ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
       if (!f.isSuccess()) {
         log.error("[GATEWAY] Failed to send error frame to client: {}", f.cause().getMessage());
-        if (payload.refCnt() > 0) {
-          payload.release();
-        }
+        payload.release();
       }
     });
   }
@@ -261,13 +261,11 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
     ByteBuf payload = ctx.alloc().buffer(bytes.length);
     payload.writeBytes(bytes);
-    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload.retain());
     ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
       if (!f.isSuccess()) {
         log.error("[GATEWAY] Failed to send error frame before severing: {}", f.cause().getMessage());
-        if (payload.refCnt() > 0) {
-          payload.release();
-        }
+        payload.release();
       }
       clientStream.close();
       if (clientStream.parent() != null && clientStream.parent().isActive()) {
@@ -281,7 +279,8 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     log.error("[GATEWAY] Inbound stream error: {}", cause.getMessage(), cause);
 
-    if (cause instanceof TooLongFrameException || cause instanceof CorruptedFrameException) {
+    if (cause instanceof TooLongFrameException || cause instanceof CorruptedFrameException ||
+        cause instanceof IndexOutOfBoundsException || cause instanceof IllegalArgumentException) {
       QuicStreamChannel streamChannel = (QuicStreamChannel) ctx.channel();
       if (streamChannel.isActive()) {
         sendErrorAndSever(ctx, streamChannel, new GatewayErrorResponse(

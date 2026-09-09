@@ -18,9 +18,9 @@
 
 **Goal**: Ensure over-quota packets are cleanly discarded and do not leak memory.
 
-- [ ] T001 [US1] Remove conditional `refCnt() > 0` check from `finally` block in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` and unconditionally release `msg.payload()`
-- [ ] T002 [US1] Update `sendErrorAndSever` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` error payload before `writeAndFlush()` and unconditionally `release()` in failure listener
-- [ ] T003 [US1] Update `sendError` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` error payload before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T001 [US1] Remove conditional `refCnt() > 0` check from `finally` block in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` and unconditionally release `msg.payload()`
+- [x] T002 [US1] Update `sendErrorAndSever` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` error payload before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T003 [US1] Update `sendError` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` error payload before `writeAndFlush()` and unconditionally `release()` in failure listener
 
 ---
 
@@ -28,9 +28,9 @@
 
 **Goal**: Ensure queued messages are cleanly discarded if backend connection fails.
 
-- [ ] T004 [US2] Update `channelRead0` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` `backendEnvelope.payload()` before `writeAndFlush()` and unconditionally `release()` in failure listener
-- [ ] T005 [US2] Update `enqueueAndConnect` queue drain loop in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` before `writeAndFlush()` and unconditionally `release()` in failure listener
-- [ ] T006 [US2] Update `drainAndRelease` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to unconditionally `release()` without `refCnt()` check
+- [x] T004 [US2] Update `channelRead0` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` `backendEnvelope.payload()` before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T005 [US2] Update `enqueueAndConnect` queue drain loop in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to `retain()` before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T006 [US2] Update `drainAndRelease` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to unconditionally `release()` without `refCnt()` check
 
 ---
 
@@ -38,7 +38,7 @@
 
 **Goal**: Safely reject all malformed frames and close the QUIC stream without leaking memory.
 
-- [ ] T007 [US6] Update `exceptionCaught` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to intercept `IndexOutOfBoundsException` and `IllegalArgumentException` in addition to existing frame exceptions
+- [x] T007 [US6] Update `exceptionCaught` in `platform-modulith/src/main/java/com/example/gateway/GatewayInboundStreamHandler.java` to intercept `IndexOutOfBoundsException` and `IllegalArgumentException` in addition to existing frame exceptions
 
 ---
 
@@ -46,7 +46,7 @@
 
 **Goal**: Ensure disconnect notification buffers are unconditionally released.
 
-- [ ] T008 [P] [US3] Update `handleSessionDisconnect` in `platform-modulith/src/main/java/com/example/gateway/QuicGateway.java` to `retain()` notification payload before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T008 [P] [US3] Update `handleSessionDisconnect` in `platform-modulith/src/main/java/com/example/gateway/QuicGateway.java` to `retain()` notification payload before `writeAndFlush()` and unconditionally `release()` in failure listener
 
 ---
 
@@ -54,8 +54,8 @@
 
 **Goal**: Ensure backend responses are properly released when relayed or dropped.
 
-- [ ] T009 [P] [US4] Update blind pass-through in `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to `retain()` before `writeAndFlush()` and unconditionally `release()` in failure listener
-- [ ] T010 [P] [US4] Update control message parsing in `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to unconditionally `release()` in `finally` block without `refCnt()` check
+- [x] T009 [P] [US4] Update blind pass-through in `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to `retain()` before `writeAndFlush()` and unconditionally `release()` in failure listener
+- [x] T010 [P] [US4] Update control message parsing in `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to unconditionally `release()` in `finally` block without `refCnt()` check
 
 ---
 
@@ -63,7 +63,7 @@
 
 **Goal**: Prevent unbounded in-memory buffering by implementing bidirectional auto-read toggling.
 
-- [ ] T011 [P] [US5] Implement writability-change listener on `clientStreamChannel` inside `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to resume/suspend auto-read on the backend stream
+- [x] T011 [P] [US5] Implement writability-change listener on `clientStreamChannel` inside `platform-modulith/src/main/java/com/example/gateway/GatewayBackendRelayHandler.java` to resume/suspend auto-read on the backend stream
 
 ---
 
@@ -71,4 +71,4 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T012 Run leak detection tests in `platform-modulith/src/test/` to verify zero leaks across all scenarios
+- [x] T012 Run leak detection tests in `platform-modulith/src/test/` to verify zero leaks across all scenarios

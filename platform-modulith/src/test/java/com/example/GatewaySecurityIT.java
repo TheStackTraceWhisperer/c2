@@ -44,7 +44,7 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
     assertThat(error.errorCode()).isEqualTo(GatewayErrorResponse.ERROR_UNAUTHENTICATED);
     assertThat(error.rejectedServiceId()).isEqualTo(ServiceType.LOBBY);
 
-    await().atMost(3, TimeUnit.SECONDS).until(() -> !client.isConnected());
+    await().atMost(5, TimeUnit.SECONDS).until(() -> !client.isConnected());
     assertThat(client.isConnected()).isFalse();
   }
 

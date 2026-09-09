@@ -248,24 +248,27 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
     byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
     ByteBuf payload = ctx.alloc().buffer(bytes.length);
     payload.writeBytes(bytes);
-    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload.retain());
+    payload.retain(); // pipeline takes ownership of this retained copy
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
     ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
       if (!f.isSuccess()) {
         log.error("[GATEWAY] Failed to send error frame to client: {}", f.cause().getMessage());
-        payload.release();
+        payload.release(); // release the retained copy on failure (pipeline didn't consume it)
       }
     });
+    payload.release(); // release local reference unconditionally; pipeline holds its own retained copy
   }
 
   private void sendErrorAndSever(ChannelHandlerContext ctx, QuicStreamChannel clientStream, GatewayErrorResponse errorResponse) {
     byte[] bytes = BackendForySerializationProvider.get().serialize(errorResponse);
     ByteBuf payload = ctx.alloc().buffer(bytes.length);
     payload.writeBytes(bytes);
-    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload.retain());
+    payload.retain(); // pipeline takes ownership of this retained copy
+    ClientEnvelope envelope = new ClientEnvelope(ServiceType.SYSTEM, MessageType.GATEWAY_ERROR_RESPONSE, payload);
     ctx.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
       if (!f.isSuccess()) {
         log.error("[GATEWAY] Failed to send error frame before severing: {}", f.cause().getMessage());
-        payload.release();
+        payload.release(); // release retained copy on failure
       }
       clientStream.close();
       if (clientStream.parent() != null && clientStream.parent().isActive()) {
@@ -273,6 +276,7 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
         clientStream.parent().close();
       }
     });
+    payload.release(); // release local reference unconditionally; pipeline holds its own retained copy
   }
 
   @Override

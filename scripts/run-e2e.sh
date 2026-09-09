@@ -96,19 +96,34 @@ kubectl create secret generic jwt-keypair-secret \
 echo "[k3d] Importing platform-modulith:latest into cluster..."
 k3d image import platform-modulith:latest -c "${CLUSTER_NAME}"
 
+POD_LOG_FILE="${ROOT_DIR}/e2e-pods.log"
+
+function dump_pod_logs {
+  {
+    echo "=== POD STATUS ==="
+    kubectl get pods -A || true
+    echo ""
+    echo "=== GATEWAY LOGS ==="
+    kubectl logs deployment/gateway --tail=200 || true
+    echo ""
+    echo "=== LOGIN LOGS ==="
+    kubectl logs deployment/login-service --tail=200 || true
+    echo ""
+    echo "=== LOBBY LOGS ==="
+    kubectl logs deployment/lobby-service --tail=200 || true
+    echo ""
+    echo "=== OPERATOR LOGS ==="
+    kubectl logs deployment/mmo-operator --tail=200 || true
+  } > "${POD_LOG_FILE}" 2>&1
+}
+
 function cleanup_on_exit {
   local exit_code=$?
+  dump_pod_logs
   if [ $exit_code -ne 0 ]; then
-    echo "[e2e] Test execution failed with exit code ${exit_code}. Dumping pod logs:"
-    kubectl get pods -A || true
-    echo "=== GATEWAY LOGS ==="
-    kubectl logs deployment/gateway --tail=100 || true
-    echo "=== LOGIN LOGS ==="
-    kubectl logs deployment/login-service --tail=100 || true
-    echo "=== LOBBY LOGS ==="
-    kubectl logs deployment/lobby-service --tail=100 || true
-    echo "=== OPERATOR LOGS ==="
-    kubectl logs deployment/mmo-operator --tail=100 || true
+    echo "[e2e] Test execution failed with exit code ${exit_code}. Pod logs written to: ${POD_LOG_FILE}" >&2
+  else
+    echo "[e2e] Pod logs written to: ${POD_LOG_FILE}"
   fi
 }
 trap cleanup_on_exit EXIT

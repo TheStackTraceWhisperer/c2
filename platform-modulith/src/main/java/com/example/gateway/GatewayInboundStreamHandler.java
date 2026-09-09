@@ -107,7 +107,6 @@ public class GatewayInboundStreamHandler extends SimpleChannelInboundHandler<Cli
       QuicStreamChannel backendStream = (session != null) ? session.getBackendStreams().get(endpointKey) : null;
 
       if (backendStream != null && backendStream.isActive()) {
-        backendEnvelope.payload().retain();
         backendStream.writeAndFlush(backendEnvelope).addListener((ChannelFutureListener) future -> {
           if (!future.isSuccess()) {
             log.error("[GATEWAY] Failed to forward to backend stream for key 0x{}: {}",

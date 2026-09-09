@@ -80,7 +80,8 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
   @Override
   public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-    if (ctx.channel().isWritable() && clientStreamChannel.isActive()) {
+    // Backend stream writability recovered: resume client stream auto-read only when client is also writable
+    if (ctx.channel().isWritable() && clientStreamChannel.isActive() && clientStreamChannel.isWritable()) {
       clientStreamChannel.config().setAutoRead(true);
     }
     super.channelWritabilityChanged(ctx);
@@ -89,21 +90,6 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
   @Override
   public void channelInactive(ChannelHandlerContext ctx) {
     log.info("[GATEWAY-RELAY] Backend stream inactive.");
-  }
-
-  @Override
-  public void handlerAdded(ChannelHandlerContext ctx) {
-    if (clientStreamChannel != null && clientStreamChannel.isActive()) {
-      clientStreamChannel.pipeline().addLast(new io.netty.channel.ChannelInboundHandlerAdapter() {
-        @Override
-        public void channelWritabilityChanged(ChannelHandlerContext clientCtx) throws Exception {
-          if (ctx.channel().isActive()) {
-            ctx.channel().config().setAutoRead(clientCtx.channel().isWritable());
-          }
-          super.channelWritabilityChanged(clientCtx);
-        }
-      });
-    }
   }
 
   @Override

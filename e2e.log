@@ -1,0 +1,944 @@
+samuel@laptop:~/projects/netty-quic-gateway-demo$ git status
+On branch main
+Your branch is ahead of 'origin/main' by 4 commits.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+samuel@laptop:~/projects/netty-quic-gateway-demo$ ./scripts/run-e2e.sh
+=== Kubernetes k3d E2E Cluster Harness ===
+[build] Packaging platform-modulith with Micronaut docker plugin...
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/home/samuel/.sdkman/candidates/maven/current/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[INFO] Scanning for projects...
+[WARNING]
+[WARNING] Some problems were encountered while building the effective model for com.example:netty-quic-gateway-demo:pom:1.0.0-SNAPSHOT
+[WARNING] 'dependencyManagement.dependencies.dependency.(groupId:artifactId:type:classifier)' must be unique: com.vladsch.flexmark:flexmark-html2md-converter:jar -> version ${html2md.converter.version} vs ${flexmark.version} @ io.micronaut.platform:micronaut-platform:5.1.0, /home/samuel/.m2/repository/io/micronaut/platform/micronaut-platform/5.1.0/micronaut-platform-5.1.0.pom, line 3128, column 19
+[WARNING]
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING]
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING]
+[INFO] ------------------------------------------------------------------------
+[INFO] Detecting the operating system and CPU architecture
+[INFO] ------------------------------------------------------------------------
+[INFO] os.detected.name: linux
+[INFO] os.detected.arch: x86_64
+[INFO] os.detected.bitness: 64
+[INFO] os.detected.version: 7.0
+[INFO] os.detected.version.major: 7
+[INFO] os.detected.version.minor: 0
+[INFO] os.detected.release: ubuntu
+[INFO] os.detected.release.version: 24.04
+[INFO] os.detected.release.like.ubuntu: true
+[INFO] os.detected.release.like.debian: true
+[INFO] os.detected.classifier: linux-x86_64
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO]
+[INFO] netty-quic-gateway-demo                                            [pom]
+[INFO] common-protocol                                                    [jar]
+[INFO] client-sdk                                                         [jar]
+[INFO] platform-modulith                                               [docker]
+[INFO] client-desktop                                                     [jar]
+[INFO]
+[INFO] ----------------< com.example:netty-quic-gateway-demo >-----------------
+[INFO] Building netty-quic-gateway-demo 1.0.0-SNAPSHOT                    [1/5]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ netty-quic-gateway-demo ---
+[INFO] Deleting /home/samuel/projects/netty-quic-gateway-demo/target
+[INFO]
+[INFO] --------------------< com.example:common-protocol >---------------------
+[INFO] Building common-protocol 1.0.0-SNAPSHOT                            [2/5]
+[INFO]   from common-protocol/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ common-protocol ---
+[INFO] Deleting /home/samuel/projects/netty-quic-gateway-demo/common-protocol/target
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ common-protocol ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/common-protocol/src/main/resources
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ common-protocol ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 38 source files with javac [debug parameters release 25] to target/classes
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ common-protocol ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/common-protocol/src/test/resources
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ common-protocol ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 1 source file with javac [debug parameters release 25] to target/test-classes
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ common-protocol ---
+[INFO] Tests are skipped.
+[INFO]
+[INFO] --- jar:3.5.1:jar (default-jar) @ common-protocol ---
+[INFO] Building jar: /home/samuel/projects/netty-quic-gateway-demo/common-protocol/target/common-protocol-1.0.0-SNAPSHOT.jar
+[INFO]
+[INFO] -----------------------< com.example:client-sdk >-----------------------
+[INFO] Building client-sdk 1.0.0-SNAPSHOT                                 [3/5]
+[INFO]   from client-sdk/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ client-sdk ---
+[INFO] Deleting /home/samuel/projects/netty-quic-gateway-demo/client-sdk/target
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ client-sdk ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/main/resources
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ client-sdk ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 19 source files with javac [debug parameters release 25] to target/classes
+[INFO] /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/main/java/com/example/client/QuicClient.java: /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/main/java/com/example/client/QuicClient.java uses or overrides a deprecated API.
+[INFO] /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/main/java/com/example/client/QuicClient.java: Recompile with -Xlint:deprecation for details.
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ client-sdk ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/test/resources
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ client-sdk ---
+[INFO] No sources to compile
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ client-sdk ---
+[INFO] Tests are skipped.
+[INFO]
+[INFO] --- jar:3.5.1:jar (default-jar) @ client-sdk ---
+[INFO] Building jar: /home/samuel/projects/netty-quic-gateway-demo/client-sdk/target/client-sdk-1.0.0-SNAPSHOT.jar
+[INFO]
+[INFO] -------------------< com.example:platform-modulith >--------------------
+[INFO] Building platform-modulith 1.0.0-SNAPSHOT                          [4/5]
+[INFO]   from platform-modulith/pom.xml
+[INFO] -------------------------------[ docker ]-------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ platform-modulith ---
+[INFO] Deleting /home/samuel/projects/netty-quic-gateway-demo/platform-modulith/target
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-generic (default-generate-openapi-generic) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-client (default-generate-openapi-client) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-server (default-generate-openapi-server) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-jsonschema (default-generate-jsonschema) @ platform-modulith ---
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ platform-modulith ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ platform-modulith ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 84 source files with javac [debug parameters release 25] to target/classes
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+[INFO] /home/samuel/projects/netty-quic-gateway-demo/platform-modulith/src/main/java/com/example/gateway/QuicGateway.java: Some input files use or override a deprecated API.
+[INFO] /home/samuel/projects/netty-quic-gateway-demo/platform-modulith/src/main/java/com/example/gateway/QuicGateway.java: Recompile with -Xlint:deprecation for details.
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ platform-modulith ---
+[INFO] Copying 0 resource from src/test/resources to target/test-classes
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ platform-modulith ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 9 source files with javac [debug parameters release 25] to target/test-classes
+[INFO]
+[INFO] --- mn:5.0.2:start-testresources-service (default-start-testresources-service) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:validate-test-configuration (default-validate-test-configuration) @ platform-modulith ---
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ platform-modulith ---
+[INFO] Tests are skipped.
+[INFO]
+[INFO] --- mn:5.0.2:stop-testresources-service (default-stop-testresources-service) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:validate-configuration (default-validate-configuration) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:aot-analysis (default-aot-analysis) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:docker (default-docker) @ platform-modulith ---
+[INFO] Using JDK version 25 from maven.compiler.release
+[INFO] Running extension: io.micronaut.maven.jib.JibMicronautExtension
+[INFO] Using base image: eclipse-temurin:25-jre
+[INFO] Exposing port: 8080
+[INFO]
+[INFO] Containerizing application to Docker daemon as platform-modulith...
+[WARNING] Base image 'eclipse-temurin:25-jre' does not use a specific image digest - build may not be reproducible
+[INFO] The base image requires auth. Trying again for eclipse-temurin:25-jre...
+[INFO] Using base image with digest: sha256:f9e65324a37f28209ce7dd0e5149a7aa954520ed936fb87813cf6ded2400a112
+[INFO]
+[INFO] Container entrypoint set to [java, -cp, @/app/jib-classpath-file, com.example.Application]
+[INFO]
+[INFO] Built image to Docker daemon as platform-modulith
+[INFO] Executing tasks:
+[INFO] [==============================] 100.0% complete
+[INFO]
+[INFO]
+[INFO] ---------------------< com.example:client-desktop >---------------------
+[INFO] Building client-desktop 1.0.0-SNAPSHOT                             [5/5]
+[INFO]   from client-desktop/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- clean:3.2.0:clean (default-clean) @ client-desktop ---
+[INFO] Deleting /home/samuel/projects/netty-quic-gateway-demo/client-desktop/target
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ client-desktop ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ client-desktop ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 34 source files with javac [debug parameters release 25] to target/classes
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ client-desktop ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/client-desktop/src/test/resources
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ client-desktop ---
+[INFO] Recompiling the module because of changed dependency.
+[INFO] Compiling 6 source files with javac [debug parameters release 25] to target/test-classes
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ client-desktop ---
+[INFO] Tests are skipped.
+[INFO]
+[INFO] --- jar:3.5.1:jar (default-jar) @ client-desktop ---
+[INFO] Building jar: /home/samuel/projects/netty-quic-gateway-demo/client-desktop/target/client-desktop-1.0.0-SNAPSHOT.jar
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for netty-quic-gateway-demo 1.0.0-SNAPSHOT:
+[INFO]
+[INFO] netty-quic-gateway-demo ............................ SUCCESS [  0.094 s]
+[INFO] common-protocol .................................... SUCCESS [  3.975 s]
+[INFO] client-sdk ......................................... SUCCESS [  1.746 s]
+[INFO] platform-modulith .................................. SUCCESS [ 12.354 s]
+[INFO] client-desktop ..................................... SUCCESS [  3.027 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  23.181 s
+[INFO] Finished at: 2026-09-08T19:34:06-05:00
+[INFO] ------------------------------------------------------------------------
+[k8s] Deploying Kubernetes Dashboard...
+namespace/kubernetes-dashboard unchanged
+serviceaccount/kubernetes-dashboard unchanged
+service/kubernetes-dashboard unchanged
+secret/kubernetes-dashboard-certs unchanged
+secret/kubernetes-dashboard-csrf configured
+Warning: resource secrets/kubernetes-dashboard-key-holder is missing the kubectl.kubernetes.io/last-applied-configuration annotation which is required by kubectl apply. kubectl apply should only be used on resources created declaratively by either kubectl create --save-config or kubectl apply. The missing annotation will be patched automatically.
+secret/kubernetes-dashboard-key-holder configured
+configmap/kubernetes-dashboard-settings unchanged
+role.rbac.authorization.k8s.io/kubernetes-dashboard unchanged
+clusterrole.rbac.authorization.k8s.io/kubernetes-dashboard unchanged
+rolebinding.rbac.authorization.k8s.io/kubernetes-dashboard unchanged
+clusterrolebinding.rbac.authorization.k8s.io/kubernetes-dashboard unchanged
+deployment.apps/kubernetes-dashboard unchanged
+service/dashboard-metrics-scraper unchanged
+deployment.apps/dashboard-metrics-scraper unchanged
+serviceaccount/admin-user unchanged
+clusterrolebinding.rbac.authorization.k8s.io/admin-user unchanged
+[k8s] Waiting for Kubernetes Dashboard deployment...
+deployment "kubernetes-dashboard" successfully rolled out
+
+==========================================================================
+ Kubernetes Dashboard is live and accessible!
+ URL:   https://127.0.0.1:8443
+ Token: eyJhbGciOiJSUzI1NiIsImtpZCI6ImpQeWk0Y0xYcThKUmdtZXNweDM5Qlg1YmFpdjJLMW1Uc0hqQ2FpclRKelUifQ.eyJhdWQiOlsiaHR0cHM6Ly9rdWJlcm5ldGVzLmRlZmF1bHQuc3ZjLmNsdXN0ZXIubG9jYWwiLCJrM3MiXSwiZXhwIjoxNzg5MDAwNDUwLCJpYXQiOjE3ODg5MTQwNTAsImlzcyI6Imh0dHBzOi8va3ViZXJuZXRlcy5kZWZhdWx0LnN2Yy5jbHVzdGVyLmxvY2FsIiwianRpIjoiZmZkNTEwNDMtNjAyNC00YzE3LTg1ZGUtZTljNTdiYmYzYmY0Iiwia3ViZXJuZXRlcy5pbyI6eyJuYW1lc3BhY2UiOiJrdWJlcm5ldGVzLWRhc2hib2FyZCIsInNlcnZpY2VhY2NvdW50Ijp7Im5hbWUiOiJhZG1pbi11c2VyIiwidWlkIjoiYjg2NGY0ZmUtYzQ1OS00MmM5LTkxYWQtZjE1NDY5ZDE5ZTgwIn19LCJuYmYiOjE3ODg5MTQwNTAsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDprdWJlcm5ldGVzLWRhc2hib2FyZDphZG1pbi11c2VyIn0.tcGJ6oyzAQOuS9nDSYRaW-CtXhaXkD1TdnHRZYk4oXn27jPxz8v77pFcqWQs34DDeCw6nNi85oJcwbYvnQbwwhZ58pTDr6boTubB9WJ7qebWmH8rJXZPxtM9reqcjV9LfQXbU7RkNOMlfokx8_krT1bqeD6oykM5_FNHX9kjOzCb8hdgdtC4g9bm7-VmpG3xnbQUFJXwCNM9wUNEprcBTa963jv-INz2TaE3fhsh2-HqOFB0tmUq_1yMg5a_xwNDPbPHaJdWqd1WebcY-PxKSlbJ7I3WwpwmT1c5y7rcfjAOcobjNJFk14q25I7ed4if0GGebVQVnoKoW5rLAP0JXA
+==========================================================================
+
+[crypto] Generating valid 2048-bit RSA keypair with OpenSSL...
+........+.....+.+...+...+..+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*........+.+.................+....+......+.....+....+..............+......+....+.........+..+......+............+.............+...+.....+.......+..+.+...........+.+..................+.....+................+.........+......+......+..+..........+...+..+.......+.....+.........+.+.....+.+.....+.............+............+............+..+...+...+...............+....+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+...+.+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*...+.+..+......+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*.......+.+......+...+......+......+........+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+writing RSA key
+secret/jwt-keypair-secret configured
+[k3d] Importing platform-modulith:latest into cluster...
+INFO[0000] Importing image(s) into cluster 'mmo-cluster'
+INFO[0000] Starting new tools node...
+INFO[0000] Starting node 'k3d-mmo-cluster-tools'
+INFO[0000] Saving 1 image(s) from runtime...
+INFO[0004] Importing images into nodes...
+INFO[0004] Importing images from tarball '/k3d/images/k3d-mmo-cluster-images-20260908193411.tar' into node 'k3d-mmo-cluster-server-0'...
+INFO[0008] Removing the tarball(s) from image volume...
+INFO[0009] Removing k3d-tools node...
+INFO[0009] Successfully imported image(s)
+INFO[0009] Successfully imported 1 image(s) into 1 cluster(s)
+[k8s] Deploying PostgreSQL, Static Services, Operator, and Gateway...
+service/postgres unchanged
+deployment.apps/postgres unchanged
+configmap/platform-common-config unchanged
+serviceaccount/mmo-operator-sa unchanged
+clusterrole.rbac.authorization.k8s.io/mmo-operator-role unchanged
+clusterrolebinding.rbac.authorization.k8s.io/mmo-operator-binding unchanged
+deployment.apps/mmo-operator unchanged
+service/login-service unchanged
+deployment.apps/login-service unchanged
+service/lobby-service unchanged
+deployment.apps/lobby-service unchanged
+service/gateway-service unchanged
+deployment.apps/gateway unchanged
+[k8s] Triggering rolling restart of static deployments...
+deployment.apps/postgres restarted
+deployment.apps/login-service restarted
+deployment.apps/lobby-service restarted
+deployment.apps/mmo-operator restarted
+deployment.apps/gateway restarted
+[k8s] Waiting for static cluster deployments to be ready...
+Waiting for deployment "postgres" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "postgres" rollout to finish: 1 old replicas are pending termination...
+deployment "postgres" successfully rolled out
+Waiting for deployment "login-service" rollout to finish: 1 old replicas are pending termination...
+deployment "login-service" successfully rolled out
+deployment "lobby-service" successfully rolled out
+deployment "mmo-operator" successfully rolled out
+Waiting for deployment "gateway" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "gateway" rollout to finish: 1 old replicas are pending termination...
+deployment "gateway" successfully rolled out
+[k8s] Waiting for MMO Operator to reconcile and spin up dynamic World & FFXI Zone pods...
+Waiting for pod world-1 to appear and become Ready...pod/world-1 condition met
+ READY.
+Waiting for pod world-2 to appear and become Ready...pod/world-2 condition met
+ READY.
+Waiting for pod w1-inst-1-z230 to appear and become Ready...pod/w1-inst-1-z230 condition met
+ READY.
+Waiting for pod w1-inst-2-z231 to appear and become Ready...pod/w1-inst-2-z231 condition met
+ READY.
+Waiting for pod w1-inst-3-z234 to appear and become Ready...pod/w1-inst-3-z234 condition met
+ READY.
+Waiting for pod w1-inst-4-z235 to appear and become Ready...pod/w1-inst-4-z235 condition met
+ READY.
+Waiting for pod w1-inst-5-z238 to appear and become Ready...pod/w1-inst-5-z238 condition met
+ READY.
+Waiting for pod w1-inst-6-z239 to appear and become Ready...pod/w1-inst-6-z239 condition met
+ READY.
+[test] Executing Integration Test Suite (IT) against live k3d cluster...
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/home/samuel/.sdkman/candidates/maven/current/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[INFO] Scanning for projects...
+[WARNING]
+[WARNING] Some problems were encountered while building the effective model for com.example:netty-quic-gateway-demo:pom:1.0.0-SNAPSHOT
+[WARNING] 'dependencyManagement.dependencies.dependency.(groupId:artifactId:type:classifier)' must be unique: com.vladsch.flexmark:flexmark-html2md-converter:jar -> version ${html2md.converter.version} vs ${flexmark.version} @ io.micronaut.platform:micronaut-platform:5.1.0, /home/samuel/.m2/repository/io/micronaut/platform/micronaut-platform/5.1.0/micronaut-platform-5.1.0.pom, line 3128, column 19
+[WARNING]
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING]
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING]
+[INFO] ------------------------------------------------------------------------
+[INFO] Detecting the operating system and CPU architecture
+[INFO] ------------------------------------------------------------------------
+[INFO] os.detected.name: linux
+[INFO] os.detected.arch: x86_64
+[INFO] os.detected.bitness: 64
+[INFO] os.detected.version: 7.0
+[INFO] os.detected.version.major: 7
+[INFO] os.detected.version.minor: 0
+[INFO] os.detected.release: ubuntu
+[INFO] os.detected.release.version: 24.04
+[INFO] os.detected.release.like.ubuntu: true
+[INFO] os.detected.release.like.debian: true
+[INFO] os.detected.classifier: linux-x86_64
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO]
+[INFO] netty-quic-gateway-demo                                            [pom]
+[INFO] common-protocol                                                    [jar]
+[INFO] client-sdk                                                         [jar]
+[INFO] platform-modulith                                                  [jar]
+[INFO]
+[INFO] ----------------< com.example:netty-quic-gateway-demo >-----------------
+[INFO] Building netty-quic-gateway-demo 1.0.0-SNAPSHOT                    [1/4]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO]
+[INFO] --------------------< com.example:common-protocol >---------------------
+[INFO] Building common-protocol 1.0.0-SNAPSHOT                            [2/4]
+[INFO]   from common-protocol/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ common-protocol ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/common-protocol/src/main/resources
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ common-protocol ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ common-protocol ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/common-protocol/src/test/resources
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ common-protocol ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ common-protocol ---
+[INFO]
+[INFO] -----------------------< com.example:client-sdk >-----------------------
+[INFO] Building client-sdk 1.0.0-SNAPSHOT                                 [3/4]
+[INFO]   from client-sdk/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ client-sdk ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/main/resources
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ client-sdk ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ client-sdk ---
+[INFO] skip non existing resourceDirectory /home/samuel/projects/netty-quic-gateway-demo/client-sdk/src/test/resources
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ client-sdk ---
+[INFO] No sources to compile
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ client-sdk ---
+[INFO] No tests to run.
+[INFO]
+[INFO] -------------------< com.example:platform-modulith >--------------------
+[INFO] Building platform-modulith 1.0.0-SNAPSHOT                          [4/4]
+[INFO]   from platform-modulith/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO]
+[INFO] --- mn:5.0.2:generate-import-factory (default-generate-import-factory) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-generic (default-generate-openapi-generic) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-client (default-generate-openapi-client) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-openapi-server (default-generate-openapi-server) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:generate-jsonschema (default-generate-jsonschema) @ platform-modulith ---
+[INFO]
+[INFO] --- resources:3.5.0:resources (default-resources) @ platform-modulith ---
+[INFO] Copying 2 resources from src/main/resources to target/classes
+[INFO]
+[INFO] --- compiler:3.15.0:compile (default-compile) @ platform-modulith ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO]
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ platform-modulith ---
+[INFO] Copying 0 resource from src/test/resources to target/test-classes
+[INFO]
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ platform-modulith ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO]
+[INFO] --- mn:5.0.2:start-testresources-service (default-start-testresources-service) @ platform-modulith ---
+[INFO]
+[INFO] --- mn:5.0.2:validate-test-configuration (default-validate-test-configuration) @ platform-modulith ---
+[INFO]
+[INFO] --- surefire:3.5.6:test (default-test) @ platform-modulith ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO]
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.example.GatewayRoutingIT
+2026-09-08 19:34:45.827 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [test, test-driver]
+2026-09-08 19:34:46.085 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-09-08 19:34:46.410 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@68fe48d7
+2026-09-08 19:34:46.412 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/home/samuel/.m2/repository/io/netty/netty-common/4.2.16.Final/netty-common-4.2.16.Final.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+2026-09-08 19:34:48.237 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:48.348 [nioEventLoopGroup-4-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:48.375 [nioEventLoopGroup-4-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldOffset has been called by org.apache.fory.platform.internal._Lookup (file:/home/samuel/.m2/repository/org/apache/fory/fory-core/1.6.0/fory-core-1.6.0.jar)
+WARNING: Please consider reporting this to the maintainers of class org.apache.fory.platform.internal._Lookup
+WARNING: sun.misc.Unsafe::staticFieldOffset will be removed in a future release
+2026-09-08 19:34:52.378 [nioEventLoopGroup-4-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:34:54.973 [nioEventLoopGroup-4-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:34:55.150 [nioEventLoopGroup-4-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:34:55.211 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:55.216 [nioEventLoopGroup-4-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:55.275 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:55.286 [nioEventLoopGroup-5-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:55.287 [nioEventLoopGroup-5-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:55.447 [nioEventLoopGroup-5-1] INFO  c.e.c.h.ReconnectResponseHandler - [CLIENT-HANDLER] ReconnectResponse received: success=true, characterId=0
+2026-09-08 19:34:55.588 [nioEventLoopGroup-5-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:34:55.611 [nioEventLoopGroup-5-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:34:55.939 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:55.941 [nioEventLoopGroup-5-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:55.984 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:55.996 [nioEventLoopGroup-6-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:55.997 [nioEventLoopGroup-6-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:56.235 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:56.237 [nioEventLoopGroup-6-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:56.317 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-09-08 19:34:56.320 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 11.12 s -- in com.example.GatewayRoutingIT
+[INFO] Running com.example.PlayerJourneyIT
+2026-09-08 19:34:56.374 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [test, test-driver]
+2026-09-08 19:34:56.420 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Starting...
+2026-09-08 19:34:56.528 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-2 - Added connection org.postgresql.jdbc.PgConnection@c412556
+2026-09-08 19:34:56.529 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Start completed.
+2026-09-08 19:34:56.852 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:56.870 [nioEventLoopGroup-9-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:56.871 [nioEventLoopGroup-9-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:57.260 [nioEventLoopGroup-9-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:34:57.280 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:57.292 [nioEventLoopGroup-10-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:57.292 [nioEventLoopGroup-10-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:57.626 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:57.628 [nioEventLoopGroup-10-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:57.631 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:57.632 [nioEventLoopGroup-9-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:57.663 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:57.683 [nioEventLoopGroup-11-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:57.685 [nioEventLoopGroup-11-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:58.087 [nioEventLoopGroup-11-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:34:58.790 [nioEventLoopGroup-11-1] INFO  c.e.c.h.CharacterListResponseHandler - [CLIENT-HANDLER] Character list received: 3 characters
+2026-09-08 19:34:58.852 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:58.853 [nioEventLoopGroup-11-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:58.883 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:58.895 [nioEventLoopGroup-12-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:58.896 [nioEventLoopGroup-12-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:59.156 [nioEventLoopGroup-12-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:34:59.215 [nioEventLoopGroup-12-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:34:59.309 [nioEventLoopGroup-12-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:34:59.432 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:34:59.433 [nioEventLoopGroup-12-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:34:59.442 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Shutdown initiated...
+2026-09-08 19:34:59.443 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Shutdown completed.
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.102 s -- in com.example.PlayerJourneyIT
+[INFO] Running com.example.ZoneSimulationIT
+2026-09-08 19:34:59.473 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [test, test-driver]
+2026-09-08 19:34:59.499 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Starting...
+2026-09-08 19:34:59.515 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-3 - Added connection org.postgresql.jdbc.PgConnection@2ca54da9
+2026-09-08 19:34:59.516 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Start completed.
+2026-09-08 19:34:59.585 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:34:59.595 [nioEventLoopGroup-15-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:34:59.596 [nioEventLoopGroup-15-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:34:59.856 [nioEventLoopGroup-15-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:34:59.914 [nioEventLoopGroup-15-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:35:00.013 [nioEventLoopGroup-15-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:35:00.131 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:00.132 [nioEventLoopGroup-15-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:00.243 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:00.256 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:00.264 [nioEventLoopGroup-16-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:00.264 [nioEventLoopGroup-16-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:00.485 [nioEventLoopGroup-16-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:35:00.581 [nioEventLoopGroup-16-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:35:00.677 [nioEventLoopGroup-16-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:35:00.771 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:00.779 [nioEventLoopGroup-17-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:00.779 [nioEventLoopGroup-17-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:00.992 [nioEventLoopGroup-17-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668752
+2026-09-08 19:35:01.097 [nioEventLoopGroup-17-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1002
+2026-09-08 19:35:01.191 [nioEventLoopGroup-17-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:35:01.333 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:01.468 [nioEventLoopGroup-17-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:01.470 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:01.496 [nioEventLoopGroup-16-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:01.510 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:01.518 [nioEventLoopGroup-18-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:01.519 [nioEventLoopGroup-18-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:01.781 [nioEventLoopGroup-18-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:35:01.839 [nioEventLoopGroup-18-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1001
+2026-09-08 19:35:01.931 [nioEventLoopGroup-18-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:35:02.081 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:02.087 [nioEventLoopGroup-19-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:02.088 [nioEventLoopGroup-19-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:02.303 [nioEventLoopGroup-19-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668752
+2026-09-08 19:35:02.402 [nioEventLoopGroup-19-1] INFO  c.e.c.h.SelectCharacterResponseHandler - [CLIENT-HANDLER] SelectCharacterResponse received: success=true, characterId=1002
+2026-09-08 19:35:02.498 [nioEventLoopGroup-19-1] INFO  c.e.c.h.JoinWorldResponseHandler - [CLIENT-HANDLER] JoinWorldResponse received: success=true, initialZoneId=230
+2026-09-08 19:35:02.735 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:02.735 [nioEventLoopGroup-19-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:02.737 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:02.737 [nioEventLoopGroup-18-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:02.747 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Shutdown initiated...
+2026-09-08 19:35:02.751 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Shutdown completed.
+[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.305 s -- in com.example.ZoneSimulationIT
+[INFO] Running com.example.GatewaySecurityIT
+2026-09-08 19:35:02.784 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [test, test-driver]
+2026-09-08 19:35:02.802 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-4 - Starting...
+2026-09-08 19:35:02.812 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-4 - Added connection org.postgresql.jdbc.PgConnection@545d2560
+2026-09-08 19:35:02.812 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-4 - Start completed.
+2026-09-08 19:35:02.867 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:02.874 [nioEventLoopGroup-22-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:02.874 [nioEventLoopGroup-22-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:03.094 [nioEventLoopGroup-22-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:35:03.240 [nioEventLoopGroup-22-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:03.381 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:03.396 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:03.404 [nioEventLoopGroup-23-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:03.405 [nioEventLoopGroup-23-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:06.522 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:06.522 [nioEventLoopGroup-23-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:06.540 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:06.547 [nioEventLoopGroup-24-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:06.548 [nioEventLoopGroup-24-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:06.765 [nioEventLoopGroup-24-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:35:06.946 [nioEventLoopGroup-24-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:07.055 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:07.070 [main] INFO  com.example.client.QuicClient - [CLIENT] Connecting to QUIC gateway at 127.0.0.1:8888...
+2026-09-08 19:35:07.077 [nioEventLoopGroup-25-1] INFO  com.example.client.QuicClient - [CLIENT] QUIC Handshake successful. Opening bidirectional stream...
+2026-09-08 19:35:07.077 [nioEventLoopGroup-25-1] INFO  com.example.client.QuicClient - [CLIENT] Bidirectional stream ready.
+2026-09-08 19:35:07.310 [nioEventLoopGroup-25-1] INFO  c.e.c.handler.LoginResponseHandler - [CLIENT-HANDLER] LoginResponse received: success=true, accountId=92668751
+2026-09-08 19:35:07.398 [nioEventLoopGroup-25-1] ERROR c.e.c.h.GatewayErrorResponseHandler - [CLIENT-HANDLER] GatewayErrorResponse received: code=1004, svc=0, msg=0, text='Malformed or oversized payload: Client envelope payload length 20484 exceeds maximum allowed 16384'
+2026-09-08 19:35:07.413 [nioEventLoopGroup-25-1] INFO  com.example.client.QuicClient - [CLIENT] QuicChannel inactive.
+2026-09-08 19:35:07.488 [main] INFO  com.example.client.QuicClient - [CLIENT] Shutting down client...
+2026-09-08 19:35:07.494 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-4 - Shutdown initiated...
+2026-09-08 19:35:07.495 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-4 - Shutdown completed.
+[ERROR] Tests run: 4, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 4.737 s <<< FAILURE! -- in com.example.GatewaySecurityIT
+[ERROR] com.example.GatewaySecurityIT.unauthenticatedPacketTriggersRejectionAndDisconnect -- Time elapsed: 3.142 s <<< ERROR!
+org.awaitility.core.ConditionTimeoutException: Condition with Lambda expression in com.example.GatewaySecurityIT was not fulfilled within 3 seconds.
+        at org.awaitility.core.ConditionAwaiter.await(ConditionAwaiter.java:167)
+        at org.awaitility.core.CallableCondition.await(CallableCondition.java:78)
+        at org.awaitility.core.CallableCondition.await(CallableCondition.java:26)
+        at org.awaitility.core.ConditionFactory.until(ConditionFactory.java:1160)
+        at org.awaitility.core.ConditionFactory.until(ConditionFactory.java:1129)
+        at com.example.GatewaySecurityIT.unauthenticatedPacketTriggersRejectionAndDisconnect(GatewaySecurityIT.java:47)
+
+[INFO]
+[INFO] Results:
+[INFO]
+[ERROR] Errors:
+[ERROR]   GatewaySecurityIT.unauthenticatedPacketTriggersRejectionAndDisconnect:47 » ConditionTimeout Condition with Lambda expression in com.example.GatewaySecurityIT was not fulfilled within 3 seconds.
+[INFO]
+[ERROR] Tests run: 12, Failures: 0, Errors: 1, Skipped: 0
+[INFO]
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for netty-quic-gateway-demo 1.0.0-SNAPSHOT:
+[INFO]
+[INFO] netty-quic-gateway-demo ............................ SUCCESS [  0.003 s]
+[INFO] common-protocol .................................... SUCCESS [  0.771 s]
+[INFO] client-sdk ......................................... SUCCESS [  0.107 s]
+[INFO] platform-modulith .................................. FAILURE [ 24.648 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  27.846 s
+[INFO] Finished at: 2026-09-08T19:35:07-05:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.6:test (default-test) on project platform-modulith:
+[ERROR]
+[ERROR] See /home/samuel/projects/netty-quic-gateway-demo/platform-modulith/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR]
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR]
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR]
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :platform-modulith
+[e2e] Test execution failed with exit code 1. Dumping pod logs:
+NAMESPACE              NAME                                        READY   STATUS      RESTARTS   AGE
+default                gateway-84754768b4-qxf8x                    1/1     Running     0          45s
+default                lobby-service-59447c5ccc-k9q7s              1/1     Running     0          45s
+default                login-service-6b5b7788bf-7bmm6              1/1     Running     0          45s
+default                mmo-operator-69b744784f-7cbjh               1/1     Running     0          45s
+default                postgres-5585df97f5-q57hm                   1/1     Running     0          45s
+default                w1-inst-1-z230                              1/1     Running     0          28h
+default                w1-inst-2-z231                              1/1     Running     0          28h
+default                w1-inst-3-z234                              1/1     Running     0          28h
+default                w1-inst-4-z235                              1/1     Running     0          28h
+default                w1-inst-5-z238                              1/1     Running     0          28h
+default                w1-inst-6-z239                              1/1     Running     0          28h
+default                world-1                                     1/1     Running     0          28h
+default                world-2                                     1/1     Running     0          28h
+kube-system            coredns-8db54c48d-4h2gf                     1/1     Running     0          28h
+kube-system            helm-install-traefik-crd-ldf58              0/1     Completed   0          28h
+kube-system            helm-install-traefik-j6mmc                  0/1     Completed   1          28h
+kube-system            local-path-provisioner-5d9d9885bc-6zxsx     1/1     Running     0          28h
+kube-system            metrics-server-786d997795-jmjfw             1/1     Running     0          28h
+kube-system            svclb-gateway-service-964d9cb8-ww5cf        2/2     Running     0          28h
+kube-system            svclb-postgres-c5acf386-pzsgn               1/1     Running     0          28h
+kube-system            svclb-traefik-e28796db-9sfgs                2/2     Running     0          28h
+kube-system            traefik-9bcdbbd9-96pns                      1/1     Running     0          28h
+kubernetes-dashboard   dashboard-metrics-scraper-8d46b45f6-tmp5t   1/1     Running     0          28h
+kubernetes-dashboard   kubernetes-dashboard-b44857bbb-pncdn        1/1     Running     0          28h
+=== GATEWAY LOGS ===
+2026-09-09 00:35:02.302 [nioEventLoopGroup-2-1] INFO  c.e.g.h.SetSessionAuthStateHandler - [GATEWAY-CTRL] Session #90968171044933632 authentication state set to: true (accountId: 92668752)
+2026-09-09 00:35:02.302 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 1, msg: 101 (Session #90968171044933632)
+2026-09-09 00:35:02.391 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x24fbe0000270f. Flushing pending frames...
+2026-09-09 00:35:02.399 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 2 for Session #90968171044933632
+2026-09-09 00:35:02.400 [nioEventLoopGroup-2-1] INFO  c.e.g.h.SetSessionCharacterHandler - [GATEWAY-CTRL] Session #90968171044933632 bound to characterId=1002
+2026-09-09 00:35:02.400 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 3 for Session #90968171044933632
+2026-09-09 00:35:02.400 [nioEventLoopGroup-2-1] INFO  c.e.g.handler.SetSessionWorldHandler - [GATEWAY-CTRL] Binding Session #90968171044933632 to World #1 (10.42.0.23:9996)
+2026-09-09 00:35:02.400 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 2, msg: 204 (Session #90968171044933632)
+2026-09-09 00:35:02.492 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x39d600000270c. Flushing pending frames...
+2026-09-09 00:35:02.496 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 4 for Session #90968171044933632
+2026-09-09 00:35:02.496 [nioEventLoopGroup-2-1] INFO  c.e.g.handler.SetSessionZoneHandler - [GATEWAY-CTRL] Transferring Session #90968171044933632 from Zone #0 to Zone #230 (10.42.0.25:9997)
+2026-09-09 00:35:02.497 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 3, msg: 301 (Session #90968171044933632)
+2026-09-09 00:35:02.594 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x49d620000270d. Flushing pending frames...
+2026-09-09 00:35:02.629 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 401 (Session #90968171044933632)
+2026-09-09 00:35:02.629 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968168649986048)
+2026-09-09 00:35:02.630 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968171044933632)
+2026-09-09 00:35:02.677 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 401 (Session #90968168649986048)
+2026-09-09 00:35:02.678 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968168649986048)
+2026-09-09 00:35:02.678 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968171044933632)
+2026-09-09 00:35:02.727 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968168649986048)
+2026-09-09 00:35:02.728 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 4, msg: 404 (Session #90968171044933632)
+2026-09-09 00:35:02.748 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Client disconnected: Session #90968171044933632 (Char #1002). Broadcasting teardown...
+2026-09-09 00:35:02.755 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.756 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.756 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.756 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.758 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Client disconnected: Session #90968168649986048 (Char #1001). Broadcasting teardown...
+2026-09-09 00:35:02.763 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.763 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.764 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.764 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:02.870 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Assigned ClientSession #90968174341656576 to QuicChannel (5a779035eac45afb94125c4219f7579a0c1808db)[id: 0xfea876f0, L:QuicConnectionAddress{connId=5a779035eac45afb94125c4219f7579a0c1808db} ! R:QuicConnectionAddress{connId=}]
+2026-09-09 00:35:02.879 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x120510000270e. Flushing pending frames...
+2026-09-09 00:35:03.091 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 1 for Session #90968174341656576
+2026-09-09 00:35:03.091 [nioEventLoopGroup-2-1] INFO  c.e.g.h.SetSessionAuthStateHandler - [GATEWAY-CTRL] Session #90968174341656576 authentication state set to: true (accountId: 92668751)
+2026-09-09 00:35:03.091 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 1, msg: 101 (Session #90968174341656576)
+2026-09-09 00:35:03.180 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Blocked out-of-state packet to svc 4 from Session #90968174341656576. Terminating connection.
+2026-09-09 00:35:03.196 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Defensively closing QuicChannel for session after security violation
+2026-09-09 00:35:03.196 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Client disconnected: Session #90968174341656576 (Char #0). Broadcasting teardown...
+2026-09-09 00:35:03.197 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:03.400 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Assigned ClientSession #90968176564637696 to QuicChannel (cb4054cd85ade96045ce555d1d0b290118347765)[id: 0x831dddb1, L:QuicConnectionAddress{connId=cb4054cd85ade96045ce555d1d0b290118347765} ! R:QuicConnectionAddress{connId=}]
+2026-09-09 00:35:03.409 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Blocked unauthenticated access to svc 2 from Session #90968176564637696. Terminating connection.
+2026-09-09 00:35:03.409 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Defensively closing QuicChannel for session after security violation
+2026-09-09 00:35:06.543 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Assigned ClientSession #90968189747335168 to QuicChannel (13a91ba83d353bbd2e73dd8626637e1a590aacd5)[id: 0x65f2c1b7, L:QuicConnectionAddress{connId=13a91ba83d353bbd2e73dd8626637e1a590aacd5} ! R:QuicConnectionAddress{connId=}]
+2026-09-09 00:35:06.553 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x120510000270e. Flushing pending frames...
+2026-09-09 00:35:06.763 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 1 for Session #90968189747335168
+2026-09-09 00:35:06.763 [nioEventLoopGroup-2-1] INFO  c.e.g.h.SetSessionAuthStateHandler - [GATEWAY-CTRL] Session #90968189747335168 authentication state set to: true (accountId: 92668751)
+2026-09-09 00:35:06.763 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 1, msg: 101 (Session #90968189747335168)
+2026-09-09 00:35:06.891 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-RATELIMIT] Dropped packet svc: 1, msg: 50 from Session #90968189747335168 (Rate limit exceeded). Terminating connection.
+2026-09-09 00:35:06.892 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Defensively closing QuicChannel for session after security violation
+2026-09-09 00:35:06.893 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Client disconnected: Session #90968189747335168 (Char #0). Broadcasting teardown...
+2026-09-09 00:35:06.894 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+2026-09-09 00:35:07.073 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Assigned ClientSession #90968191970316288 to QuicChannel (37f53f26c5b181e4843d961b48c3054d28bef37e)[id: 0xb49a679d, L:QuicConnectionAddress{connId=37f53f26c5b181e4843d961b48c3054d28bef37e} ! R:QuicConnectionAddress{connId=}]
+2026-09-09 00:35:07.088 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayInboundStreamHandler - [GATEWAY] Backend stream established for key 0x120510000270e. Flushing pending frames...
+2026-09-09 00:35:07.308 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Consuming control message ID: 1 for Session #90968191970316288
+2026-09-09 00:35:07.308 [nioEventLoopGroup-2-1] INFO  c.e.g.h.SetSessionAuthStateHandler - [GATEWAY-CTRL] Session #90968191970316288 authentication state set to: true (accountId: 92668751)
+2026-09-09 00:35:07.309 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] (Backend -> Client) Blind pass-through svc: 1, msg: 101 (Session #90968191970316288)
+2026-09-09 00:35:07.395 [nioEventLoopGroup-2-2] ERROR c.e.g.GatewayInboundStreamHandler - [GATEWAY] Inbound stream error: Client envelope payload length 20484 exceeds maximum allowed 16384
+io.netty.handler.codec.TooLongFrameException: Client envelope payload length 20484 exceeds maximum allowed 16384
+        at com.example.common.protocol.ClientEnvelopeCodec.decode(ClientEnvelopeCodec.java:41)
+        at io.netty.handler.codec.ByteToMessageCodec$1.decode(ByteToMessageCodec.java:42)
+        at io.netty.handler.codec.ByteToMessageDecoder.decodeRemovalReentryProtection(ByteToMessageDecoder.java:545)
+        at io.netty.handler.codec.ByteToMessageDecoder.callDecode(ByteToMessageDecoder.java:484)
+        at io.netty.handler.codec.ByteToMessageDecoder.channelRead(ByteToMessageDecoder.java:296)
+        at io.netty.handler.codec.ByteToMessageCodec.channelRead(ByteToMessageCodec.java:103)
+        at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:355)
+        at io.netty.handler.codec.ByteToMessageDecoder.fireChannelRead(ByteToMessageDecoder.java:361)
+        at io.netty.handler.codec.ByteToMessageDecoder.channelRead(ByteToMessageDecoder.java:325)
+        at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:357)
+        at io.netty.channel.DefaultChannelPipeline$HeadContext.channelRead(DefaultChannelPipeline.java:1429)
+        at io.netty.channel.DefaultChannelPipeline.fireChannelRead(DefaultChannelPipeline.java:918)
+        at io.netty.incubator.codec.quic.QuicheQuicStreamChannel$QuicStreamChannelUnsafe.recv(QuicheQuicStreamChannel.java:1024)
+        at io.netty.incubator.codec.quic.QuicheQuicStreamChannel.readable(QuicheQuicStreamChannel.java:460)
+        at io.netty.incubator.codec.quic.QuicheQuicChannel$QuicChannelUnsafe.recvStream(QuicheQuicChannel.java:1877)
+        at io.netty.incubator.codec.quic.QuicheQuicChannel$QuicChannelUnsafe.processReceived(QuicheQuicChannel.java:1754)
+        at io.netty.incubator.codec.quic.QuicheQuicChannel$QuicChannelUnsafe.connectionRecv(QuicheQuicChannel.java:1689)
+        at io.netty.incubator.codec.quic.QuicheQuicChannel.recv(QuicheQuicChannel.java:999)
+        at io.netty.incubator.codec.quic.QuicheQuicCodec$QuicCodecHeaderProcessor.process(QuicheQuicCodec.java:371)
+        at io.netty.incubator.codec.quic.QuicHeaderParser.parse(QuicHeaderParser.java:142)
+        at io.netty.incubator.codec.quic.QuicheQuicCodec.handleQuicPacket(QuicheQuicCodec.java:200)
+        at io.netty.incubator.codec.quic.QuicheQuicCodec.channelRead(QuicheQuicCodec.java:191)
+        at io.netty.channel.AbstractChannelHandlerContext.fireChannelRead(AbstractChannelHandlerContext.java:355)
+        at io.netty.channel.DefaultChannelPipeline$HeadContext.channelRead(DefaultChannelPipeline.java:1429)
+        at io.netty.channel.DefaultChannelPipeline.fireChannelRead(DefaultChannelPipeline.java:918)
+        at io.netty.channel.nio.AbstractNioMessageChannel$NioMessageUnsafe.read(AbstractNioMessageChannel.java:100)
+        at io.netty.channel.nio.AbstractNioChannel$AbstractNioUnsafe.handle(AbstractNioChannel.java:445)
+        at io.netty.channel.nio.NioIoHandler$DefaultNioRegistration.handle(NioIoHandler.java:388)
+        at io.netty.channel.nio.NioIoHandler.processSelectedKey(NioIoHandler.java:596)
+        at io.netty.channel.nio.NioIoHandler.processSelectedKeysPlain(NioIoHandler.java:541)
+        at io.netty.channel.nio.NioIoHandler.processSelectedKeys(NioIoHandler.java:514)
+        at io.netty.channel.nio.NioIoHandler.run(NioIoHandler.java:484)
+        at io.netty.channel.SingleThreadIoEventLoop.runIo(SingleThreadIoEventLoop.java:225)
+        at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:196)
+        at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1204)
+        at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+        at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+        at java.base/java.lang.Thread.run(Unknown Source)
+2026-09-09 00:35:07.396 [nioEventLoopGroup-2-2] WARN  c.e.g.GatewayInboundStreamHandler - [GATEWAY-SECURITY] Defensively closing QuicChannel for session after security violation
+2026-09-09 00:35:07.397 [nioEventLoopGroup-2-2] INFO  com.example.gateway.QuicGateway - [GATEWAY] Client disconnected: Session #90968191970316288 (Char #0). Broadcasting teardown...
+2026-09-09 00:35:07.397 [nioEventLoopGroup-2-1] INFO  c.e.g.GatewayBackendRelayHandler - [GATEWAY-RELAY] Backend stream inactive.
+=== LOGIN LOGS ===
+2026-09-09 00:35:06.864 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-4 (ts: 1788914106852)
+2026-09-09 00:35:06.865 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-5 (ts: 1788914106852)
+2026-09-09 00:35:06.866 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-6 (ts: 1788914106852)
+2026-09-09 00:35:06.867 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-7 (ts: 1788914106852)
+2026-09-09 00:35:06.868 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-8 (ts: 1788914106852)
+2026-09-09 00:35:06.869 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-9 (ts: 1788914106852)
+2026-09-09 00:35:06.870 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-10 (ts: 1788914106852)
+2026-09-09 00:35:06.871 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-11 (ts: 1788914106852)
+2026-09-09 00:35:06.873 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-12 (ts: 1788914106852)
+2026-09-09 00:35:06.873 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-13 (ts: 1788914106852)
+2026-09-09 00:35:06.874 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-14 (ts: 1788914106852)
+2026-09-09 00:35:06.875 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-15 (ts: 1788914106852)
+2026-09-09 00:35:06.876 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-16 (ts: 1788914106852)
+2026-09-09 00:35:06.877 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-17 (ts: 1788914106852)
+2026-09-09 00:35:06.878 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-18 (ts: 1788914106852)
+2026-09-09 00:35:06.879 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-19 (ts: 1788914106852)
+2026-09-09 00:35:06.880 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-20 (ts: 1788914106852)
+2026-09-09 00:35:06.881 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-21 (ts: 1788914106852)
+2026-09-09 00:35:06.881 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-22 (ts: 1788914106852)
+2026-09-09 00:35:06.882 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-23 (ts: 1788914106852)
+2026-09-09 00:35:06.883 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-24 (ts: 1788914106852)
+2026-09-09 00:35:06.884 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-25 (ts: 1788914106852)
+2026-09-09 00:35:06.884 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-26 (ts: 1788914106852)
+2026-09-09 00:35:06.885 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-27 (ts: 1788914106852)
+2026-09-09 00:35:06.886 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-28 (ts: 1788914106852)
+2026-09-09 00:35:06.887 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-29 (ts: 1788914106852)
+2026-09-09 00:35:06.888 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-30 (ts: 1788914106852)
+2026-09-09 00:35:06.888 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-31 (ts: 1788914106852)
+2026-09-09 00:35:06.889 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-32 (ts: 1788914106852)
+2026-09-09 00:35:06.889 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-33 (ts: 1788914106852)
+2026-09-09 00:35:06.890 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-34 (ts: 1788914106852)
+2026-09-09 00:35:06.891 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-35 (ts: 1788914106852)
+2026-09-09 00:35:06.892 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-36 (ts: 1788914106852)
+2026-09-09 00:35:06.893 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-37 (ts: 1788914106852)
+2026-09-09 00:35:06.894 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-38 (ts: 1788914106852)
+2026-09-09 00:35:06.895 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-39 (ts: 1788914106852)
+2026-09-09 00:35:06.895 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-40 (ts: 1788914106852)
+2026-09-09 00:35:06.896 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-41 (ts: 1788914106852)
+2026-09-09 00:35:06.897 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-42 (ts: 1788914106852)
+2026-09-09 00:35:06.898 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-43 (ts: 1788914106852)
+2026-09-09 00:35:06.899 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-44 (ts: 1788914106852)
+2026-09-09 00:35:06.899 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-45 (ts: 1788914106852)
+2026-09-09 00:35:06.899 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-46 (ts: 1788914106852)
+2026-09-09 00:35:06.899 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-47 (ts: 1788914106852)
+2026-09-09 00:35:06.900 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-48 (ts: 1788914106852)
+2026-09-09 00:35:06.900 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Received from Session #90968189747335168: flood-49 (ts: 1788914106852)
+2026-09-09 00:35:06.900 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968189747335168 (ts: 1788914106893)
+2026-09-09 00:35:06.955 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.960 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.962 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.963 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.965 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.965 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.966 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.967 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.968 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.970 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.970 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.972 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.973 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.974 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.975 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.976 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.977 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.977 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.978 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.979 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.980 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.981 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.982 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.982 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.983 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.984 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.984 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.985 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.987 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.988 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.988 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.989 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.989 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.990 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.990 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.991 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.992 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.993 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.994 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.995 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.996 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.996 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.997 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.998 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.999 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:06.999 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:07.000 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:07.000 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:07.001 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:07.001 [nioEventLoopGroup-2-1] INFO  c.e.login.handler.PingPacketHandler - [LOGIN-SERVER] Replying PONG to Session #90968189747335168
+2026-09-09 00:35:07.090 [virtual-96] INFO  c.e.l.handler.LoginRequestHandler - [LOGIN-SERVER] Auth attempt from Session #90968191970316288: user='admin'
+2026-09-09 00:35:07.307 [virtual-96] INFO  c.e.l.handler.LoginRequestHandler - [LOGIN-SERVER] Auth success for user='admin' (Account #92668751, Session #90968191970316288)
+2026-09-09 00:35:07.398 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968191970316288 (ts: 1788914107397)
+=== LOBBY LOGS ===
+ __  __ _                                  _
+|  \/  (_) ___ _ __ ___  _ __   __ _ _   _| |_
+| |\/| | |/ __| '__/ _ \| '_ \ / _` | | | | __|
+| |  | | | (__| | | (_) | | | | (_| | |_| | |_
+|_|  |_|_|\___|_|  \___/|_| |_|\__,_|\__,_|\__|
+2026-09-09 00:34:28.548 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [k8s, cloud, lobby]
+2026-09-09 00:34:29.545 [main] INFO  c.example.server.auth.RsaKeyProvider - [AUTH] Loading RSA keypair from mounted files: /certs/jwt/tls.key and /certs/jwt/tls.crt
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal.NativeLibraryUtil in an unnamed module (file:/app/libs/netty-common-4.2.16.Final.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+2026-09-09 00:34:33.298 [main] INFO  c.e.server.AbstractBackendServer - [LOBBY-SERVER] listening on QUIC UDP 0.0.0.0:9999
+2026-09-09 00:34:33.457 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-09-09 00:34:33.897 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@2c22a348
+2026-09-09 00:34:33.900 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-09-09 00:34:34.660 [main] INFO  io.micronaut.runtime.Micronaut - Startup completed in 8085ms. Server Running: http://lobby-service-59447c5ccc-k9q7s:8080
+2026-09-09 00:34:34.663 [main] INFO  com.example.Application - Gateway, LoginServer, and LobbyServer are running. Waiting for connections...
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldOffset has been called by org.apache.fory.platform.internal._Lookup (file:/app/libs/fory-core-1.6.0.jar)
+WARNING: Please consider reporting this to the maintainers of class org.apache.fory.platform.internal._Lookup
+WARNING: sun.misc.Unsafe::staticFieldOffset will be removed in a future release
+2026-09-09 00:34:54.169 [virtual-51] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968113318727680: characterId=1001
+2026-09-09 00:34:54.817 [virtual-51] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968113318727680 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:34:55.558 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968113318727680 (ts: 1788914095488)
+2026-09-09 00:34:55.566 [virtual-70] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968142511083520: characterId=1001
+2026-09-09 00:34:55.575 [virtual-70] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968142511083520 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:34:56.247 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968142511083520 (ts: 1788914096243)
+2026-09-09 00:34:58.221 [virtual-72] INFO  c.e.l.h.CreateCharacterRequestHandler - [LOBBY-SERVER] CreateCharacter attempt for Session #90968152548052992: name='MithraThief', nation=2, job=6
+2026-09-09 00:34:58.258 [virtual-72] INFO  c.e.l.h.CreateCharacterRequestHandler - [LOBBY-SERVER] Character created successfully: id=100000001, name='MithraThief' in Zone #238 (-60.0, -5.0, -20.0)
+2026-09-09 00:34:58.415 [virtual-73] INFO  c.e.l.h.CharacterListRequestHandler - [LOBBY-SERVER] Fetching character list for Session #90968152548052992
+2026-09-09 00:34:58.418 [virtual-73] INFO  c.e.l.h.CharacterListRequestHandler - [LOBBY-SERVER] Verified accountId=92668751 for character list query
+2026-09-09 00:34:59.204 [virtual-74] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968157639938048: characterId=1001
+2026-09-09 00:34:59.209 [virtual-74] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968157639938048 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:34:59.297 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968152548052992 (ts: 1788914099296)
+2026-09-09 00:34:59.467 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968157639938048 (ts: 1788914099462)
+2026-09-09 00:34:59.904 [virtual-77] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968160584339456: characterId=1001
+2026-09-09 00:34:59.909 [virtual-77] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968160584339456 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:35:00.156 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968160584339456 (ts: 1788914100154)
+2026-09-09 00:35:00.571 [virtual-79] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968163394523136: characterId=1001
+2026-09-09 00:35:00.577 [virtual-79] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968163394523136 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:35:01.086 [virtual-80] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968165550395392: characterId=1002
+2026-09-09 00:35:01.092 [virtual-80] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968165550395392 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:35:01.569 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968163394523136 (ts: 1788914101565)
+2026-09-09 00:35:01.826 [virtual-82] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968168649986048: characterId=1001
+2026-09-09 00:35:01.831 [virtual-82] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968168649986048 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:35:01.834 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968165550395392 (ts: 1788914101832)
+2026-09-09 00:35:02.392 [virtual-84] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Character selection for Session #90968171044933632: characterId=1002
+2026-09-09 00:35:02.398 [virtual-84] INFO  c.e.l.h.SelectCharacterRequestHandler - [LOBBY-SERVER] Binding Session #90968171044933632 to World #1 (10.42.0.23:9996) from database
+2026-09-09 00:35:02.753 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968171044933632 (ts: 1788914102749)
+2026-09-09 00:35:02.773 [nioEventLoopGroup-2-1] INFO  c.e.s.h.SessionDisconnectedHandler - [BACKEND-CLEANUP] Evicting active session lock for Session #90968168649986048 (ts: 1788914102758)
+=== OPERATOR LOGS ===
+ __  __ _                                  _
+|  \/  (_) ___ _ __ ___  _ __   __ _ _   _| |_
+| |\/| | |/ __| '__/ _ \| '_ \ / _` | | | | __|
+| |  | | | (__| | | (_) | | | | (_| | |_| | |_
+|_|  |_|_|\___|_|  \___/|_| |_|\__,_|\__,_|\__|
+2026-09-09 00:34:28.974 [main] INFO  i.m.context.env.DefaultEnvironment - Established active environments: [k8s, cloud, operator]
+2026-09-09 00:34:32.161 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] MMO Fleet Operator initialized in namespace 'default' using image 'platform-modulith:latest'
+2026-09-09 00:34:32.282 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-09-09 00:34:32.890 [main] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@59712875
+2026-09-09 00:34:32.897 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-09-09 00:34:34.126 [main] INFO  i.m.flyway.AbstractFlywayMigration - Running migrations for database with qualifier [default]
+2026-09-09 00:34:34.223 [main] INFO  org.flywaydb.core.FlywayExecutor - Database: jdbc:postgresql://postgres:5432/mmo_platform (PostgreSQL 16.15)
+2026-09-09 00:34:34.352 [main] INFO  o.f.c.i.s.JdbcTableSchemaHistory - Schema history table "public"."flyway_schema_history" does not exist yet
+2026-09-09 00:34:34.368 [main] INFO  o.f.core.internal.command.DbValidate - Successfully validated 1 migration (execution time 00:00.042s)
+2026-09-09 00:34:34.414 [main] INFO  o.f.c.i.s.JdbcTableSchemaHistory - Creating Schema History table "public"."flyway_schema_history" ...
+2026-09-09 00:34:34.544 [main] INFO  o.f.core.internal.command.DbMigrate - Current version of schema "public": << Empty Schema >>
+2026-09-09 00:34:34.638 [main] INFO  o.f.core.internal.command.DbMigrate - Migrating schema "public" to version "1 - init schema"
+2026-09-09 00:34:34.766 [main] INFO  o.f.c.i.s.DefaultSqlScriptExecutor - +-----------+
+| setval    |
++-----------+
+| 100000000 |
++-----------+
+
+2026-09-09 00:34:34.768 [main] INFO  o.f.c.i.s.DefaultSqlScriptExecutor - +-----------+
+| setval    |
++-----------+
+| 100000000 |
++-----------+
+
+2026-09-09 00:34:34.825 [main] INFO  o.f.core.internal.command.DbMigrate - Successfully applied 1 migration to schema "public", now at version v1 (execution time 00:00.175s)
+2026-09-09 00:34:36.279 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] World #1 is RUNNING. Syncing host=10.42.0.23:9996 to DB
+2026-09-09 00:34:36.295 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] World #2 is RUNNING. Syncing host=10.42.0.24:9996 to DB
+2026-09-09 00:34:36.370 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #1 (w1-zone-230) is RUNNING. Syncing host=10.42.0.25:9997 to DB
+2026-09-09 00:34:36.374 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #2 (w1-zone-231) is RUNNING. Syncing host=10.42.0.26:9997 to DB
+2026-09-09 00:34:36.377 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #3 (w1-zone-234) is RUNNING. Syncing host=10.42.0.27:9997 to DB
+2026-09-09 00:34:36.381 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #4 (w1-zone-235) is RUNNING. Syncing host=10.42.0.28:9997 to DB
+2026-09-09 00:34:36.384 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #5 (w1-zone-238) is RUNNING. Syncing host=10.42.0.29:9997 to DB
+2026-09-09 00:34:36.387 [main] INFO  c.example.operator.MmoFleetOperator - [OPERATOR] Zone Instance #6 (w1-zone-239) is RUNNING. Syncing host=10.42.0.30:9997 to DB
+2026-09-09 00:34:36.742 [main] INFO  io.micronaut.runtime.Micronaut - Startup completed in 10100ms. Server Running: http://mmo-operator-69b744784f-7cbjh:8080
+2026-09-09 00:34:36.743 [main] INFO  com.example.Application - Gateway, LoginServer, and LobbyServer are running. Waiting for connections...
+samuel@laptop:~/projects/netty-quic-gateway-demo$

@@ -17,6 +17,7 @@
 
   <modules>
     <module>common-protocol</module>
+    <module>game-asset-pipeline</module>
     <module>client-sdk</module>
     <module>platform-modulith</module>
     <module>client-desktop</module>
@@ -45,6 +46,11 @@
       <dependency>
         <groupId>com.example</groupId>
         <artifactId>common-protocol</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>game-asset-pipeline</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

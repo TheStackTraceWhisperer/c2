@@ -14,3 +14,7 @@ out/
 .classpath
 .factorypath
 reference/
+
+# Game Assets (Proprietary Binary Data)
+*.[dD][aA][tT]
+**/dats/

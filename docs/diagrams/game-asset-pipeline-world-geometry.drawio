@@ -1,0 +1,111 @@
+<mxfile host="app.diagrams.net" modified="2026-10-17T23:48:00.000Z" agent="Antigravity" version="24.0.0" type="device">
+  <diagram id="pipeline-geometry" name="Asset Pipeline &amp; World Geometry">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="800" background="#ffffff" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- GROUP 1: File & Zone Path Resolvers -->
+        <mxCell id="group1" value="Step 1: File &amp; Zone Path Resolvers" style="swimlane;whiteSpace=wrap;html=1;fontStyle=1;fontSize=14;fillColor=#f8f9fa;strokeColor=#495057;startSize=30;rounded=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="50" y="50" width="320" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="node_vtable_ftable" value="&lt;b&gt;VTable &amp;amp; FTable&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;Binary index parsing&lt;br/&gt;(VTABLE.DAT &amp;amp; FTABLE.DAT)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1e88e5;fontSize=12;" vertex="1" parent="group1">
+          <mxGeometry x="40" y="50" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="node_file_table_mgr" value="&lt;b&gt;FileTableManager&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;fileId &amp;rarr; ROMx/folder/file.DAT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1e88e5;fontSize=12;" vertex="1" parent="group1">
+          <mxGeometry x="40" y="150" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="node_zone_path_resolver" value="&lt;b&gt;ZonePathResolver&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;zoneId &amp;rarr; canonical DAT path&lt;br/&gt;(e.g. 100 &amp;rarr; ROM/0/120.DAT)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontSize=12;" vertex="1" parent="group1">
+          <mxGeometry x="40" y="250" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1e88e5;" edge="1" parent="group1" source="node_vtable_ftable" target="node_file_table_mgr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1565c0;" edge="1" parent="group1" source="node_file_table_mgr" target="node_zone_path_resolver">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- GROUP 2: String Table Parser -->
+        <mxCell id="group2" value="Step 2: String Table Parser" style="swimlane;whiteSpace=wrap;html=1;fontStyle=1;fontSize=14;fillColor=#f8f9fa;strokeColor=#495057;startSize=30;rounded=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="50" y="440" width="320" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="node_string_parser" value="&lt;b&gt;StringTableParser&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;Shift-JIS binary tables&lt;br/&gt;&amp;amp; control code sanitization&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#8e24aa;fontSize=12;" vertex="1" parent="group2">
+          <mxGeometry x="40" y="50" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="node_zone_names_table" value="&lt;b&gt;ZoneNamesTable&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;zoneId &amp;rarr; localized name&lt;br/&gt;(from ROM/165/84.DAT)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#6a1b9a;fontSize=12;" vertex="1" parent="group2">
+          <mxGeometry x="40" y="150" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="edge3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#8e24aa;" edge="1" parent="group2" source="node_string_parser" target="node_zone_names_table">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- GROUP 3: World Geometry & Collision Meshes -->
+        <mxCell id="group3" value="Step 3: World Geometry &amp; Collision Meshes" style="swimlane;whiteSpace=wrap;html=1;fontStyle=1;fontSize=14;fillColor=#f8f9fa;strokeColor=#495057;startSize=30;rounded=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="470" y="50" width="380" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="node_geom_primitives" value="&lt;b&gt;Geometry Primitives&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;Vector3f, CollisionTriangle, BoundingBox&lt;br/&gt;(Immutable Java 25 Records)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;fontSize=12;" vertex="1" parent="group3">
+          <mxGeometry x="50" y="50" width="280" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="node_zonedef_parser" value="&lt;b&gt;ZoneDefParser&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;S1C_ZONE_DEF Section Decoder&lt;br/&gt;Parses meshes, transforms &amp;amp; spatial grid&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontSize=12;" vertex="1" parent="group3">
+          <mxGeometry x="50" y="190" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="node_collision_mesh_map" value="&lt;b&gt;CollisionMesh &amp;amp; CollisionMap&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#666666&quot;&gt;2D Spatial Grid &amp;amp; Triangle Mesh&lt;br/&gt;(CollisionObjectGroup, Wall/Floor Flags)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a5d6a7;strokeColor=#1b5e20;fontSize=12;" vertex="1" parent="group3">
+          <mxGeometry x="50" y="350" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="edge4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#43a047;" edge="1" parent="group3" source="node_geom_primitives" target="node_zonedef_parser">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#2e7d32;" edge="1" parent="group3" source="node_zonedef_parser" target="node_collision_mesh_map">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- INTER-GROUP EDGES -->
+        <!-- ZonePathResolver to ZoneDefParser -->
+        <mxCell id="edge_zone_to_parser" value="Locate Zone DAT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#1565c0;fontColor=#1565c0;fontSize=11;" edge="1" parent="1" source="node_zone_path_resolver" target="node_zonedef_parser">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="330" />
+              <mxPoint x="430" y="275" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ZoneNamesTable to ZoneDefParser -->
+        <mxCell id="edge_names_to_parser" value="Metadata Overlay" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#6a1b9a;fontColor=#6a1b9a;fontSize=11;dashed=1;" edge="1" parent="1" source="node_zone_names_table" target="node_zonedef_parser">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="620" />
+              <mxPoint x="430" y="292" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- CONSUMERS -->
+        <mxCell id="consumer_server" value="&lt;b&gt;Server (platform-modulith / zone)&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#555555&quot;&gt;Authoritative SAT Wall &amp;amp; Floor Clamping (20 Hz)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="920" y="200" width="240" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="consumer_client" value="&lt;b&gt;Client (client-desktop)&lt;/b&gt;&lt;br/&gt;&lt;font color=&quot;#555555&quot;&gt;Predictive Stair/Slope Stepping &amp;amp; 3D Render&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#e65100;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="920" y="350" width="240" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="edge_to_server" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#e65100;" edge="1" parent="1" source="node_collision_mesh_map" target="consumer_server">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="418" />
+              <mxPoint x="880" y="235" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_to_client" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#e65100;" edge="1" parent="1" source="node_collision_mesh_map" target="consumer_client">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="453" />
+              <mxPoint x="880" y="385" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

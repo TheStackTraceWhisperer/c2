@@ -44,6 +44,16 @@ public final class DatByteReader {
         return buffer.get();
     }
 
+    public void xorNext(byte mask) {
+        int pos = buffer.position();
+        buffer.put(pos, (byte) (buffer.get(pos) ^ mask));
+        buffer.position(pos + 1);
+    }
+
+    public void xorAt(int pos, byte mask) {
+        buffer.put(pos, (byte) (buffer.get(pos) ^ mask));
+    }
+
     public int nextU16() {
         return buffer.getShort() & 0xFFFF;
     }
@@ -58,6 +68,10 @@ public final class DatByteReader {
 
     public float nextFloat() {
         return buffer.getFloat();
+    }
+
+    public com.example.asset.geometry.Vector3f nextVector3f() {
+        return new com.example.asset.geometry.Vector3f(nextFloat(), nextFloat(), nextFloat());
     }
 
     public byte[] nextBytes(int length) {

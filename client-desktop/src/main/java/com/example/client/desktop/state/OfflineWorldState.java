@@ -6,11 +6,14 @@ import com.example.asset.geometry.RayHit;
 import com.example.asset.geometry.Vector3f;
 import com.example.asset.parser.ZoneDefParser;
 import com.example.asset.reader.DatByteReader;
+import com.example.asset.mesh.VisualZoneLoader;
+import com.example.asset.mesh.VisualZoneScene;
 import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
+import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.util.MatrixMath;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -29,8 +32,9 @@ import java.util.Optional;
 
 /**
  * Interactive offline world simulation state.
- * Loads 3D zone collision geometry directly from game DAT files, allowing real-time
- * avatar movement, ground raycasting, and camera control without requiring a running server.
+ * Loads 3D zone collision geometry and authentic textured visual meshes directly
+ * from game DAT files, allowing real-time avatar movement, collision physics,
+ * and camera control without requiring a running server.
  */
 @Slf4j
 @Prototype
@@ -43,7 +47,9 @@ public class OfflineWorldState implements ApplicationState {
     private final BeanProvider<UnauthenticatedState> unauthProvider;
 
     private CollisionMap collisionMap;
-    private CollisionMeshRenderer renderer;
+    private CollisionMeshRenderer collisionRenderer;
+    private VisualZoneRenderer visualRenderer;
+    private VisualZoneScene visualScene;
 
     private float playerX = -50.0f;
     private float playerY = 2.0f;
@@ -55,18 +61,22 @@ public class OfflineWorldState implements ApplicationState {
     private float gravity = -22.0f;
     private float jumpStrength = 8.5f;
 
+    private boolean showVisualZone = true;
+    private boolean showCollisionOverlay = false;
     private boolean wireframe = false;
-    private int triangleCount = 0;
+    private int collisionTriangleCount = 0;
     private float lastFloorY = 2.0f;
 
     @Override
     public void onEnter() {
-        log.info("Entering OfflineWorldState — initializing 3D collision renderer");
-        renderer = new CollisionMeshRenderer();
+        log.info("Entering OfflineWorldState — initializing 3D visual and collision renderers");
+        collisionRenderer = new CollisionMeshRenderer();
+        visualRenderer = new VisualZoneRenderer();
         try {
-            renderer.init();
+            collisionRenderer.init();
+            visualRenderer.init();
         } catch (Exception e) {
-            log.error("Failed to initialize OpenGL collision renderer", e);
+            log.error("Failed to initialize OpenGL renderers", e);
         }
 
         loadZone(230); // South San d'Oria
@@ -91,15 +101,22 @@ public class OfflineWorldState implements ApplicationState {
             return;
         }
         try {
+            // 1. Collision Mesh
             DatByteReader reader = new DatByteReader(bytes);
             Optional<CollisionMap> mapOpt = ZoneDefParser.parseFromDat(reader);
             if (mapOpt.isPresent()) {
                 this.collisionMap = mapOpt.get();
                 List<CollisionTriangle> tris = collisionMap.allWorldSpaceTriangles();
-                this.triangleCount = tris.size();
-                renderer.upload(tris);
-                log.info("Loaded zone {} collision mesh: {} triangles", zoneId, triangleCount);
+                this.collisionTriangleCount = tris.size();
+                collisionRenderer.upload(tris);
+                log.info("Loaded zone {} collision mesh: {} triangles", zoneId, collisionTriangleCount);
             }
+
+            // 2. Visual Textured Zone Scene
+            this.visualScene = VisualZoneLoader.load(bytes);
+            visualRenderer.upload(this.visualScene);
+            log.info("Loaded zone {} visual meshes: {} meshes, {} textures, {} visual triangles",
+                    zoneId, visualScene.totalMeshCount(), visualScene.textures().size(), visualScene.totalTriangleCount());
         } catch (Exception e) {
             log.error("Error loading zone DAT for offline exploration", e);
         }
@@ -166,9 +183,19 @@ public class OfflineWorldState implements ApplicationState {
                 0f, 1f, 0f
         );
 
-        if (renderer != null) {
-            renderer.render(proj, view, wireframe);
-            renderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
+        // Render visual zone if enabled
+        if (visualRenderer != null && showVisualZone) {
+            visualRenderer.render(proj, view, wireframe);
+        }
+
+        // Render collision overlay if enabled
+        if (collisionRenderer != null && showCollisionOverlay) {
+            collisionRenderer.render(proj, view, wireframe);
+        }
+
+        // Render player marker
+        if (collisionRenderer != null) {
+            collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
         }
 
         // 3. Render ImGui HUD
@@ -183,6 +210,14 @@ public class OfflineWorldState implements ApplicationState {
         // Toggle wireframe on F1
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS) {
             wireframe = !wireframe;
+        }
+        // Toggle visual zone on F2
+        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS) {
+            showVisualZone = !showVisualZone;
+        }
+        // Toggle collision overlay on F3
+        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS) {
+            showCollisionOverlay = !showCollisionOverlay;
         }
 
         // Compute input direction from WASD / Arrow keys
@@ -282,7 +317,7 @@ public class OfflineWorldState implements ApplicationState {
 
     private void renderImGuiHud(float dt) {
         ImGui.setNextWindowPos(20, 20, ImGuiCond.Once);
-        ImGui.setNextWindowSize(420, 360, ImGuiCond.Once);
+        ImGui.setNextWindowSize(460, 420, ImGuiCond.Once);
         ImGui.begin("Offline 3D World Explorer");
 
         ImGui.textColored(0.2f, 0.9f, 0.4f, 1.0f, "Zone: South San d'Oria (Zone 230)");
@@ -291,10 +326,21 @@ public class OfflineWorldState implements ApplicationState {
         ImGui.text(String.format("Coordinates: X=%.2f, Y=%.2f, Z=%.2f", playerX, playerY, playerZ));
         ImGui.text(String.format("Ground Height: %.2f (Contact: %s)", lastFloorY, onGround ? "YES" : "AIR"));
         ImGui.text(String.format("Camera Yaw: %.1f deg, Pitch: %.1f deg", camera.getYaw(), camera.getPitch()));
-        ImGui.text(String.format("Collision Triangles: %,d", triangleCount));
+        if (visualRenderer != null && visualScene != null) {
+            ImGui.text(String.format("Visual Meshes: %d (%d textures, %,d tris)",
+                    visualScene.totalMeshCount(), visualScene.textures().size(), visualRenderer.totalTrianglesUploaded()));
+        }
+        ImGui.text(String.format("Collision Triangles: %,d", collisionTriangleCount));
         ImGui.text(String.format("Framerate: %.1f FPS", 1.0f / Math.max(dt, 0.0001f)));
         ImGui.separator();
 
+        if (ImGui.checkbox("Visual Textured Zone (F2)", showVisualZone)) {
+            showVisualZone = !showVisualZone;
+        }
+        ImGui.sameLine();
+        if (ImGui.checkbox("Collision Mesh (F3)", showCollisionOverlay)) {
+            showCollisionOverlay = !showCollisionOverlay;
+        }
         if (ImGui.checkbox("Wireframe Mode (F1)", wireframe)) {
             wireframe = !wireframe;
         }
@@ -315,6 +361,7 @@ public class OfflineWorldState implements ApplicationState {
         ImGui.textDisabled("• Space : Jump / test gravity");
         ImGui.textDisabled("• Right-Click Drag : Orbit camera");
         ImGui.textDisabled("• Mouse Wheel : Zoom in / out");
+        ImGui.textDisabled("• F1: Wireframe | F2: Visual Zone | F3: Collision Mesh");
 
         ImGui.separator();
         if (ImGui.button("Reset Spawn Position")) {
@@ -336,10 +383,14 @@ public class OfflineWorldState implements ApplicationState {
 
     @Override
     public void onExit() {
-        log.info("Exiting OfflineWorldState — cleaning up 3D renderer");
-        if (renderer != null) {
-            renderer.cleanup();
-            renderer = null;
+        log.info("Exiting OfflineWorldState — cleaning up 3D renderers");
+        if (collisionRenderer != null) {
+            collisionRenderer.cleanup();
+            collisionRenderer = null;
+        }
+        if (visualRenderer != null) {
+            visualRenderer.cleanup();
+            visualRenderer = null;
         }
     }
 }

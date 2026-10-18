@@ -102,4 +102,69 @@ public final class ZoneDecrypt {
             }
         }
     }
+
+    public static void decryptZoneMesh(DatSectionHeader header, DatByteReader reader) {
+        decryptZoneMeshFirstPass(header, reader);
+        decryptZoneMeshSecondPass(header, reader);
+        reader.position(header.dataStartPosition());
+    }
+
+    private static void decryptZoneMeshFirstPass(DatSectionHeader header, DatByteReader reader) {
+        reader.position(header.dataStartPosition());
+
+        int metadata = reader.nextI32();
+        int totalSize = metadata & 0x00FFFFFF;
+        int decodeLength = totalSize - 8;
+
+        int mode = (metadata >>> 24) & 0xFF;
+        if (mode < 5) {
+            return;
+        }
+
+        reader.nextI8(); // unused in pass 1
+        int keyIndex = reader.nextU8();
+        reader.nextU16(); // unused in pass 1
+
+        int key = KEY_TABLE_1[keyIndex ^ 0xF0];
+        int keyCounter = 0;
+
+        for (int i = 0; i < decodeLength; i++) {
+            int keyMod = ((key & 0xFF) << 8) | (key & 0xFF);
+            key += ++keyCounter;
+
+            byte mask = (byte) (keyMod >>> (key & 7));
+            reader.xorNext(mask);
+            key += ++keyCounter;
+        }
+    }
+
+    private static void decryptZoneMeshSecondPass(DatSectionHeader header, DatByteReader reader) {
+        reader.position(header.dataStartPosition());
+
+        int metadata = reader.nextI32();
+        int totalSize = metadata & 0x00FFFFFF;
+        int decodeLength = totalSize - 8;
+
+        reader.nextI8(); // unused
+        int key1 = reader.nextU8() ^ 0xF0;
+        int key2 = KEY_TABLE_2[key1];
+
+        int decodeCount = (decodeLength & ~0xF) / 2;
+
+        boolean needsSecondPass = (reader.nextU16() == 0xFFFF);
+        if (!needsSecondPass) {
+            return;
+        }
+
+        for (int i = 0; i < decodeCount; i += 8) {
+            if ((key2 & 1) == 1) {
+                reader.swapNext8(decodeCount, 8);
+            } else {
+                reader.position(reader.position() + 8);
+            }
+
+            key1 += 9;
+            key2 += key1;
+        }
+    }
 }

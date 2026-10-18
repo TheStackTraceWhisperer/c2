@@ -54,6 +54,17 @@ public final class DatByteReader {
         buffer.put(pos, (byte) (buffer.get(pos) ^ mask));
     }
 
+    public void swapNext8(int offset, int repetitions) {
+        for (int i = 0; i < repetitions; i++) {
+            int pos = buffer.position();
+            byte v0 = buffer.get(pos);
+            byte v1 = buffer.get(pos + offset);
+            buffer.put(pos, v1);
+            buffer.put(pos + offset, v0);
+            buffer.position(pos + 1);
+        }
+    }
+
     public int nextU16() {
         return buffer.getShort() & 0xFFFF;
     }

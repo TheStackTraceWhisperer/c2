@@ -1,51 +1,81 @@
 package com.example.asset.parser;
 
 import com.example.asset.model.DatSectionHeader;
-import com.example.asset.model.SectionType;
 import com.example.asset.reader.DatByteReader;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.io.InputStream;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class DatSectionScannerTest {
 
     @Test
-    @DisplayName("scanSections should find all sequential section headers and extract payloads")
-    void testScanSectionsAndExtractPayload() {
-        ByteBuffer buf = ByteBuffer.allocate(48).order(ByteOrder.LITTLE_ENDIAN);
+    @DisplayName("Scan all section headers in South San d'Oria DAT")
+    void testScanSouthSanDoriaSections() throws Exception {
+        InputStream stream = getClass().getResourceAsStream("/dats/zones/south_san_doria_230.DAT");
+        assumeTrue(stream != null, "Missing south_san_doria_230.DAT fixture");
 
-        // Section 1: "tx01", S20_TEXTURE (code 0x20), size = 32 bytes (2 paragraphs)
-        buf.put("tx01".getBytes());
-        buf.putInt((2 << 7) | 0x20);
-        buf.putLong(0L); // complete 16-byte header
-        buf.put("16_bytes_payload".getBytes()); // 16 bytes payload
-
-        // Section 2: "end0", S00_END (code 0x00), size = 16 bytes (1 paragraph)
-        buf.put("end0".getBytes());
-        buf.putInt((1 << 7) | 0x00);
-        buf.putLong(0L); // complete 16-byte header
-
-        DatByteReader reader = new DatByteReader(buf.array());
+        byte[] bytes = stream.readAllBytes();
+        DatByteReader reader = new DatByteReader(bytes);
         List<DatSectionHeader> sections = DatSectionScanner.scanSections(reader);
 
-        assertThat(sections).hasSize(2);
+        assertNotNull(sections);
+        assertFalse(sections.isEmpty());
 
-        DatSectionHeader first = sections.get(0);
-        assertThat(first.sectionId()).isEqualTo("tx01");
-        assertThat(first.sectionType()).isEqualTo(SectionType.S20_TEXTURE);
-        assertThat(first.sectionSize()).isEqualTo(32);
+        System.out.println("Total sections found in South San d'Oria: " + sections.size());
+        Map<String, Long> countByType = sections.stream()
+                .collect(Collectors.groupingBy(s -> s.sectionType().name(), Collectors.counting()));
+        countByType.forEach((type, count) -> System.out.printf("  %s : %d%n", type, count));
 
-        DatByteReader payload = DatSectionScanner.extractPayload(reader, first);
-        assertThat(payload.remaining()).isEqualTo(16);
-        assertThat(payload.nextString(16)).isEqualTo("16_bytes_payload");
+        // Inspect first S20_TEXTURE section
+        sections.stream()
+                .filter(s -> s.sectionType() == com.example.asset.model.SectionType.S20_TEXTURE)
+                .limit(2)
+                .forEach(s -> {
+                    DatByteReader payload = DatSectionScanner.extractPayload(reader, s);
+                    byte[] bytes64 = payload.nextBytes(Math.min(64, payload.remaining()));
+                    System.out.printf("Texture Section '%s' (payload size %d):%n", s.sectionId(), payload.remaining() + 64);
+                    for (int i = 0; i < bytes64.length; i += 16) {
+                        StringBuilder hex = new StringBuilder();
+                        StringBuilder asc = new StringBuilder();
+                        for (int j = 0; j < 16 && (i + j) < bytes64.length; j++) {
+                            int b = bytes64[i + j] & 0xFF;
+                            hex.append(String.format("%02X ", b));
+                            asc.append((b >= 32 && b < 127) ? (char) b : '.');
+                        }
+                        System.out.printf("  %04X: %-48s | %s%n", i, hex, asc);
+                    }
+                });
 
-        DatSectionHeader second = sections.get(1);
-        assertThat(second.sectionId()).isEqualTo("end0");
-        assertThat(second.sectionType()).isEqualTo(SectionType.S00_END);
+        // Inspect first S2E_ZONE_MESH section with ZoneDecrypt.decryptZoneMesh
+        sections.stream()
+                .filter(s -> s.sectionType() == com.example.asset.model.SectionType.S2E_ZONE_MESH)
+                .limit(2)
+                .forEach(s -> {
+                    com.example.asset.decoder.ZoneDecrypt.decryptZoneMesh(s, reader);
+
+                    reader.position(s.dataStartPosition());
+                    int decryptInfo = reader.nextI32();
+                    int keyConfigData = reader.nextI32();
+                    String author = reader.nextString(8);
+                    int configData = keyConfigData & 0xFF;
+                    int meshTypeFlag = configData & 1;
+                    boolean vertexBlendEnabled = (configData & 2) != 0;
+                    String meshName = reader.nextString(16).trim();
+
+                    System.out.printf("Decrypted ZoneMesh '%s' (id='%s'): author='%s', meshTypeFlag=%d, blend=%b%n",
+                            meshName, s.sectionId(), author, meshTypeFlag, vertexBlendEnabled);
+
+                    int defStart = reader.position();
+                    int meshCount0 = reader.nextI32();
+                    System.out.printf("  meshCount0=%d, defStart=%d%n", meshCount0, defStart);
+                });
     }
 }

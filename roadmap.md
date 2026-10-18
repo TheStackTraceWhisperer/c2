@@ -10,8 +10,8 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 |---|---|---|---|---|
 | **Milestone 1** | Asset Foundation & Collision Mesh | DAT file decoding, bit-rotation decryption (`0x1B`), spatial collision grid, 3D math primitives, Khronos-validated binary `.glb` export, offline 3D collision exploration demo in `client-desktop` | **COMPLETED** ([`058a2e4`](https://github.com/TheStackTraceWhisperer/c2/commit/058a2e4), [`2689b45`](https://github.com/TheStackTraceWhisperer/c2/commit/2689b45)) | `game-asset-pipeline`, `client-desktop` |
 | **Milestone 2** | Authoritative Server Collision & Kinematics | `ZoneCollisionService` with authoritative zone mesh loading, floor clamping, slope/stair validation, floor penetration prevention, anti-flyhack validation, horizontal wall collision checks in `ZoneSimulationEngine` | **COMPLETED** ([`8897ea7`](https://github.com/TheStackTraceWhisperer/c2/commit/8897ea7)) | `platform-modulith`, `game-asset-pipeline` |
-| **Milestone 3** | Visual Zone Geometry & Textures | `S20_TEXTURE` parser (DXT1, DXT3, DXT5, 8-bit paletted textures), `S2E_ZONE_MESH` parser (vertex buffers, normals, UVs, materials), static scenery props, textured visual rendering in `client-desktop` | **IN PROGRESS** | `game-asset-pipeline`, `client-desktop` |
-| **Milestone 4** | Character & Town NPC Visuals & Animation | `S29_SKELETON` (64-bone hierarchy, bind poses), `S2A`/`S25` skinned meshes (dual-bone weighted vertices), `S2B_SKELETON_ANIMATION` (LERP translation, SLERP quaternions), multi-slot equipment compositing (`ItemModelTable`), town NPC spawns & static poses (`NpcTable-V3.DAT`), GPU vertex skinning shader (`BonePalette` UBO) | **SPECIFIED** | `game-asset-pipeline`, `client-desktop`, `common-protocol` |
+| **Milestone 3** | Visual Zone Geometry & Textures | `S20_TEXTURE` parser (DXT1, DXT3, DXT5, 8-bit paletted textures), `S2E_ZONE_MESH` two-pass decryption & parser (interleaved vertices, normals, UVs, vertex colors, material assignments), `VisualZoneScene` / `VisualZoneLoader`, high-performance textured batch renderer `VisualZoneRenderer` with alpha discard & material sorting in `client-desktop` | **COMPLETED** | `game-asset-pipeline`, `client-desktop` |
+| **Milestone 4** | Character & Town NPC Visuals & Animation | `S29_SKELETON` (64-bone hierarchy, bind poses), `S2A`/`S25` skinned meshes (dual-bone weighted vertices), `S2B_SKELETON_ANIMATION` (LERP translation, SLERP quaternions), multi-slot equipment compositing (`ItemModelTable`), town NPC spawns & static poses (`NpcTable-V3.DAT`), GPU vertex skinning shader (`BonePalette` UBO) | **IN PROGRESS** | `game-asset-pipeline`, `client-desktop`, `common-protocol` |
 | **Milestone 5** | Entity Simulation, Interpolation & Polish | Remote entity 20 Hz to 60+ FPS visual interpolation buffer, animation state machine transitions (idle, run, combat), basic server-side NPC patrolling & line-of-sight aggro | **PLANNED** | `client-desktop`, `platform-modulith` |
 
 ---
@@ -35,17 +35,21 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 - **Kinematic Reconciliation**: `ZoneSimulationEngine` sets `reconciled = true` on `PlayerMovementResponse` whenever client movement violates physics constraints.
 - **Architectural Rules**: ArchUnit tests verify strict hex architecture isolation across all services.
 
-### Milestone 3: Visual Zone Geometry & Textures (In Progress)
+### Milestone 3: Visual Zone Geometry & Textures (Completed)
 - **Texture Decompression (`S20_TEXTURE`)**:
-  - DXT1 (BC1), DXT3 (BC2), DXT5 (BC3) block decompression to RGBA8888.
-  - 8-bit paletted textures (color lookup table to RGBA).
-- **Visual Mesh Parsing (`S2E_ZONE_MESH`)**:
-  - Vertex buffers with interleaved positions, vertex normals, UV texture coordinates, and diffuse vertex colors.
-  - Submesh material definitions and texture references.
-- **Scene Assembly**:
-  - Placement of static scenery props and building geometry via zone object transforms.
-- **Visual Rendering**:
-  - Modern GLSL shaders supporting textured meshes, alpha testing / blending, and directional lighting in `client-desktop`.
+  - Implemented `DxtDecompressor` supporting DXT1, DXT3, DXT5 block decompression to RGBA8888.
+  - 8-bit paletted texture decompression with color lookup table to RGBA.
+  - Implemented `TextureParser` handling name normalization, dimensions, FourCC compression signatures, and pixel buffers.
+- **Visual Mesh Decryption & Parsing (`S2E_ZONE_MESH`)**:
+  - Two-pass zone mesh decryption (`decryptZoneMeshFirstPass`, `decryptZoneMeshSecondPass`) using `KEY_TABLE_1` and `KEY_TABLE_2` block swapping (`swapNext8`).
+  - Extracted 238/238 visual meshes (956 submeshes, 93,199 vertices, 65,637 triangles) in South San d'Oria (`ZoneMeshParser`).
+  - Interleaved vertex format: positions (`Vector3f`), vertex normals (`Vector3f`), UV coordinates (`float u, v`), diffuse vertex RGBA colors.
+- **Zone Assembly & Loader**:
+  - `VisualZoneScene` indexing decoded textures and submeshes.
+  - `VisualZoneLoader` providing end-to-end loading from DAT bytes or streams.
+- **High-Performance Textured 3D Rendering**:
+  - `VisualZoneRenderer` in `client-desktop` with GLSL 3.30 core shaders, material-based batching (reducing 956 submeshes to ~50 GPU draw calls), directional sunlight, double-sided lighting fallbacks, and alpha discard tests (`uAlphaThreshold = 0.375`).
+  - Integrated into `OfflineWorldState` with real-time HUD toggles: F1 (Wireframe), F2 (Visual Textured Zone), F3 (Collision Mesh Overlay).
 
 ### Milestone 4: Character & Town NPC Visuals, Skeletal Animation & Poses (Specified)
 - **Skeletal Hierarchy (`S29_SKELETON`)**:

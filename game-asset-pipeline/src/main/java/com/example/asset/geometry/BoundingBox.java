@@ -10,6 +10,10 @@ public record BoundingBox(Vector3f min, Vector3f max) {
             new Vector3f(Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NEGATIVE_INFINITY)
     );
 
+    public static BoundingBox read(com.example.asset.reader.DatByteReader reader) {
+        return new BoundingBox(reader.nextVector3f(), reader.nextVector3f());
+    }
+
     public Vector3f center() {
         return new Vector3f(
                 (min.x() + max.x()) * 0.5f,

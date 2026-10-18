@@ -28,6 +28,10 @@
       <groupId>com.example</groupId>
       <artifactId>client-sdk</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>game-asset-pipeline</artifactId>
+    </dependency>
 
     <!-- Micronaut & DI -->
     <dependency>

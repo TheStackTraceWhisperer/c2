@@ -12,6 +12,7 @@ import com.example.zone.dto.ZoneStateDeltaMessage;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
 import com.example.common.protocol.JobId;
+import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.patrol.NpcPatrolRoute;
 import com.example.zone.patrol.NpcPatrolSimulation;
 import com.example.zone.patrol.NpcPatrolWaypoint;
@@ -59,6 +60,40 @@ class ZoneSimulationEngineTest {
         public void flushStateBatch(Collection<CharacterStateSnapshot> snapshots) {
             if (snapshots != null && !snapshots.isEmpty()) {
                 flushedBatches.add(new ArrayList<>(snapshots));
+            }
+        }
+
+        @Override
+        public void updatePosition(long characterId, int zoneId, float posX, float posY, float posZ, float rotYaw, float rotPitch) {
+            CharacterRecord existing = records.get(characterId);
+            if (existing != null) {
+                records.put(characterId, new CharacterRecord(
+                    existing.accountId(),
+                    characterId,
+                    existing.worldId(),
+                    existing.name(),
+                    existing.raceId(),
+                    existing.gender(),
+                    existing.faceId(),
+                    existing.hairId(),
+                    existing.sizeId(),
+                    existing.nationId(),
+                    existing.mainJobId(),
+                    existing.mainJobLevel(),
+                    existing.subJobId(),
+                    existing.subJobLevel(),
+                    zoneId,
+                    posX,
+                    posY,
+                    posZ,
+                    rotYaw,
+                    rotPitch,
+                    existing.hpZoneId(),
+                    existing.hpPosX(),
+                    existing.hpPosY(),
+                    existing.hpPosZ(),
+                    existing.lastSavedAt()
+                ));
             }
         }
     }
@@ -295,6 +330,89 @@ class ZoneSimulationEngineTest {
 
         // Verify NPC position has advanced along +X towards waypoint
         assertThat(targetNpc.getX()).isGreaterThan(startX);
+        channel.close();
+    }
+
+    @Test
+    @DisplayName("Swept-OBB zoneline collision triggers ZoneTransferNotification, updates DB position, and deregisters entity")
+    void testZonelineSweptObbTransition() {
+        engine.start();
+
+        assertThat(engine.getCachedZoneLines()).isNotEmpty();
+        var zoneline = engine.getCachedZoneLines().get(0);
+
+        EmbeddedChannel channel = new EmbeddedChannel();
+        List<Object> outboundPackets = new CopyOnWriteArrayList<>();
+        ChannelHandlerContext ctx = (ChannelHandlerContext) Proxy.newProxyInstance(
+                ChannelHandlerContext.class.getClassLoader(),
+                new Class<?>[]{ChannelHandlerContext.class},
+                (proxy, method, args) -> {
+                    if ("writeAndFlush".equals(method.getName())) {
+                        outboundPackets.add(args[0]);
+                        return null;
+                    }
+                    if ("channel".equals(method.getName())) {
+                        return channel;
+                    }
+                    return null;
+                }
+        );
+
+        long playerId = 3001L;
+        // Position player just 0.5m inside/across the boundary
+        float startX = zoneline.centerX() - 0.5f;
+        float startY = zoneline.centerY();
+        float startZ = zoneline.centerZ();
+
+        charRepo.records.put(playerId, new CharacterRecord(
+                1L, playerId, 1, "ZoningHero", (short) 1, (short) 0, (short) 1,
+                (short) 1, (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
+                230, startX, startY, startZ, 0.0f, 0.0f,
+                230, startX, startY, startZ, Instant.now()
+        ));
+
+        engine.registerSessionEntity(99999L, playerId, ctx);
+
+        // Swept movement across the zoneline center (1.0m delta, well within 2.5m speed limit)
+        float targetX = zoneline.centerX() + 0.5f;
+        PlayerMovementRequest request = new PlayerMovementRequest(
+                targetX, startY, startZ,
+                2.0f, 0.0f, 0.0f,
+                0.0f, 0.0f,
+                (byte) 0,
+                1L
+        );
+
+        engine.enqueueMovement(ctx, 99999L, playerId, request);
+
+        // Await ZoneTransferNotification packet
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            boolean hasTransfer = outboundPackets.stream()
+                    .anyMatch(msg -> msg instanceof ZoneTransferNotification);
+            assertThat(hasTransfer).isTrue();
+        });
+
+        ZoneTransferNotification transfer = outboundPackets.stream()
+                .filter(msg -> msg instanceof ZoneTransferNotification)
+                .map(msg -> (ZoneTransferNotification) msg)
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(transfer.targetZoneId()).isEqualTo(zoneline.targetZoneId());
+        assertThat(transfer.spawnX()).isEqualTo(zoneline.destX());
+        assertThat(transfer.spawnY()).isEqualTo(zoneline.destY());
+        assertThat(transfer.spawnZ()).isEqualTo(zoneline.destZ());
+
+        // Verify entity was deregistered from zone simulation engine
+        assertThat(engine.getEntity(playerId)).isNull();
+
+        // Verify character record was persisted with destination coordinates
+        CharacterRecord updated = charRepo.records.get(playerId);
+        assertThat(updated.zoneId()).isEqualTo(zoneline.targetZoneId());
+        assertThat(updated.posX()).isEqualTo(zoneline.destX());
+        assertThat(updated.posY()).isEqualTo(zoneline.destY());
+        assertThat(updated.posZ()).isEqualTo(zoneline.destZ());
+
         channel.close();
     }
 }

@@ -210,7 +210,11 @@ public class OfflineWorldState implements ApplicationState {
         int fbHeight = Math.max(1, height[0]);
         GL11.glViewport(0, 0, fbWidth, fbHeight);
 
-        GL11.glClearColor(0.10f, 0.12f, 0.16f, 1.0f);
+        com.example.common.time.VanadielTime vTime = com.example.common.time.VanadielTime.now();
+        com.example.asset.environment.DiurnalLighting lighting = com.example.asset.environment.DiurnalLighting.compute(vTime, com.example.common.time.WeatherType.CLEAR);
+        float[] sky = lighting.getSkyColor();
+
+        GL11.glClearColor(sky[0], sky[1], sky[2], 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
         float aspect = (float) fbWidth / (float) fbHeight;
@@ -223,7 +227,7 @@ public class OfflineWorldState implements ApplicationState {
 
         // Render visual zone if enabled
         if (visualRenderer != null && showVisualZone) {
-            visualRenderer.render(proj, view, wireframe);
+            visualRenderer.render(proj, view, wireframe, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
         }
 
         // Render collision overlay if enabled

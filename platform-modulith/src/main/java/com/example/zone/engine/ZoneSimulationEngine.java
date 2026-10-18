@@ -18,8 +18,11 @@ import com.example.zone.spatial.FastMath3D;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
 import com.example.zone.patrol.NpcPatrolSimulation;
+import com.example.asset.interaction.ZoneInteraction;
+import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.asset.npc.NpcInfo;
 import com.example.asset.npc.NpcTable;
+import com.example.world.dto.ZoneTransferNotification;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -72,6 +75,9 @@ public class ZoneSimulationEngine {
   @PostConstruct
   public void start() {
     cachedZoneLines.addAll(zoneLineRepository.findBySourceZoneId(properties.getZoneId()));
+    if (cachedZoneLines.isEmpty()) {
+      loadDatZoneLines();
+    }
     log.info("[ZONE-ENGINE] Loaded {} trigger zone lines for Zone #{}", cachedZoneLines.size(), properties.getZoneId());
 
     loadTownNpcs();
@@ -248,7 +254,39 @@ public class ZoneSimulationEngine {
           line.rotationYaw())) {
           log.info("[ZONE-LINE] Player #{} triggered zone transition '{}' -> Target Zone #{}",
             charId, line.name(), line.targetZoneId());
-          break;
+
+          final int targetZone = line.targetZoneId();
+          final float destX = line.destX();
+          final float destY = line.destY();
+          final float destZ = line.destZ();
+          final float rotYaw = state.getYaw();
+          final float rotPitch = state.getPitch();
+
+          // 1. Authoritative persistence in target zone & spawn coordinates
+          dispatcher.dispatch(() -> {
+            try {
+              characterRepository.updatePosition(charId, targetZone, destX, destY, destZ, rotYaw, rotPitch);
+              log.info("[ZONE-TRANSFER] Saved character #{} to target zone #{} at ({}, {}, {})",
+                charId, targetZone, destX, destY, destZ);
+            } catch (Exception e) {
+              log.error("[ZONE-TRANSFER] Failed to persist zone transfer for character #{}: {}", charId, e.getMessage(), e);
+            }
+          });
+
+          // 2. Deregister from current zone simulation (triggers despawn for remaining observers)
+          spatialGrid.removeEntity(charId);
+          entities.remove(charId);
+
+          // 3. Emit ZoneTransferNotification to client
+          ctx.writeAndFlush(new ZoneTransferNotification(
+            targetZone,
+            properties.getHost() != null ? properties.getHost() : "127.0.0.1",
+            properties.getPort(),
+            destX,
+            destY,
+            destZ
+          ));
+          return;
         }
       }
 
@@ -446,6 +484,82 @@ public class ZoneSimulationEngine {
         dispatcher.dispatch(() -> characterRepository.flushStateBatch(List.of(snapshot)));
       }
     }
+  }
+
+  private void loadDatZoneLines() {
+    byte[] zoneBytes = loadZoneDatBytes(properties.getZoneId());
+    if (zoneBytes == null) {
+      return;
+    }
+    List<ZoneInteraction> interactions = ZoneInteractionParser.parseInteractions(zoneBytes);
+    int idx = 1;
+    for (ZoneInteraction zi : interactions) {
+      if (zi.isZoneLine()) {
+        int targetZoneId = parseTargetZoneId(zi.getDestId(), properties.getZoneId());
+        float halfX = Math.max(0.5f, Math.abs(zi.getSize().x()) / 2.0f);
+        float halfY = Math.max(1.0f, Math.abs(zi.getSize().y()) / 2.0f);
+        float halfZ = Math.max(0.5f, Math.abs(zi.getSize().z()) / 2.0f);
+        float yaw = (float) Math.toDegrees(zi.getOrientation().y());
+
+        cachedZoneLines.add(new ZoneLineRecord(
+          idx++,
+          properties.getZoneId(),
+          targetZoneId,
+          zi.getSourceId() + "->" + zi.getDestId(),
+          "NORMAL",
+          zi.getPosition().x(), zi.getPosition().y(), zi.getPosition().z(),
+          halfX, halfY, halfZ,
+          yaw,
+          0f, 0f, 0f, 0f, 0f,
+          0f, 0f, 0f,
+          1000,
+          0.5f
+        ));
+      }
+    }
+    log.info("[ZONE-ENGINE] Harvested {} authentic DAT zonelines for Zone #{}", cachedZoneLines.size(), properties.getZoneId());
+  }
+
+  private int parseTargetZoneId(String destId, int fallback) {
+    if (destId == null) return fallback;
+    String digits = destId.replaceAll("\\D+", "");
+    if (!digits.isEmpty()) {
+      try {
+        return Integer.parseInt(digits);
+      } catch (NumberFormatException ignored) {}
+    }
+    return fallback;
+  }
+
+  byte[] loadZoneDatBytes(int zoneId) {
+    String resPath = "/dats/zones/south_san_doria_230.DAT";
+    try (InputStream stream = getClass().getResourceAsStream(resPath)) {
+      if (stream != null) {
+        return stream.readAllBytes();
+      }
+    } catch (Exception ignored) {}
+
+    String configuredDir = properties.getAssetPath();
+    List<Path> candidates = List.of(
+      Path.of(configuredDir, "zones/south_san_doria_230.DAT"),
+      Path.of(configuredDir, "south_san_doria_230.DAT"),
+      Path.of("game-asset-pipeline/src/test/resources/dats/zones/south_san_doria_230.DAT"),
+      Path.of("../game-asset-pipeline/src/test/resources/dats/zones/south_san_doria_230.DAT"),
+      Path.of("src/test/resources/dats/zones/south_san_doria_230.DAT")
+    );
+
+    for (Path p : candidates) {
+      if (Files.isRegularFile(p)) {
+        try {
+          return Files.readAllBytes(p);
+        } catch (Exception ignored) {}
+      }
+    }
+    return null;
+  }
+
+  public List<ZoneLineRecord> getCachedZoneLines() {
+    return Collections.unmodifiableList(cachedZoneLines);
   }
 
   @PreDestroy

@@ -92,4 +92,37 @@ public final class MatrixMath {
 
         return m;
     }
+
+    /**
+     * Projects a 3D world coordinate into 2D screen pixel coordinates.
+     * Returns float[3] { screenX, screenY, distance } or null if behind camera or clipped.
+     */
+    public static float[] projectToScreen(float x, float y, float z, float[] proj, float[] view, int screenWidth, int screenHeight) {
+        // Multiply by column-major view matrix: posView = view * posWorld
+        float vx = view[0] * x + view[4] * y + view[8] * z + view[12];
+        float vy = view[1] * x + view[5] * y + view[9] * z + view[13];
+        float vz = view[2] * x + view[6] * y + view[10] * z + view[14];
+        float vw = view[3] * x + view[7] * y + view[11] * z + view[15];
+
+        // Multiply by projection matrix: clip = proj * posView
+        float cx = proj[0] * vx + proj[4] * vy + proj[8] * vz + proj[12] * vw;
+        float cy = proj[1] * vx + proj[5] * vy + proj[9] * vz + proj[13] * vw;
+        float cw = proj[3] * vx + proj[7] * vy + proj[11] * vz + proj[15] * vw;
+
+        if (cw <= 0.05f) {
+            return null; // Behind camera
+        }
+
+        float ndcX = cx / cw;
+        float ndcY = cy / cw;
+
+        if (ndcX < -1.2f || ndcX > 1.2f || ndcY < -1.2f || ndcY > 1.2f) {
+            return null; // Off screen
+        }
+
+        float sx = (ndcX + 1.0f) * 0.5f * screenWidth;
+        float sy = (1.0f - ndcY) * 0.5f * screenHeight;
+
+        return new float[]{sx, sy, cw};
+    }
 }

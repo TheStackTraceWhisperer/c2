@@ -223,6 +223,34 @@ public class CollisionMeshRenderer {
         GL20.glUseProgram(0);
     }
 
+    public void renderRemoteMarker(float x, float y, float z, float yawDegrees, float r, float g, float b, float[] projectionMatrix, float[] viewMatrix) {
+        if (playerVaoId == 0) {
+            return;
+        }
+
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL20.glUseProgram(shaderProgram);
+
+        GL20.glUniformMatrix4fv(uProjectionLoc, false, projectionMatrix);
+        GL20.glUniformMatrix4fv(uViewLoc, false, viewMatrix);
+
+        float[] model = new float[]{
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                x, y, z, 1f
+        };
+        GL20.glUniformMatrix4fv(uModelLoc, false, model);
+        GL20.glUniform1i(uWireframeLoc, 0);
+        GL20.glUniform3f(uAmbientLoc, r, g, b);
+
+        GL30.glBindVertexArray(playerVaoId);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, playerVertexCount);
+        GL30.glBindVertexArray(0);
+
+        GL20.glUseProgram(0);
+    }
+
     public void uploadNpcMarkers(List<com.example.asset.npc.NpcInfo> npcs) {
         if (npcs == null || npcs.isEmpty()) {
             return;

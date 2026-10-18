@@ -16,6 +16,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>common-protocol</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>

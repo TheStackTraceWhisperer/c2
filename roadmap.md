@@ -100,18 +100,18 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
   - Desktop client in-game integration with `EntityInterpolationBuffer` updating remote positions smoothly every render frame.
   - Batch 3D entity markers rendered in world coordinates with directional facing cones and proximity HUD.
 
-### Milestone 6: Online 3D Viewport, Vana'diel Time, Lighting & Zoneline Groundwork (In Progress)
+### Milestone 6: Online 3D Viewport, Vana'diel Time, Lighting & Zoneline Groundwork (Completed)
 - **Authoritative Online 3D Viewport (`InGameState`)**:
   - Integrated `VisualZoneRenderer` into `InGameState`, asynchronously loading zone DAT visual geometry (42 meshes, 10 textures, 82,000+ visual triangles for Zone 230).
   - Modern third-person polar camera tracking avatar position with collision-aware zoom and right-click orbit controls.
   - Batch 3D rendering of player avatar, remote player characters, and town NPCs in real-time at interpolated coordinates (`EntityInterpolationBuffer`).
-  - Screen-space billboarded 3D nameplates (player names, job/level tags, amber `[NPC]` badges) projected above entity heads with distance fade.
-- **Vana'diel Time & Calendar Simulation (`VanadielClock`)**:
-  - Authoritative 25× speed time engine ($1\text{ real sec} = 25\text{ Vana'diel sec}$; $1\text{ Vana'diel day} = 57.6\text{ real min}$).
+  - Screen-space billboarded 3D nameplates (player names, job/level tags, amber `[NPC]` badges) projected above entity heads with distance fade (`MatrixMath.projectToScreen`).
+- **Vana'diel Time & Calendar Simulation (`VanadielTime`, `MoonPhase`, `VanadielDayOfWeek`)**:
+  - Authoritative 25× speed time engine ($1\text{ real sec} = 25\text{ Vana'diel sec}$; $1\text{ Vana'diel day} = 57.6\text{ real min}$) calculated from 2002-01-01 00:00:00 UTC epoch.
   - Full 8-day elemental week: Firesday, Earthsday, Watersday, Windsday, Iceday, Lightningsday, Lightsday, Darksday.
   - 360-day calendar (12 months of 30 days) and 84-day moon cycle with 12 moon phases (0% New Moon to 100% Full Moon).
-  - Server time synchronization packet (`ZoneTimeSyncMessage`) and in-game HUD clock widget.
-- **Dynamic Diurnal Day/Night Cycle & Atmospheric Lighting**:
+  - In-game HUD clock widget displaying elemental day, time, lunar phase percentage, and ambient weather.
+- **Dynamic Diurnal Day/Night Cycle & Atmospheric Lighting (`DiurnalLighting`)**:
   * Sun and moon celestial orbit vector calculations based on Vana'diel hour ($0.0 \to 24.0$).
   * 4-phase ambient/diffuse/sky color gradient interpolation:
     - *Dawn (04:00 - 07:00)*: Rosy-amber sunrise horizon, low-angle golden directional sunlight.
@@ -120,22 +120,26 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
     - *Night (19:30 - 04:00)*: Deep midnight navy sky (`#0A0F1D`), cool pale blue moonlight.
   * Direct shader uniform binding (`uSunDir`, `uSunColor`, `uAmbientColor`) in `VisualZoneRenderer`.
 - **Zone Weather & Distance Fog**:
-  * Zone weather profiles (Clear, Sunshine, Clouds, Rain) with authoritative weather shifts.
-  * Distance fog uniforms (`uFogStart`, `uFogEnd`, `uFogColor`) adapting dynamically to weather density and time of day.
-- **Zoneline Groundwork (`ZoneInteractionParser`)**:
-  * Parser extracting 3D oriented bounding boxes (OBBs), source IDs, target zone IDs (`destId`), and entrance points from the zone DAT interaction section.
-  * Authoritative & client-side trigger detection firing `ZoneLineTriggeredEvent` when an avatar enters a zoneline portal.
-  * Visual trigger boundary rendering in 3D viewport.
+  * Zone weather profiles (`WeatherType`: Clear, Sunshine, Clouds, Rain, Fog, Storm) with ambient brightness scaling and fog density multipliers.
+  * Distance fog uniforms (`uFogStart`, `uFogEnd`, `uFogColor`, `uFogEnabled`) adapting dynamically to weather density and time of day in GLSL fragment shaders.
+- **Zoneline Groundwork (`ZoneInteractionParser`, `ZoneInteraction`)**:
+  * Parser extracting 3D oriented bounding boxes (OBBs), source IDs, target zone IDs (`destId`), and entrance points from Section 0x36 (`"RID"`) in FFXI zone DAT files.
+  * Automated zoneline harvesting in `ZoneSimulationEngine` loading authentic DAT zonelines into memory.
+  * In-game zoneline detection rendering gate notification banner when standing inside or approaching portal volumes.
 
-### Milestone 7: Authoritative Cross-Zone Transitions & Dynamic World Streaming (Planned)
-- **Cross-Zone Protocol & State Machine**:
-  - `ZoneChangeRequest` and `ZoneChangeResponse` messages with authorization tokens and target entrance IDs.
-  - Smooth visual screen fader (`ScreenFader`: fade-to-black on transition initiation, input lock, and fade-in on arrival).
-- **Authoritative Server Session Transfer**:
-  - Persist character state in Zone A, deregister from Zone A `SpatialGrid` and broadcast despawn to nearby observers.
-  - Transfer network session handle to Zone B simulation engine, register into Zone B `SpatialGrid`, and clamp to target entrance coordinates.
-- **Dynamic Client Asset Streaming**:
-  - Asynchronous background loading of target zone DAT files (visual mesh, collision grid, NPC table, zonelines).
-  - Unload previous zone GPU buffers and upload target zone textures/VBOs without memory leaks.
-  - Spawning avatar at authentic `ZoneEntrance` vectors (e.g. South San d'Oria $\leftrightarrow$ East Ronfaure, West Ronfaure, North San d'Oria).
+### Milestone 7: Authoritative Cross-Zone Transitions & Dynamic World Streaming (Completed)
+- **Cross-Zone Protocol & Screen Fade Transition (`ScreenFader`)**:
+  - Smooth visual screen fader (`ScreenFader`: 0.35s fade-to-black, input lock, callback on black, and 0.35s fade-in on arrival).
+  - Integrated `ZoneTransferNotification` handling in `InGameState.onHandlePacket` locking inputs, transitioning scene, and positioning avatar at spawn point.
+- **Authoritative Server Session Transfer (`ZoneSimulationEngine`)**:
+  - Continuous swept-OBB collision checks across authentic DAT zoneline volumes.
+  - Authoritative persistence: updates character zone ID and entrance coordinates $(x, y, z, \text{yaw}, \text{pitch})$ asynchronously via `characterRepository.updatePosition`.
+  - Deregisters character from source zone `spatialGrid` and active simulation entities.
+  - Broadcasts immediate despawns to nearby observers in the source zone via `ZoneStateDeltaMessage`.
+  - Dispatches `ZoneTransferNotification` with target zone ID and spawn coordinates to the transitioning client.
+- **Dynamic Client Asset Streaming (`InGameState`)**:
+  - Dynamic zone DAT resolution loading visual geometry and interactions by zone ID (e.g., South San d'Oria 230, West Ronfaure 100).
+  - Clean GPU buffer replacement: uploads new zone VBOs and textures without memory leaks.
+  - Clamps player avatar to authentic target entrance vectors and resets camera target.
+  - Complete test verification across `client-desktop` (ScreenFader lifecycle, zone DAT loading, transfer handling) and `platform-modulith` (swept-OBB trigger, persistence, observer despawn).
 

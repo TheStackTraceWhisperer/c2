@@ -18,6 +18,7 @@ import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.JoinWorldResponse;
+import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.dto.ZoneStateDeltaMessage;
@@ -60,6 +61,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
         quicClient.on(MessageType.GATEWAY_ERROR_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
         quicClient.on(MessageType.ZONE_STATE_DELTA_BROADCAST, (ctx, packet) -> onPacketReceived(packet));
         quicClient.on(MessageType.PLAYER_MOVEMENT_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
+        quicClient.on(MessageType.ZONE_TRANSFER_NOTIFICATION, (ctx, packet) -> onPacketReceived(packet));
     }
 
     @Override
@@ -75,10 +77,21 @@ public class DesktopNetworkAdapter implements ClientCallback {
                 case GatewayErrorResponse err -> onErrorResponse(err);
                 case ZoneStateDeltaMessage delta -> onZoneStateDelta(delta);
                 case PlayerMovementResponse moveResp -> onPlayerMovementResponse(moveResp);
+                case ZoneTransferNotification transfer -> onZoneTransfer(transfer);
                 default -> log.warn("Unhandled wire packet: {}", packet.getClass().getSimpleName());
             }
             stateService.handlePacket(packet);
         });
+    }
+
+    public void onZoneTransfer(ZoneTransferNotification transfer) {
+        log.info("DesktopNetworkAdapter -> ZoneTransferNotification: targetZoneId={}, spawn=({}, {}, {})",
+                transfer.targetZoneId(), transfer.spawnX(), transfer.spawnY(), transfer.spawnZ());
+        clientState.setCurrentZoneId(transfer.targetZoneId());
+        clientState.setX(transfer.spawnX());
+        clientState.setY(transfer.spawnY());
+        clientState.setZ(transfer.spawnZ());
+        clientState.clearRemoteEntities();
     }
 
     // --- Inbound Handlers ---

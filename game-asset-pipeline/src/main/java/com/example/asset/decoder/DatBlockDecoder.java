@@ -44,6 +44,13 @@ public final class DatBlockDecoder {
     }
 
     /**
+     * Decodes an entire byte array in-place.
+     */
+    public static void decodeBlock(byte[] data) {
+        decodeBlock(data, 0, data.length);
+    }
+
+    /**
      * Decodes a block of encrypted bytes in-place.
      *
      * @param data      byte array containing the block

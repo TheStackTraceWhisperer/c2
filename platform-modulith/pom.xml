@@ -24,6 +24,10 @@
       <artifactId>common-protocol</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>game-asset-pipeline</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.micronaut</groupId>
       <artifactId>micronaut-inject</artifactId>
     </dependency>

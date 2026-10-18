@@ -188,4 +188,47 @@ public final class CollisionMap {
 
         return Optional.ofNullable(closestHit);
     }
+
+    /**
+     * Casts a ray along a 3D line segment between start and end to detect obstacle/wall collisions.
+     *
+     * @param start start point of the segment
+     * @param end end point of the segment
+     * @param wallsOnly whether to test only wall triangles
+     * @return nearest RayHit along the segment if an obstacle is encountered
+     */
+    public Optional<RayHit> raycastSegment(Vector3f start, Vector3f end, boolean wallsOnly) {
+        Vector3f diff = end.sub(start);
+        float len = diff.length();
+        if (len < 1e-5f) {
+            return Optional.empty();
+        }
+        Vector3f dir = diff.div(len);
+
+        List<CollisionObjectGroup> groups = getNearbyGroups(start, 2);
+        RayHit closestHit = null;
+
+        for (CollisionObjectGroup group : groups) {
+            for (CollisionObject obj : group.collisionObjects()) {
+                for (CollisionTriangle tri : obj.worldSpaceTriangles()) {
+                    if (wallsOnly && !tri.flags().isHitWall()) {
+                        continue;
+                    }
+                    Optional<RayHit> hit = RayTriangleCollider.intersect(
+                            tri,
+                            start,
+                            dir,
+                            false,
+                            len
+                    );
+                    if (hit.isPresent()) {
+                        if (closestHit == null || hit.get().distance() < closestHit.distance()) {
+                            closestHit = hit.get();
+                        }
+                    }
+                }
+            }
+        }
+        return Optional.ofNullable(closestHit);
+    }
 }

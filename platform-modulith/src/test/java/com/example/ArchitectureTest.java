@@ -18,13 +18,13 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
         "com.example.gateway.."
       );
 
   @ArchTest
   static final ArchRule zone_should_not_depend_on_other_services =
-    noClasses().that().resideInAnyPackage("com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone")
+    noClasses().that().resideInAnyPackage("com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone")
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
@@ -38,7 +38,7 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.world.handler..", "com.example.world.registry..", "com.example.world",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
         "com.example.gateway.."
       );
 
@@ -48,7 +48,7 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
         "com.example.world.handler..", "com.example.world.registry..", "com.example.world",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
         "com.example.gateway.."
       );
 
@@ -87,6 +87,7 @@ public class ArchitectureTest {
         "com.example.world.registry..",
         "com.example.zone.handler..",
         "com.example.zone.engine..",
-        "com.example.zone.spatial.."
+        "com.example.zone.spatial..",
+        "com.example.zone.collision.."
       );
 }

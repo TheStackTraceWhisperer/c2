@@ -21,4 +21,12 @@ public class ZoneServerProperties {
 
   @Min(1)
   private int zoneId;
+
+  private String assetPath = "game-asset-pipeline/src/test/resources/dats";
+
+  private boolean collisionEnabled = true;
+
+  private float maxStepHeight = 1.2f;
+
+  private float maxJumpHeight = 3.5f;
 }

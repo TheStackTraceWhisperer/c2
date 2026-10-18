@@ -8,6 +8,7 @@ import com.example.server.entity.CharacterStateSnapshot;
 import com.example.server.entity.ZoneLineRecord;
 import com.example.server.repository.CharacterRepository;
 import com.example.server.repository.ZoneLineJdbcRepository;
+import com.example.zone.collision.ZoneCollisionService;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -44,6 +45,7 @@ public class ZoneSimulationEngine {
   private final CharacterRepository characterRepository;
   private final ZoneLineJdbcRepository zoneLineRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
+  private final ZoneCollisionService collisionService;
 
   @Getter private final AtomicLong currentTick = new AtomicLong(0L);
 
@@ -196,9 +198,18 @@ public class ZoneSimulationEngine {
           charId, String.format("%.2f", dist), MAX_DISTANCE_PER_TICK);
         reconciled = true;
       } else {
-        state.setX(predX);
-        state.setY(predY);
-        state.setZ(predZ);
+        ZoneCollisionService.MovementValidationResult val = collisionService.validateAndClamp(
+          currentZoneId,
+          startX, startY, startZ,
+          predX, predY, predZ
+        );
+        state.setX(val.x());
+        state.setY(val.y());
+        state.setZ(val.z());
+        if (val.reconciled()) {
+          reconciled = true;
+          log.debug("[ZONE-KINEMATICS] Client #{} movement reconciled: {}", charId, val.reason());
+        }
       }
 
       state.setVx(req.vx());

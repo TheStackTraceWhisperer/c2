@@ -34,6 +34,10 @@ public record Vector3f(float x, float y, float z) {
         return new Vector3f(this.x * scalar, this.y * scalar, this.z * scalar);
     }
 
+    public Vector3f div(float scalar) {
+        return new Vector3f(this.x / scalar, this.y / scalar, this.z / scalar);
+    }
+
     public float dot(Vector3f other) {
         return this.x * other.x + this.y * other.y + this.z * other.z;
     }

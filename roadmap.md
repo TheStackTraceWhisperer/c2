@@ -26,7 +26,7 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 - **Binary & Decryption**: `DatByteReader` (little-endian), `DatBlockDecoder`, `ZoneDecrypt` with exact 256-byte static key tables from engine DLL for `0x1B` decoding.
 - **Spatial Collision Grid**: `CollisionMap`, `CollisionMesh`, `CollisionObjectGroup`, `CollisionObject`, `CollisionTransform`.
 - **glTF Exporter**: `GltfWriter` generating Khronos-validated binary `.glb` models (0 errors, 0 warnings across 106,462 triangles).
-- **Offline World Demo**: Modern OpenGL 3.3 core renderer with terrain color coding, real-time ground raycasting, slope/stair climbing, jumping, and third-person camera in `client-desktop`.
+- **Offline World Demo**: Modern OpenGL 4.6 core renderer with terrain color coding, real-time ground raycasting, slope/stair climbing, jumping, and third-person camera in `client-desktop`.
 
 ### Milestone 2: Authoritative Server Collision & Kinematics (Completed)
 - **Service Integration**: `ZoneCollisionService` in `platform-modulith` (`com.example.zone.collision`).
@@ -50,7 +50,7 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
   - `VisualZoneScene` indexing decoded textures and submeshes.
   - `VisualZoneLoader` providing end-to-end loading from DAT bytes or streams.
 - **High-Performance Textured 3D Rendering**:
-  - `VisualZoneRenderer` in `client-desktop` with GLSL 3.30 core shaders, material-based batching (reducing 956 submeshes to ~50 GPU draw calls), directional sunlight, double-sided lighting fallbacks, and alpha discard tests (`uAlphaThreshold = 0.375`).
+  - `VisualZoneRenderer` in `client-desktop` with GLSL 460 core shaders, material-based batching (reducing 956 submeshes to ~50 GPU draw calls), directional sunlight, double-sided lighting fallbacks, and alpha discard tests (`uAlphaThreshold = 0.375`).
   - Integrated into `OfflineWorldState` with real-time HUD toggles: F1 (Wireframe), F2 (Visual Textured Zone), F3 (Collision Mesh Overlay).
 
 ### Milestone 4: Character & Town NPC Visuals, Skeletal Animation & Poses (Completed)

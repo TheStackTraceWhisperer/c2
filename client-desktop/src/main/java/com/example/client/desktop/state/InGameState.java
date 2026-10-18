@@ -12,6 +12,12 @@ import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
+import com.example.asset.skeleton.AnimationStateMachine;
+import com.example.asset.skeleton.BlendedPose;
+import com.example.asset.skeleton.CharacterMeshGenerator;
+import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.StandardAnimations;
+import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.ui.DebugLogPanel;
@@ -42,7 +48,9 @@ import org.lwjgl.opengl.GL11;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -77,12 +85,19 @@ public class InGameState implements ApplicationState {
 
     private VisualZoneRenderer visualRenderer;
     private CollisionMeshRenderer collisionRenderer;
+    private CharacterRenderer characterRenderer;
+
+    private final AnimationStateMachine localPlayerAnimation = StandardAnimations.createLocomotionStateMachine();
+    private final Map<Long, AnimationStateMachine> remoteEntityAnimations = new HashMap<>();
+
     private VisualZoneScene visualScene;
     private List<ZoneInteraction> zoneInteractions = List.of();
     private WeatherType currentWeather = WeatherType.CLEAR;
     private ZoneInteraction activeZoneline = null;
 
     private boolean showVisualZone = true;
+    private boolean showCharacterModels = true;
+    private boolean showCollisionCylinders = false;
     private boolean wireframe = false;
 
     public void init(long accountId, long characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
@@ -126,9 +141,11 @@ public class InGameState implements ApplicationState {
         if (visualRenderer == null) {
             visualRenderer = new VisualZoneRenderer();
             collisionRenderer = new CollisionMeshRenderer();
+            characterRenderer = new CharacterRenderer();
             try {
                 visualRenderer.init();
                 collisionRenderer.init();
+                characterRenderer.init();
             } catch (Exception e) {
                 log.error("Failed to initialize 3D OpenGL renderers in InGameState", e);
             }
@@ -216,12 +233,18 @@ public class InGameState implements ApplicationState {
         camera.update(handle, dt);
 
         if (handle != 0L) {
-            // Hotkeys: F1 Wireframe, F2 Visual Zone
+            // Hotkeys: F1 Wireframe, F2 Visual Zone, F3 3D Character Models, F4 Collision Cylinders
             if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS) {
                 wireframe = !wireframe;
             }
             if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS) {
                 showVisualZone = !showVisualZone;
+            }
+            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS) {
+                showCharacterModels = !showCharacterModels;
+            }
+            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS) {
+                showCollisionCylinders = !showCollisionCylinders;
             }
 
             // Radar zoom via PageUp / PageDown keys
@@ -242,6 +265,7 @@ public class InGameState implements ApplicationState {
                     clientState.getYaw(), clientState.getPitch(),
                     clientState.getLastServerTick()
             );
+            localPlayerAnimation.update(dt, MovementFlags.IDLE, 0.0f);
         } else {
             var moveResult = movementHandler.pollAndCompute(
                     handle,
@@ -262,6 +286,9 @@ public class InGameState implements ApplicationState {
             );
             camera.setTarget(moveResult.x(), moveResult.y(), moveResult.z());
 
+            float localSpeed = (float) Math.hypot(moveResult.vx(), moveResult.vz());
+            localPlayerAnimation.update(dt, moveResult.moveFlags(), localSpeed);
+
             if (moveResult.shouldSendPacket()) {
                 networkAdapter.sendMovement(
                         moveResult.simX(), moveResult.simY(), moveResult.simZ(),
@@ -271,6 +298,17 @@ public class InGameState implements ApplicationState {
                         movementHandler.getClientTickCounter()
                 );
             }
+        }
+
+        // Update remote entity animation state machines
+        for (var entity : clientState.getRemoteEntities().values()) {
+            InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
+            float speed = (float) Math.hypot(interp.vx(), interp.vz());
+            AnimationStateMachine anim = remoteEntityAnimations.computeIfAbsent(
+                    entity.characterId(),
+                    id -> StandardAnimations.createLocomotionStateMachine()
+            );
+            anim.update(dt, 0, speed);
         }
 
         // 2. Check Zoneline Intersections
@@ -311,14 +349,40 @@ public class InGameState implements ApplicationState {
                 visualRenderer.render(proj, view, wireframe, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
             }
 
-            // Render local player marker in 3D
-            if (collisionRenderer != null) {
+            // Render 3D animated character models for local player and remote actors / NPCs
+            short localJob = resolveLocalJobId();
+            if (characterRenderer != null && showCharacterModels) {
+                CompositeCharacterModel localModel = CharacterMeshGenerator.createCharacterModel(localJob);
+                BlendedPose localPose = localPlayerAnimation.evaluate(localModel.skeleton());
+                characterRenderer.render(
+                        localJob, localPose.jointPoseMatrices(),
+                        clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
+                        proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                );
+
+                for (var entity : clientState.getRemoteEntities().values()) {
+                    InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
+                    AnimationStateMachine anim = remoteEntityAnimations.computeIfAbsent(
+                            entity.characterId(),
+                            id -> StandardAnimations.createLocomotionStateMachine()
+                    );
+                    CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(entity.mainJobId());
+                    BlendedPose pose = anim.evaluate(model.skeleton());
+                    characterRenderer.render(
+                            entity.mainJobId(), pose.jointPoseMatrices(),
+                            interp.x(), interp.y(), interp.z(), interp.yaw(),
+                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                    );
+                }
+            }
+
+            // Render collision markers if enabled or as fallback
+            if (collisionRenderer != null && (showCollisionCylinders || !showCharacterModels)) {
                 collisionRenderer.renderPlayerMarker(
                         clientState.getX(), clientState.getY(), clientState.getZ(),
                         clientState.getYaw(), proj, view
                 );
 
-                // Render remote players and town NPCs at smooth interpolated coordinates
                 for (var entity : clientState.getRemoteEntities().values()) {
                     InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
                     boolean isNpc = entity.mainJobId() == JobId.NPC;
@@ -437,6 +501,23 @@ public class InGameState implements ApplicationState {
             collisionRenderer.cleanup();
             collisionRenderer = null;
         }
+        if (characterRenderer != null) {
+            characterRenderer.cleanup();
+            characterRenderer = null;
+        }
+        remoteEntityAnimations.clear();
+    }
+
+    private short resolveLocalJobId() {
+        if (clientState.getSelectedCharacterId() != null) {
+            long selId = clientState.getSelectedCharacterId();
+            for (var c : clientState.getCharacterList()) {
+                if (c.characterId() == selId) {
+                    return c.mainJobId();
+                }
+            }
+        }
+        return JobId.WARRIOR;
     }
 
     @Override

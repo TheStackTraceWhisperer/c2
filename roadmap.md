@@ -55,24 +55,37 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 
 ### Milestone 4: Character & Town NPC Visuals, Skeletal Animation & Poses (Completed)
 - **Quaternion 3D Rotations & Interpolation**:
-  - Implemented `Quaternion` record supporting identity, normalization, dot product, multiplication, and Matrix4f conversion.
+  - Implemented `Quaternion` record supporting identity, normalization, dot product, multiplication, from Euler angles (`fromEuler`), and Matrix4f conversion.
   - Implemented spherical linear interpolation (`slerp`) and normalized linear interpolation (`nlerp`) for smooth keyframed rotational tracks.
-- **Skeletal Hierarchy (`S29_SKELETON`)**:
-  - `Joint` record with bone index, parent index, rotation quaternion, and translation vector.
-  - `JointReference` sockets and standard anchor points.
-  - `Skeleton` record with hierarchical forward kinematics (`computeBindPoseMatrices`) traversing parent chains ($M_i = M_{\text{parent}} \times T_i \times R_i$).
-  - `SkeletonParser` for `S29_SKELETON` sections.
-- **Skinned Meshes (`S2A_SKELETON_MESH` & `S25_WEIGHTED_MESH`)**:
-  - `SkinnedVertex` with dual-bone skinning weights ($w_0 + w_1 = 1.0$), bone indices ($b_0, b_1$), positions, normals, and UV texture coordinates.
-  - `SkinnedSubMesh` and `SkinnedMesh` with material definitions and triangle indices.
-  - `SkeletonMeshParser` decoding `TriMesh` (`0x0054`) and `TriStrip` (`0x5453`) opcodes.
-- **Skeletal Keyframe Animation & Compositing**:
-  - `KeyFrameTransform` and `SkeletonAnimation` evaluating continuous joint poses at arbitrary floating-point frame times.
-  - `CompositeCharacterModel` assembling a shared race/gender skeleton with 8 equipment pieces (`Head`, `Body`, `Hands`, `Legs`, `Feet`, `Main`, `Sub`, `Ranged`) and evaluating FK pose matrices.
+- **Humanoid Skeletal Rig & Hierarchy (`HumanoidRig`, `Joint`, `Skeleton`)**:
+  - `HumanoidRig`: authentic 21-bone humanoid skeleton hierarchy (`BONE_ROOT`, `BONE_SPINE`, `BONE_CHEST`, `BONE_NECK`, `BONE_HEAD`, shoulders, arms, forearms, hands, hips, thighs, calves, feet) with model-space bind pose (~1.75m tall).
+  - `Skeleton` hierarchical forward kinematics (`computeBindPoseMatrices`) and inverse bind pose calculation (`computeInverseBindPoseMatrices`, `computeSkinningMatrices` evaluating $S_i = P_i \cdot B_i^{-1}$).
+  - `Matrix4f.invert()` analytic 4x4 matrix inversion using cofactor expansion.
+- **Procedural Keyframed Locomotion Animations (`StandardAnimations`)**:
+  - `createIdleAnimation()`: 30-frame loop (1.0s) with spine breathing, arm relaxation, and head sway.
+  - `createWalkAnimation()`: 30-frame loop (1.0s) with counter-arm swing, leg strides, and pelvic bounce.
+  - `createRunAnimation()`: 20-frame athletic loop (~0.66s) with forward torso lean, bent-arm pumping, and wide strides.
+  - `createLocomotionStateMachine()`: configured `AnimationStateMachine` managing locomotion transitions, normalized cross-fades, and FK pose evaluation.
+- **Multi-Slot Composite Character Mesh Generator (`CharacterMeshGenerator`)**:
+  - Procedural authentic 3D humanoid character mesh generator assembling 7 composite equipment pieces:
+    - Head & Cranium / Helmet (`SLOT_HEAD`)
+    - Torso Cuirass / Doublet / Tunic (`SLOT_BODY`)
+    - Arms & Gauntlets (`SLOT_HANDS`)
+    - Breeches & Greaves (`SLOT_LEGS`)
+    - Boots & Sabatons (`SLOT_FEET`)
+    - Steel Broadsword / Arcane Staff (`SLOT_MAIN`)
+    - Knight's Heater Shield for Paladins (`SLOT_SUB`)
+  - Linear blend skinning weights on all vertices (dual-bone influence $w_0 + w_1 = 1.0$).
+  - Role and job styling palettes: WAR/PLD (Steel cuirass & crimson trim), WHM (pristine white robe & red triangles), BLM (midnight coat & gold runes), RDM (crimson doublet & jabot), THF/NIN (leather jerkin), and Town NPC (amber civic tunic & royal blue slacks).
+- **GPU Skinned Mesh Renderer (`CharacterRenderer`)**:
+  - Modern OpenGL 3.3 core shader program evaluating hardware linear blend skinning across 32 bone matrix uniforms (`uBones[32]`).
+  - Unified VAO/VBO/EBO geometry uploads with cached job models.
+  - Integrated atmospheric lighting (matching celestial sun/moon vectors) and distance fog.
+  - Fully wired into `InGameState` (local player avatar, remote players, and town NPCs driven by movement speed/flags) and `OfflineWorldState` (player avatar and South San d'Oria town NPCs) with live hotkey toggles (F3 / F5).
 - **Town NPCs (`NpcTable-V3.DAT`)**:
   - `NpcTable` parser indexing 31,470 authentic NPCs across 279 zones with exact 3D coordinates, rotations, equipment slots, and flags.
   - Extracted 668 town NPCs in South San d'Oria (Zone 230).
-  - Integrated into `OfflineWorldState` and `CollisionMeshRenderer` with real-time batched GPU rendering of NPC markers, proximity radar tracking nearest NPC name, distance, and model ID, and HUD toggles (F4).
+  - Integrated into `OfflineWorldState` and `InGameState` with animated 3D character models, proximity radar, and nameplate overlays.
 
 ### Milestone 5: Entity Simulation, Interpolation & Polish (Completed)
 - **Authoritative Server Entity Simulation & AOI Streaming (Completed)**:

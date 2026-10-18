@@ -46,4 +46,25 @@ class Matrix4fTest {
         assertEquals(4.0f, transposed.get(3));
         assertEquals(2.0f, transposed.get(1));
     }
+
+    @Test
+    void testInvertTranslationAndMultiplication() {
+        Matrix4f t = Matrix4f.translation(3.0f, -7.0f, 12.0f);
+        Matrix4f invT = t.invert();
+
+        Matrix4f product = t.multiply(invT);
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                float expected = (r == c) ? 1.0f : 0.0f;
+                assertEquals(expected, product.get(c * 4 + r), EPSILON);
+            }
+        }
+
+        Vector3f p = new Vector3f(1.0f, 2.0f, 3.0f);
+        Vector3f moved = t.transform(p);
+        Vector3f restored = invT.transform(moved);
+        assertEquals(p.x(), restored.x(), EPSILON);
+        assertEquals(p.y(), restored.y(), EPSILON);
+        assertEquals(p.z(), restored.z(), EPSILON);
+    }
 }

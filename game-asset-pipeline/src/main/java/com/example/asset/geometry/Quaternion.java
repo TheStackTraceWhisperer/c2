@@ -7,6 +7,26 @@ public record Quaternion(float x, float y, float z, float w) {
 
     public static final Quaternion IDENTITY = new Quaternion(0.0f, 0.0f, 0.0f, 1.0f);
 
+    public static Quaternion fromEuler(float pitch, float yaw, float roll) {
+        float halfPitch = pitch * 0.5f;
+        float halfYaw = yaw * 0.5f;
+        float halfRoll = roll * 0.5f;
+
+        float sinP = (float) Math.sin(halfPitch);
+        float cosP = (float) Math.cos(halfPitch);
+        float sinY = (float) Math.sin(halfYaw);
+        float cosY = (float) Math.cos(halfYaw);
+        float sinR = (float) Math.sin(halfRoll);
+        float cosR = (float) Math.cos(halfRoll);
+
+        return new Quaternion(
+                sinP * cosY * cosR - cosP * sinY * sinR,
+                cosP * sinY * cosR + sinP * cosY * sinR,
+                cosP * cosY * sinR - sinP * sinY * cosR,
+                cosP * cosY * cosR + sinP * sinY * sinR
+        ).normalize();
+    }
+
     public float lengthSquared() {
         return x * x + y * y + z * z + w * w;
     }

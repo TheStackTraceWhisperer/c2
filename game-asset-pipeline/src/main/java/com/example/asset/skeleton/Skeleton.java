@@ -43,4 +43,32 @@ public record Skeleton(
         }
         return modelMatrices;
     }
+
+    /**
+     * Computes the inverse bind pose matrices for all joints.
+     */
+    public List<Matrix4f> computeInverseBindPoseMatrices() {
+        List<Matrix4f> bind = computeBindPoseMatrices();
+        List<Matrix4f> inv = new ArrayList<>(bind.size());
+        for (Matrix4f m : bind) {
+            inv.add(m.invert());
+        }
+        return inv;
+    }
+
+    /**
+     * Computes final skinning matrices for GPU skinning shaders: S_i = Pose_i * InvBind_i.
+     */
+    public List<Matrix4f> computeSkinningMatrices(List<Matrix4f> poseMatrices) {
+        List<Matrix4f> invBind = computeInverseBindPoseMatrices();
+        List<Matrix4f> skinning = new ArrayList<>(joints.size());
+        for (int i = 0; i < joints.size(); i++) {
+            if (i < poseMatrices.size() && i < invBind.size()) {
+                skinning.add(poseMatrices.get(i).multiply(invBind.get(i)));
+            } else {
+                skinning.add(new Matrix4f());
+            }
+        }
+        return skinning;
+    }
 }

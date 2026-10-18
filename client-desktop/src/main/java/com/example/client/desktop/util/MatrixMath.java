@@ -125,4 +125,41 @@ public final class MatrixMath {
 
         return new float[]{sx, sy, cw};
     }
+
+    /**
+     * Builds a column-major model transform matrix combining translation and yaw rotation.
+     * In FFXI world coordinates: 0 deg = North (+Z), 90 deg = East (+X).
+     */
+    public static float[] modelMatrix(float x, float y, float z, float yawDegrees) {
+        float rad = (float) Math.toRadians(yawDegrees);
+        float cos = (float) Math.cos(rad);
+        float sin = (float) Math.sin(rad);
+
+        float[] m = new float[16];
+        // Col 0: Right vector (1, 0, 0) rotated by yaw
+        m[0] = cos;
+        m[1] = 0f;
+        m[2] = -sin;
+        m[3] = 0f;
+
+        // Col 1: Up vector (0, 1, 0)
+        m[4] = 0f;
+        m[5] = 1f;
+        m[6] = 0f;
+        m[7] = 0f;
+
+        // Col 2: Forward vector (0, 0, 1) rotated by yaw
+        m[8] = sin;
+        m[9] = 0f;
+        m[10] = cos;
+        m[11] = 0f;
+
+        // Col 3: Translation position
+        m[12] = x;
+        m[13] = y;
+        m[14] = z;
+        m[15] = 1f;
+
+        return m;
+    }
 }

@@ -35,4 +35,27 @@ class MatrixMathTest {
         // Translation z offset
         assertEquals(-10.0f, v[14], EPSILON);
     }
+
+    @Test
+    void testModelMatrixTranslationAndRotation() {
+        // At yaw 0 (North / +Z), character faces +Z.
+        float[] m = MatrixMath.modelMatrix(5.0f, 10.0f, -20.0f, 0.0f);
+        assertEquals(16, m.length);
+        assertEquals(5.0f, m[12], EPSILON);
+        assertEquals(10.0f, m[13], EPSILON);
+        assertEquals(-20.0f, m[14], EPSILON);
+        assertEquals(1.0f, m[15], EPSILON);
+
+        // Basis vectors at yaw 0
+        assertEquals(1.0f, m[0], EPSILON);  // X right
+        assertEquals(1.0f, m[5], EPSILON);  // Y up
+        assertEquals(1.0f, m[10], EPSILON); // Z forward
+
+        // At yaw 90 (East / +X)
+        float[] m90 = MatrixMath.modelMatrix(0f, 0f, 0f, 90.0f);
+        assertEquals(0.0f, m90[0], EPSILON);
+        assertEquals(-1.0f, m90[2], EPSILON);
+        assertEquals(1.0f, m90[8], EPSILON);
+        assertEquals(0.0f, m90[10], EPSILON);
+    }
 }

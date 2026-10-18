@@ -14,9 +14,16 @@ import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
+import com.example.asset.skeleton.AnimationStateMachine;
+import com.example.asset.skeleton.BlendedPose;
+import com.example.asset.skeleton.CharacterMeshGenerator;
+import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.StandardAnimations;
+import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.util.MatrixMath;
+import com.example.common.protocol.JobId;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import io.micronaut.context.BeanProvider;
@@ -51,9 +58,13 @@ public class OfflineWorldState implements ApplicationState {
     private CollisionMap collisionMap;
     private CollisionMeshRenderer collisionRenderer;
     private VisualZoneRenderer visualRenderer;
+    private CharacterRenderer characterRenderer;
     private VisualZoneScene visualScene;
     private NpcTable npcTable;
     private List<NpcInfo> townNpcs = List.of();
+
+    private final AnimationStateMachine playerAnimation = StandardAnimations.createLocomotionStateMachine();
+    private final AnimationStateMachine npcAnimation = StandardAnimations.createLocomotionStateMachine();
 
     private float playerX = -50.0f;
     private float playerY = 2.0f;
@@ -68,18 +79,21 @@ public class OfflineWorldState implements ApplicationState {
     private boolean showVisualZone = true;
     private boolean showCollisionOverlay = false;
     private boolean showTownNpcs = true;
+    private boolean showCharacterModels = true;
     private boolean wireframe = false;
     private int collisionTriangleCount = 0;
     private float lastFloorY = 2.0f;
 
     @Override
     public void onEnter() {
-        log.info("Entering OfflineWorldState — initializing 3D visual and collision renderers");
+        log.info("Entering OfflineWorldState — initializing 3D visual, collision, and character renderers");
         collisionRenderer = new CollisionMeshRenderer();
         visualRenderer = new VisualZoneRenderer();
+        characterRenderer = new CharacterRenderer();
         try {
             collisionRenderer.init();
             visualRenderer.init();
+            characterRenderer.init();
         } catch (Exception e) {
             log.error("Failed to initialize OpenGL renderers", e);
         }
@@ -235,14 +249,34 @@ public class OfflineWorldState implements ApplicationState {
             collisionRenderer.render(proj, view, wireframe);
         }
 
-        // Render town NPC visual markers
-        if (collisionRenderer != null && showTownNpcs) {
-            collisionRenderer.renderNpcMarkers(proj, view);
+        // Render 3D animated character models for player and town NPCs
+        if (characterRenderer != null && showCharacterModels) {
+            CompositeCharacterModel playerModel = CharacterMeshGenerator.createCharacterModel(JobId.WARRIOR);
+            BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
+            characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
+                    playerX, playerY, playerZ, camera.getYaw(),
+                    proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+
+            if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty()) {
+                CompositeCharacterModel npcModel = CharacterMeshGenerator.createCharacterModel(JobId.NPC);
+                BlendedPose npcPose = npcAnimation.evaluate(npcModel.skeleton());
+                for (NpcInfo npc : townNpcs) {
+                    float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
+                    characterRenderer.render(JobId.NPC, npcPose.jointPoseMatrices(),
+                            npc.position().x(), npc.position().y(), npc.position().z(), npcYaw,
+                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                }
+            }
         }
 
-        // Render player marker
+        // Render fallback/debug collision markers
         if (collisionRenderer != null) {
-            collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
+            if (showTownNpcs && (!showCharacterModels || characterRenderer == null)) {
+                collisionRenderer.renderNpcMarkers(proj, view);
+            }
+            if (!showCharacterModels) {
+                collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
+            }
         }
 
         // 3. Render ImGui HUD
@@ -270,6 +304,10 @@ public class OfflineWorldState implements ApplicationState {
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS) {
             showTownNpcs = !showTownNpcs;
         }
+        // Toggle 3D character models on F5
+        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F5) == GLFW.GLFW_PRESS) {
+            showCharacterModels = !showCharacterModels;
+        }
 
         // Compute input direction from WASD / Arrow keys
         float moveX = 0.0f;
@@ -293,6 +331,14 @@ public class OfflineWorldState implements ApplicationState {
         }
 
         float len = (float) Math.hypot(moveX, moveZ);
+        float horizSpeed = (len > 1e-4f) ? moveSpeed : 0.0f;
+        int moveFlags = (len > 1e-4f) ? 1 : 0;
+        if (!onGround) {
+            moveFlags |= 16;
+        }
+        playerAnimation.update(dt, moveFlags, horizSpeed);
+        npcAnimation.update(dt, 0, 0.0f);
+
         if (len > 1e-4f) {
             moveX = (moveX / len) * moveSpeed * dt;
             moveZ = (moveZ / len) * moveSpeed * dt;
@@ -397,6 +443,10 @@ public class OfflineWorldState implements ApplicationState {
         if (ImGui.checkbox("NPCs (F4)", showTownNpcs)) {
             showTownNpcs = !showTownNpcs;
         }
+        ImGui.sameLine();
+        if (ImGui.checkbox("3D Chars (F5)", showCharacterModels)) {
+            showCharacterModels = !showCharacterModels;
+        }
         if (ImGui.checkbox("Wireframe Mode (F1)", wireframe)) {
             wireframe = !wireframe;
         }
@@ -468,6 +518,10 @@ public class OfflineWorldState implements ApplicationState {
         if (visualRenderer != null) {
             visualRenderer.cleanup();
             visualRenderer = null;
+        }
+        if (characterRenderer != null) {
+            characterRenderer.cleanup();
+            characterRenderer = null;
         }
     }
 }

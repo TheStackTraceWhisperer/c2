@@ -251,20 +251,24 @@ public class OfflineWorldState implements ApplicationState {
 
         // Render 3D animated character models for player and town NPCs
         if (characterRenderer != null && showCharacterModels) {
-            CompositeCharacterModel playerModel = CharacterMeshGenerator.createCharacterModel(JobId.WARRIOR);
-            BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
-            characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
-                    playerX, playerY, playerZ, camera.getYaw(),
-                    proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+            CompositeCharacterModel playerModel = characterRenderer.getOrCreateModel(JobId.WARRIOR);
+            if (playerModel != null) {
+                BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
+                characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
+                        playerX, playerY, playerZ, camera.getYaw(),
+                        proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+            }
 
             if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty()) {
-                CompositeCharacterModel npcModel = CharacterMeshGenerator.createCharacterModel(JobId.NPC);
-                BlendedPose npcPose = npcAnimation.evaluate(npcModel.skeleton());
-                for (NpcInfo npc : townNpcs) {
-                    float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
-                    characterRenderer.render(JobId.NPC, npcPose.jointPoseMatrices(),
-                            npc.position().x(), npc.position().y(), npc.position().z(), npcYaw,
-                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                CompositeCharacterModel npcModel = characterRenderer.getOrCreateModel(JobId.NPC);
+                if (npcModel != null) {
+                    BlendedPose npcPose = npcAnimation.evaluate(npcModel.skeleton());
+                    for (NpcInfo npc : townNpcs) {
+                        float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
+                        characterRenderer.render(JobId.NPC, npcPose.jointPoseMatrices(),
+                                npc.position().x(), npc.position().y(), npc.position().z(), npcYaw,
+                                proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                    }
                 }
             }
         }

@@ -7,7 +7,9 @@ import com.example.asset.skeleton.BlendedPose;
 import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.HumanoidRig;
+import com.example.asset.skeleton.KeyFrameTransform;
 import com.example.asset.skeleton.Skeleton;
+import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;
 import com.example.common.protocol.JobId;
 import org.junit.jupiter.api.DisplayName;
@@ -121,5 +123,57 @@ class CharacterLocomotionAnimationTest {
                         "Paladin should have shield sub-slot equipped");
             }
         }
+    }
+
+    @Test
+    @DisplayName("Animations loop continuously over long durations without freezing or clamping")
+    void testContinuousAnimationLooping() {
+        SkeletonAnimation walk = StandardAnimations.createWalkAnimation();
+        assertEquals(1.0f, walk.totalDurationSeconds(), EPSILON, "Walk animation loop should be 1.0 second");
+
+        // Sample at t = 0.25s and t = 100.25s (100 complete loops later)
+        KeyFrameTransform kfInitial = walk.evaluateAtTime(HumanoidRig.BONE_ROOT, 0.25f, true);
+        KeyFrameTransform kfLooped = walk.evaluateAtTime(HumanoidRig.BONE_ROOT, 100.25f, true);
+
+        assertEquals(kfInitial.translation().y(), kfLooped.translation().y(), EPSILON,
+                "Root Y at 100.25s should match 0.25s identically due to seamless looping");
+        assertEquals(kfInitial.rotation().w(), kfLooped.rotation().w(), EPSILON,
+                "Root rotation W at 100.25s should match 0.25s");
+
+        // Verify state machine continuous evaluation over 60 seconds of walking
+        AnimationStateMachine asm = StandardAnimations.createLocomotionStateMachine();
+        Skeleton skeleton = HumanoidRig.createDefaultSkeleton();
+
+        // Advance by 60 seconds (60 full loops)
+        for (int frame = 0; frame < 3600; frame++) {
+            asm.update(1.0f / 60.0f, 1, 2.5f);
+        }
+
+        BlendedPose poseAfter60s = asm.evaluate(skeleton);
+        assertNotNull(poseAfter60s);
+        assertEquals(HumanoidRig.BONE_COUNT, poseAfter60s.jointPoseMatrices().size());
+        assertTrue(poseAfter60s.playbackTime() > 50.0f, "Playback time should have continuously advanced");
+
+        // Advance 15 frames (~0.25s) further and verify pose changes (not frozen)
+        Matrix4f legBefore = poseAfter60s.jointPoseMatrices().get(HumanoidRig.BONE_L_THIGH);
+        asm.update(0.25f, 1, 2.5f);
+        BlendedPose poseLater = asm.evaluate(skeleton);
+        Matrix4f legAfter = poseLater.jointPoseMatrices().get(HumanoidRig.BONE_L_THIGH);
+
+        assertNotEquals(legBefore.get(0), legAfter.get(0),
+                "Thigh transform matrix should change during walking cycle, confirming it does not freeze");
+    }
+
+    @Test
+    @DisplayName("Non-looping animations clamp cleanly at bounds when loop is false")
+    void testNonLoopingAnimationClamping() {
+        SkeletonAnimation idle = StandardAnimations.createIdleAnimation();
+
+        // When loop is false, time past duration should clamp to last frame
+        KeyFrameTransform kfAtEnd = idle.evaluateAtTime(HumanoidRig.BONE_HEAD, idle.totalDurationSeconds(), false);
+        KeyFrameTransform kfPastEnd = idle.evaluateAtTime(HumanoidRig.BONE_HEAD, idle.totalDurationSeconds() + 10.0f, false);
+
+        assertEquals(kfAtEnd.translation().y(), kfPastEnd.translation().y(), EPSILON);
+        assertEquals(kfAtEnd.rotation().x(), kfPastEnd.rotation().x(), EPSILON);
     }
 }

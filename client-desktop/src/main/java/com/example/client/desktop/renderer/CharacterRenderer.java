@@ -250,6 +250,17 @@ public class CharacterRenderer {
     }
 
     /**
+     * Retrieves an existing cached model or creates and uploads a new one for the given job.
+     */
+    public CompositeCharacterModel getOrCreateModel(short jobId) {
+        GpuCharacterMesh mesh = jobModelCache.computeIfAbsent(jobId, id -> {
+            CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(id);
+            return uploadModel(model);
+        });
+        return mesh != null ? mesh.model() : null;
+    }
+
+    /**
      * Renders a character model by job ID at the specified world coordinates and yaw heading.
      */
     public void render(short jobId, List<Matrix4f> poseMatrices,

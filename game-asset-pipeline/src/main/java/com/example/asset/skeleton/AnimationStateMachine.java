@@ -60,6 +60,7 @@ public class AnimationStateMachine {
             blendWeight = Math.min(1.0f, blendWeight + (dt / transitionDuration));
             if (blendWeight >= 1.0f) {
                 currentState = targetState;
+                playbackTime = targetPlaybackTime;
             }
         }
 
@@ -121,15 +122,15 @@ public class AnimationStateMachine {
             if (animCurrent == null && animTarget == null) {
                 local = joint.toLocalTransform();
             } else if (animCurrent != null && (animTarget == null || blendWeight >= 1.0f && currentState == targetState)) {
-                KeyFrameTransform kf = animCurrent.evaluate(i, playbackTime);
+                KeyFrameTransform kf = animCurrent.evaluateAtTime(i, playbackTime, true);
                 local = kfToMatrix(kf);
             } else if (animCurrent == null && animTarget != null) {
-                KeyFrameTransform kf = animTarget.evaluate(i, targetPlaybackTime);
+                KeyFrameTransform kf = animTarget.evaluateAtTime(i, targetPlaybackTime, true);
                 local = kfToMatrix(kf);
             } else {
                 // Dual-track cross-fade blend
-                KeyFrameTransform kf0 = animCurrent.evaluate(i, playbackTime);
-                KeyFrameTransform kf1 = animTarget.evaluate(i, targetPlaybackTime);
+                KeyFrameTransform kf0 = animCurrent.evaluateAtTime(i, playbackTime, true);
+                KeyFrameTransform kf1 = animTarget.evaluateAtTime(i, targetPlaybackTime, true);
                 KeyFrameTransform blended = KeyFrameTransform.interpolate(kf0, kf1, blendWeight);
                 local = kfToMatrix(blended);
             }

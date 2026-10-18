@@ -352,13 +352,15 @@ public class InGameState implements ApplicationState {
             // Render 3D animated character models for local player and remote actors / NPCs
             short localJob = resolveLocalJobId();
             if (characterRenderer != null && showCharacterModels) {
-                CompositeCharacterModel localModel = CharacterMeshGenerator.createCharacterModel(localJob);
-                BlendedPose localPose = localPlayerAnimation.evaluate(localModel.skeleton());
-                characterRenderer.render(
-                        localJob, localPose.jointPoseMatrices(),
-                        clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
-                        proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
-                );
+                CompositeCharacterModel localModel = characterRenderer.getOrCreateModel(localJob);
+                if (localModel != null) {
+                    BlendedPose localPose = localPlayerAnimation.evaluate(localModel.skeleton());
+                    characterRenderer.render(
+                            localJob, localPose.jointPoseMatrices(),
+                            clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
+                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                    );
+                }
 
                 for (var entity : clientState.getRemoteEntities().values()) {
                     InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
@@ -366,13 +368,15 @@ public class InGameState implements ApplicationState {
                             entity.characterId(),
                             id -> StandardAnimations.createLocomotionStateMachine()
                     );
-                    CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(entity.mainJobId());
-                    BlendedPose pose = anim.evaluate(model.skeleton());
-                    characterRenderer.render(
-                            entity.mainJobId(), pose.jointPoseMatrices(),
-                            interp.x(), interp.y(), interp.z(), interp.yaw(),
-                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
-                    );
+                    CompositeCharacterModel model = characterRenderer.getOrCreateModel(entity.mainJobId());
+                    if (model != null) {
+                        BlendedPose pose = anim.evaluate(model.skeleton());
+                        characterRenderer.render(
+                                entity.mainJobId(), pose.jointPoseMatrices(),
+                                interp.x(), interp.y(), interp.z(), interp.yaw(),
+                                proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                        );
+                    }
                 }
             }
 

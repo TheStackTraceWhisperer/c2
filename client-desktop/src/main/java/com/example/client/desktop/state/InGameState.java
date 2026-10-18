@@ -37,6 +37,7 @@ import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementResponse;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.type.ImInt;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
@@ -48,6 +49,7 @@ import org.lwjgl.opengl.GL11;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +94,10 @@ public class InGameState implements ApplicationState {
 
     private VisualZoneScene visualScene;
     private List<ZoneInteraction> zoneInteractions = List.of();
+    @Getter
     private WeatherType currentWeather = WeatherType.CLEAR;
+    private boolean manualTimeOverride = false;
+    private float manualTimeHour = 12.0f;
     private ZoneInteraction activeZoneline = null;
 
     private boolean showVisualZone = true;
@@ -321,7 +326,9 @@ public class InGameState implements ApplicationState {
         }
 
         // 3. Render 3D OpenGL Viewport (when running with valid window handle)
-        VanadielTime vTime = VanadielTime.now();
+        VanadielTime vTime = manualTimeOverride
+                ? VanadielTime.ofHour(manualTimeHour)
+                : VanadielTime.now();
         DiurnalLighting lighting = DiurnalLighting.compute(vTime, currentWeather);
 
         if (handle != 0L) {
@@ -433,10 +440,37 @@ public class InGameState implements ApplicationState {
 
     private void renderClockBanner(VanadielTime vTime) {
         ImGui.setNextWindowPos(20, 20, ImGuiCond.Always);
+        ImGui.setNextWindowSize(520, 0, ImGuiCond.Always);
         ImGui.begin("Vana'diel Environment");
         ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, vTime.formatClockSummary());
         ImGui.sameLine();
         ImGui.textColored(0.4f, 0.85f, 1.0f, 1.0f, " | Weather: " + currentWeather.getDisplayName());
+
+        // Weather Selection Dropdown
+        String[] weatherNames = Arrays.stream(WeatherType.values()).map(WeatherType::getDisplayName).toArray(String[]::new);
+        ImInt weatherIdx = new ImInt(currentWeather.ordinal());
+        if (ImGui.combo("Weather", weatherIdx, weatherNames)) {
+            currentWeather = WeatherType.values()[weatherIdx.get()];
+        }
+
+        // Time of Day Controls
+        if (ImGui.checkbox("Manual Time Override", manualTimeOverride)) {
+            manualTimeOverride = !manualTimeOverride;
+        }
+
+        if (manualTimeOverride) {
+            float[] hourArr = new float[]{manualTimeHour};
+            if (ImGui.sliderFloat("Time of Day", hourArr, 0.0f, 24.0f, "%.1f h")) {
+                manualTimeHour = hourArr[0];
+            }
+            if (ImGui.button("Dawn (05:00)")) manualTimeHour = 5.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Noon (12:00)")) manualTimeHour = 12.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Dusk (18:00)")) manualTimeHour = 18.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Midnight (00:00)")) manualTimeHour = 0.0f;
+        }
 
         if (activeZoneline != null) {
             ImGui.separator();

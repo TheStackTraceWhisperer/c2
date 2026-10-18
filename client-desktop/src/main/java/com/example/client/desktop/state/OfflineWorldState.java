@@ -24,8 +24,11 @@ import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.util.MatrixMath;
 import com.example.common.protocol.JobId;
+import com.example.common.time.VanadielTime;
+import com.example.common.time.WeatherType;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.type.ImInt;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +39,7 @@ import org.lwjgl.opengl.GL11;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -83,6 +87,10 @@ public class OfflineWorldState implements ApplicationState {
     private boolean wireframe = false;
     private int collisionTriangleCount = 0;
     private float lastFloorY = 2.0f;
+
+    private WeatherType currentWeather = WeatherType.CLEAR;
+    private boolean manualTimeOverride = false;
+    private float manualTimeHour = 12.0f;
 
     @Override
     public void onEnter() {
@@ -224,8 +232,10 @@ public class OfflineWorldState implements ApplicationState {
         int fbHeight = Math.max(1, height[0]);
         GL11.glViewport(0, 0, fbWidth, fbHeight);
 
-        com.example.common.time.VanadielTime vTime = com.example.common.time.VanadielTime.now();
-        com.example.asset.environment.DiurnalLighting lighting = com.example.asset.environment.DiurnalLighting.compute(vTime, com.example.common.time.WeatherType.CLEAR);
+        VanadielTime vTime = manualTimeOverride
+                ? VanadielTime.ofHour(manualTimeHour)
+                : VanadielTime.now();
+        com.example.asset.environment.DiurnalLighting lighting = com.example.asset.environment.DiurnalLighting.compute(vTime, currentWeather);
         float[] sky = lighting.getSkyColor();
 
         GL11.glClearColor(sky[0], sky[1], sky[2], 1.0f);
@@ -434,6 +444,33 @@ public class OfflineWorldState implements ApplicationState {
         ImGui.text(String.format("Collision Triangles: %,d", collisionTriangleCount));
         ImGui.text(String.format("Town NPCs: %,d (NpcTable-V3)", townNpcs.size()));
         ImGui.text(String.format("Framerate: %.1f FPS", 1.0f / Math.max(dt, 0.0001f)));
+        ImGui.separator();
+
+        // Environment & Weather Controls
+        ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, "Environment & Atmosphere");
+        String[] weatherNames = Arrays.stream(WeatherType.values()).map(WeatherType::getDisplayName).toArray(String[]::new);
+        ImInt weatherIdx = new ImInt(currentWeather.ordinal());
+        if (ImGui.combo("Weather", weatherIdx, weatherNames)) {
+            currentWeather = WeatherType.values()[weatherIdx.get()];
+        }
+
+        if (ImGui.checkbox("Manual Time Override", manualTimeOverride)) {
+            manualTimeOverride = !manualTimeOverride;
+        }
+
+        if (manualTimeOverride) {
+            float[] hourArr = new float[]{manualTimeHour};
+            if (ImGui.sliderFloat("Time of Day", hourArr, 0.0f, 24.0f, "%.1f h")) {
+                manualTimeHour = hourArr[0];
+            }
+            if (ImGui.button("Dawn (05:00)")) manualTimeHour = 5.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Noon (12:00)")) manualTimeHour = 12.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Dusk (18:00)")) manualTimeHour = 18.0f;
+            ImGui.sameLine();
+            if (ImGui.button("Night (00:00)")) manualTimeHour = 0.0f;
+        }
         ImGui.separator();
 
         if (ImGui.checkbox("Visual Zone (F2)", showVisualZone)) {

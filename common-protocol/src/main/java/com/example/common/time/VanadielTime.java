@@ -85,6 +85,16 @@ public final class VanadielTime {
         return ofUtcMillis(System.currentTimeMillis());
     }
 
+    public static VanadielTime ofHour(float hourFraction) {
+        float clamped = ((hourFraction % 24.0f) + 24.0f) % 24.0f;
+        int hour = (int) clamped;
+        int minute = (int) ((clamped - hour) * 60.0f);
+        int second = (int) ((((clamped - hour) * 60.0f) - minute) * 60.0f);
+        return new VanadielTime(886, 1, 1, hour, minute, second,
+                VanadielDayOfWeek.FIRE, MoonPhase.FULL_MOON, 100, 0,
+                (long) (clamped * 3600));
+    }
+
     public float getHourFraction() {
         return hour + (minute / 60.0f) + (second / 3600.0f);
     }

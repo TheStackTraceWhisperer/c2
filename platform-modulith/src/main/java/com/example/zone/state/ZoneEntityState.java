@@ -33,6 +33,8 @@ public class ZoneEntityState {
   private boolean dirty;
   private ChannelHandlerContext channelContext;
 
+  private boolean npc;
+
   // Observed entity set for AoI differencing
   private final Set<Long> knownEntities = ConcurrentHashMap.newKeySet();
 
@@ -56,5 +58,24 @@ public class ZoneEntityState {
     this.lastUpdatedTick = lastUpdatedTick;
     this.dirty = true;
     this.channelContext = ctx;
+    this.npc = false;
+  }
+
+  public static ZoneEntityState createNpc(long npcEntityId, int zoneId, String name,
+                                         float x, float y, float z, float yaw) {
+    ZoneEntityState state = new ZoneEntityState(
+      0L, npcEntityId, zoneId,
+      x, y, z,
+      0f, 0f, 0f,
+      yaw, 0f, 0,
+      0L, null
+    );
+    state.setName(name);
+    state.setMainJobId(com.example.common.protocol.JobId.NPC);
+    state.setSubJobId((short) 0);
+    state.setLevel(1);
+    state.setNpc(true);
+    state.setDirty(false);
+    return state;
   }
 }

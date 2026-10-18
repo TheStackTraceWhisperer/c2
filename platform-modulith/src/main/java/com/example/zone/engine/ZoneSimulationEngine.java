@@ -17,6 +17,9 @@ import com.example.zone.dto.ZoneStateDeltaMessage;
 import com.example.zone.spatial.FastMath3D;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
+import com.example.zone.patrol.NpcPatrolSimulation;
+import com.example.asset.npc.NpcInfo;
+import com.example.asset.npc.NpcTable;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -25,6 +28,9 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -46,6 +52,7 @@ public class ZoneSimulationEngine {
   private final ZoneLineJdbcRepository zoneLineRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
   private final ZoneCollisionService collisionService;
+  @Getter private final NpcPatrolSimulation patrolSimulation;
 
   @Getter private final AtomicLong currentTick = new AtomicLong(0L);
 
@@ -66,6 +73,8 @@ public class ZoneSimulationEngine {
   public void start() {
     cachedZoneLines.addAll(zoneLineRepository.findBySourceZoneId(properties.getZoneId()));
     log.info("[ZONE-ENGINE] Loaded {} trigger zone lines for Zone #{}", cachedZoneLines.size(), properties.getZoneId());
+
+    loadTownNpcs();
 
     tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
       Thread t = new Thread(r, "zone-simulation-loop");
@@ -129,6 +138,14 @@ public class ZoneSimulationEngine {
       long tickNumber = currentTick.incrementAndGet();
 
       processInboundMovements(tickNumber);
+      patrolSimulation.tick(
+          (float) TICK_INTERVAL_MS / 1000.0f,
+          tickNumber,
+          properties.getZoneId(),
+          entities,
+          spatialGrid,
+          collisionService
+      );
       broadcastAoIDeltas(tickNumber);
 
       if (tickNumber % FLUSH_INTERVAL_TICKS == 0) {
@@ -314,9 +331,90 @@ public class ZoneSimulationEngine {
     }
   }
 
+  public void loadTownNpcs() {
+    int zoneId = properties.getZoneId();
+    byte[] npcBytes = loadNpcTableBytes();
+    if (npcBytes == null || npcBytes.length == 0) {
+      log.warn("[ZONE-ENGINE] No NpcTable-V3.DAT found — skipping town NPC population for Zone #{}", zoneId);
+      return;
+    }
+
+    try {
+      NpcTable table = NpcTable.load(npcBytes);
+      List<NpcInfo> npcs = table.getByZone(zoneId);
+      int count = 0;
+      for (NpcInfo npc : npcs) {
+        long entityId = npc.id();
+        float yawDeg = (float) Math.toDegrees(npc.rotationRadians());
+        String name = String.format("NPC-%d", npc.id());
+        ZoneEntityState npcState = ZoneEntityState.createNpc(
+          entityId,
+          zoneId,
+          name,
+          npc.position().x(),
+          npc.position().y(),
+          npc.position().z(),
+          yawDeg
+        );
+        registerNpc(npcState);
+        count++;
+      }
+      log.info("[ZONE-ENGINE] Loaded {} town NPCs for Zone #{} into spatial simulation grid", count, zoneId);
+    } catch (Exception e) {
+      log.error("[ZONE-ENGINE] Failed to parse and load town NPCs for Zone #{}", zoneId, e);
+    }
+  }
+
+  public void registerNpc(ZoneEntityState npcState) {
+    entities.put(npcState.getCharacterId(), npcState);
+    spatialGrid.updatePosition(npcState.getCharacterId(), npcState.getX(), npcState.getZ());
+  }
+
+  public Map<Long, ZoneEntityState> getEntities() {
+    return Collections.unmodifiableMap(entities);
+  }
+
+  public ZoneEntityState getEntity(long characterId) {
+    return entities.get(characterId);
+  }
+
+  public int getEntityCount() {
+    return entities.size();
+  }
+
+  private byte[] loadNpcTableBytes() {
+    String resPath = "/dats/tables/landsandboat/NpcTable-V3.DAT";
+    try (InputStream stream = getClass().getResourceAsStream(resPath)) {
+      if (stream != null) {
+        return stream.readAllBytes();
+      }
+    } catch (Exception ignored) {}
+
+    String configuredDir = properties.getAssetPath();
+    List<Path> candidates = List.of(
+      Path.of(configuredDir, "tables/landsandboat/NpcTable-V3.DAT"),
+      Path.of(configuredDir, "NpcTable-V3.DAT"),
+      Path.of("game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
+      Path.of("../game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
+      Path.of("src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT")
+    );
+
+    for (Path p : candidates) {
+      if (Files.isRegularFile(p)) {
+        try {
+          return Files.readAllBytes(p);
+        } catch (Exception ignored) {}
+      }
+    }
+    return null;
+  }
+
   public void flushDirtyEntitiesAsync() {
     List<CharacterStateSnapshot> dirtySnapshots = new ArrayList<>();
     for (ZoneEntityState state : entities.values()) {
+      if (state.isNpc()) {
+        continue;
+      }
       if (state.isDirty()) {
         state.setDirty(false);
         dirtySnapshots.add(new CharacterStateSnapshot(
@@ -338,7 +436,7 @@ public class ZoneSimulationEngine {
       ZoneEntityState state = entities.remove(characterId);
       spatialGrid.removeEntity(characterId);
 
-      if (state != null && state.isDirty()) {
+      if (state != null && state.isDirty() && !state.isNpc()) {
         CharacterStateSnapshot snapshot = new CharacterStateSnapshot(
           state.getCharacterId(),
           state.getZoneId(),
@@ -357,12 +455,16 @@ public class ZoneSimulationEngine {
       tickExecutor.shutdown();
     }
     List<CharacterStateSnapshot> remaining = entities.values().stream()
+      .filter(s -> !s.isNpc())
       .map(s -> new CharacterStateSnapshot(s.getCharacterId(), s.getZoneId(), s.getX(), s.getY(), s.getZ(), s.getYaw(), s.getPitch()))
       .toList();
-    characterRepository.flushStateBatch(remaining);
+    if (!remaining.isEmpty()) {
+      characterRepository.flushStateBatch(remaining);
+    }
 
     sessionToCharacter.clear();
     entities.clear();
     spatialGrid.clear();
+    patrolSimulation.clear();
   }
 }

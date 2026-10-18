@@ -1,5 +1,8 @@
 package com.example.client.state;
 
+import com.example.client.interp.EntityInterpolationBuffer;
+import com.example.client.interp.InterpolatedEntityState;
+import com.example.client.interp.InterpolationSnapshot;
 import com.example.lobby.dto.CharacterSummary;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
@@ -37,6 +40,7 @@ public class ClientState {
 
   // Remote World Entities within AoI
   private final Map<Long, RemoteEntityState> remoteEntities = new ConcurrentHashMap<>();
+  private final Map<Long, EntityInterpolationBuffer> interpolationBuffers = new ConcurrentHashMap<>();
 
   private final List<CharacterSummary> characters = new CopyOnWriteArrayList<>();
   private final List<Consumer<ClientState>> stateListeners = new CopyOnWriteArrayList<>();
@@ -79,6 +83,15 @@ public class ClientState {
       spawn.vx(), spawn.vy(), spawn.vz(),
       spawn.yaw(), spawn.pitch(), 0
     ));
+
+    long now = System.currentTimeMillis();
+    EntityInterpolationBuffer buffer = interpolationBuffers.computeIfAbsent(spawn.characterId(), id -> new EntityInterpolationBuffer());
+    buffer.pushSnapshot(new InterpolationSnapshot(
+      now, spawn.x(), spawn.y(), spawn.z(),
+      spawn.vx(), spawn.vy(), spawn.vz(),
+      spawn.yaw(), spawn.pitch(), 0
+    ));
+
     notifyListeners();
   }
 
@@ -89,12 +102,39 @@ public class ClientState {
       update.vx(), update.vy(), update.vz(),
       update.yaw(), update.pitch(), update.moveFlags()
     ));
+
+    long now = System.currentTimeMillis();
+    EntityInterpolationBuffer buffer = interpolationBuffers.computeIfAbsent(update.characterId(), id -> new EntityInterpolationBuffer());
+    buffer.pushSnapshot(new InterpolationSnapshot(
+      now, update.x(), update.y(), update.z(),
+      update.vx(), update.vy(), update.vz(),
+      update.yaw(), update.pitch(), update.moveFlags()
+    ));
+
     notifyListeners();
   }
 
   public void removeRemoteEntity(long characterId) {
     remoteEntities.remove(characterId);
+    interpolationBuffers.remove(characterId);
     notifyListeners();
+  }
+
+  public InterpolatedEntityState sampleInterpolatedEntity(long characterId, long currentClientTimeMs) {
+    EntityInterpolationBuffer buffer = interpolationBuffers.get(characterId);
+    if (buffer != null) {
+      return buffer.sample(currentClientTimeMs);
+    }
+    RemoteEntityState raw = remoteEntities.get(characterId);
+    if (raw != null) {
+      return new InterpolatedEntityState(
+          raw.x(), raw.y(), raw.z(),
+          raw.vx(), raw.vy(), raw.vz(),
+          raw.yaw(), raw.pitch(),
+          raw.moveFlags(), false
+      );
+    }
+    return null;
   }
 
   public void updateCharacters(List<CharacterSummary> newCharacters) {
@@ -140,6 +180,7 @@ public class ClientState {
 
   public void clearRemoteEntities() {
     this.remoteEntities.clear();
+    this.interpolationBuffers.clear();
     notifyListeners();
   }
 
@@ -152,6 +193,7 @@ public class ClientState {
     this.pitch = 0.0f;
     this.lastServerTick = 0L;
     this.remoteEntities.clear();
+    this.interpolationBuffers.clear();
     notifyListeners();
   }
 

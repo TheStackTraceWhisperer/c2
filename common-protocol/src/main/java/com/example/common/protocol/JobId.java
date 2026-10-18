@@ -28,6 +28,7 @@ public final class JobId {
   public static final short SCHOLAR = 20;
   public static final short GEOMANCER = 21;
   public static final short RUNE_FENCER = 22;
+  public static final short NPC = 99;
 
   public static String toAbbreviation(short jobId) {
     return switch (jobId) {
@@ -53,6 +54,7 @@ public final class JobId {
       case SCHOLAR -> "SCH";
       case GEOMANCER -> "GEO";
       case RUNE_FENCER -> "RUN";
+      case NPC -> "NPC";
       default -> "NON";
     };
   }

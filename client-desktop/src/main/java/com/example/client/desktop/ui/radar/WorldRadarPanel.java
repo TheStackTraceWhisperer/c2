@@ -288,42 +288,60 @@ public class WorldRadarPanel {
         int colLocalYaw = ImColor.rgba(134, 239, 172, 255);
         drawList.addLine(centerX, centerY, tipX, tipY, colLocalYaw, 2.5f);
 
-        // Remote Player Characters within AoI
-        int colRemote = ImColor.rgba(56, 189, 248, 255);
-        int colRemoteYaw = ImColor.rgba(125, 211, 252, 255);
+        // Remote Entities (Players & Town NPCs) within AoI
+        int colPlayer = ImColor.rgba(56, 189, 248, 255);      // Sky blue
+        int colPlayerYaw = ImColor.rgba(125, 211, 252, 255);
+        int colNpc = ImColor.rgba(245, 199, 56, 255);          // Golden amber
+        int colNpcYaw = ImColor.rgba(253, 224, 71, 255);
         int colRemoteText = ImColor.rgba(248, 250, 252, 230);
 
         float mouseX = ImGui.getMousePosX();
         float mouseY = ImGui.getMousePosY();
+        long renderTime = System.currentTimeMillis();
 
         for (var remote : clientState.getRemoteEntities().values()) {
-            float dist = (float) Math.hypot(remote.x() - localX, remote.z() - localZ);
+            var interp = clientState.sampleInterpolatedEntity(remote.characterId(), renderTime);
+            float entX = (interp != null) ? interp.x() : remote.x();
+            float entZ = (interp != null) ? interp.z() : remote.z();
+            float entYaw = (interp != null) ? interp.yaw() : remote.yaw();
+
+            float dist = (float) Math.hypot(entX - localX, entZ - localZ);
             if (dist <= config.getRadarRadiusMeters()) {
-                float[] screenPos = worldToScreen(remote.x(), remote.z(), localX, localZ, centerX, centerY, pixelsPerMeter);
+                float[] screenPos = worldToScreen(entX, entZ, localX, localZ, centerX, centerY, pixelsPerMeter);
                 float px = screenPos[0];
                 float py = screenPos[1];
 
+                boolean isNpc = remote.mainJobId() == JobId.NPC;
+                int markerCol = isNpc ? colNpc : colPlayer;
+                int yawCol = isNpc ? colNpcYaw : colPlayerYaw;
+
                 // Marker dot
-                drawList.addCircleFilled(px, py, 5.0f, colRemote, 16);
+                drawList.addCircleFilled(px, py, isNpc ? 4.5f : 5.0f, markerCol, 16);
 
                 // Remote heading
-                double rRad = Math.toRadians(remote.yaw());
+                double rRad = Math.toRadians(entYaw);
                 float rx = px + (float) (9.0 * Math.sin(rRad));
                 float ry = py - (float) (9.0 * Math.cos(rRad));
-                drawList.addLine(px, py, rx, ry, colRemoteYaw, 1.8f);
+                drawList.addLine(px, py, rx, ry, yawCol, 1.8f);
 
                 // Nameplate
                 if (config.isShowNameplates()) {
-                    String jobAbbr = JobId.toAbbreviation(remote.mainJobId());
-                    String label = String.format("%s [%s Lv.%d]", remote.name(), jobAbbr, remote.level());
+                    String label = isNpc
+                            ? String.format("%s [NPC]", remote.name())
+                            : String.format("%s [%s Lv.%d]", remote.name(), JobId.toAbbreviation(remote.mainJobId()), remote.level());
                     drawList.addText(px - 25.0f, py - 18.0f, colRemoteText, label);
                 }
 
                 // Interactive Hover Tooltip
                 if (Math.hypot(mouseX - px, mouseY - py) <= 8.0f) {
                     ImGui.beginTooltip();
-                    ImGui.text(remote.name() + " (ID: " + remote.characterId() + ")");
-                    ImGui.text(JobId.toAbbreviation(remote.mainJobId()) + " Level " + remote.level());
+                    if (isNpc) {
+                        ImGui.textColored(0.96f, 0.78f, 0.22f, 1.0f, remote.name() + " [Town NPC]");
+                        ImGui.text("NPC ID: " + remote.characterId());
+                    } else {
+                        ImGui.text(remote.name() + " (Player ID: " + remote.characterId() + ")");
+                        ImGui.text(JobId.toAbbreviation(remote.mainJobId()) + " Level " + remote.level());
+                    }
                     ImGui.text(String.format("Distance: %.1fm", dist));
                     ImGui.text(String.format("Coords: (%.2f, %.2f, %.2f)", remote.x(), remote.y(), remote.z()));
                     ImGui.endTooltip();
@@ -332,7 +350,7 @@ public class WorldRadarPanel {
         }
 
         if (clientState.getRemoteEntities().isEmpty()) {
-            drawList.addText(centerX - 60.0f, centerY + radarRadiusPixels - 24.0f, colRingText, "No other players in range");
+            drawList.addText(centerX - 60.0f, centerY + radarRadiusPixels - 24.0f, colRingText, "No entities in range");
         }
 
         ImGui.end();

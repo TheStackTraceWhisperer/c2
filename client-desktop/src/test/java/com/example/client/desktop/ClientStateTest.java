@@ -189,4 +189,19 @@ class ClientStateTest {
         assertEquals(100L, clientState.getAccountId());
         assertEquals("valid-token", clientState.getAuthToken());
     }
+
+    @Test
+    @DisplayName("sampleInterpolatedEntity returns smooth interpolated coordinates for remote entity")
+    void testSampleInterpolatedEntity() {
+        clientState.addOrUpdateRemoteEntity(new EntitySpawnRecord(
+                2001L, "ZoneNeighbor", (short) 2, (short) 0, 20,
+                10.0f, 0.0f, 20.0f, 0, 0, 0, 90.0f, 0
+        ));
+
+        var interp = clientState.sampleInterpolatedEntity(2001L, System.currentTimeMillis());
+        assertNotNull(interp);
+        assertEquals(10.0f, interp.x(), 0.001f);
+        assertEquals(20.0f, interp.z(), 0.001f);
+        assertEquals(90.0f, interp.yaw(), 0.001f);
+    }
 }

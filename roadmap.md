@@ -12,7 +12,7 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 | **Milestone 2** | Authoritative Server Collision & Kinematics | `ZoneCollisionService` with authoritative zone mesh loading, floor clamping, slope/stair validation, floor penetration prevention, anti-flyhack validation, horizontal wall collision checks in `ZoneSimulationEngine` | **COMPLETED** ([`8897ea7`](https://github.com/TheStackTraceWhisperer/c2/commit/8897ea7)) | `platform-modulith`, `game-asset-pipeline` |
 | **Milestone 3** | Visual Zone Geometry & Textures | `S20_TEXTURE` parser (DXT1, DXT3, DXT5, 8-bit paletted textures), `S2E_ZONE_MESH` two-pass decryption & parser (interleaved vertices, normals, UVs, vertex colors, material assignments), `VisualZoneScene` / `VisualZoneLoader`, high-performance textured batch renderer `VisualZoneRenderer` with alpha discard & material sorting in `client-desktop` | **COMPLETED** | `game-asset-pipeline`, `client-desktop` |
 | **Milestone 4** | Character & Town NPC Visuals & Animation | `Quaternion` (SLERP/NLERP), `Joint` / `Skeleton` (`S29_SKELETON` forward kinematics), `SkinnedMesh` (`S2A`/`S25` dual-bone weights), `SkeletonAnimation` (`S2B_SKELETON_ANIMATION` keyframed tracks), `CompositeCharacterModel` (multi-slot equipment compositing), `NpcTable` (31,470 authentic NPCs across 279 zones), town NPC visual markers & proximity HUD in `OfflineWorldState` | **COMPLETED** | `game-asset-pipeline`, `client-desktop` |
-| **Milestone 5** | Entity Simulation, Interpolation & Polish | Remote entity 20 Hz to 60+ FPS visual interpolation buffer, animation state machine transitions (idle, run, combat), basic server-side NPC patrolling & line-of-sight aggro | **IN PROGRESS** | `client-desktop`, `platform-modulith` |
+| **Milestone 5** | Entity Simulation, Interpolation & Polish | Remote entity 20 Hz to 60+ FPS visual interpolation buffer, animation state machine transitions (idle, run, combat), basic server-side NPC patrolling & line-of-sight aggro | **COMPLETED** | `client-desktop`, `platform-modulith` |
 
 ---
 
@@ -72,10 +72,28 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
   - Extracted 668 town NPCs in South San d'Oria (Zone 230).
   - Integrated into `OfflineWorldState` and `CollisionMeshRenderer` with real-time batched GPU rendering of NPC markers, proximity radar tracking nearest NPC name, distance, and model ID, and HUD toggles (F4).
 
-### Milestone 5: Entity Simulation, Interpolation & Polish (Planned)
-- **Client Interpolation Buffer**:
-  - Smooth visual interpolation of remote player positions and rotations from 20 Hz server ticks to 60+ FPS render frames.
-- **Animation State Machine**:
-  - Transitions between idle, running, walking, jumping, sitting, and combat poses based on entity movement flags and actions.
-- **Server Patrol Simulation**:
-  - Server-side NPC/monster wandering and line-of-sight detection using authoritative collision maps.
+### Milestone 5: Entity Simulation, Interpolation & Polish (Completed)
+- **Authoritative Server Entity Simulation & AOI Streaming (Completed)**:
+  - Wired town NPCs from `NpcTable-V3.DAT` (668 NPCs in South San d'Oria, Zone 230) directly into `ZoneSimulationEngine` and `SpatialGrid`.
+  - 50m Area of Interest (AoI) difference streaming: emits `EntitySpawnRecord` on approach, delta updates for mobile entities, and `despawns` on departure.
+  - Stationary quietude optimization: stationary NPCs consume 0 tick update bandwidth after initial spawn.
+  - Excluded static NPCs from character database persistence flushes.
+  - Enhanced client `WorldRadarPanel` to differentiate town NPCs (golden amber markers `#F5C738`, `[NPC]` nameplate, interactive hover tooltips) from player characters (sky blue markers, job abbreviation, level).
+- **Remote Entity Visual Interpolation Buffer (`EntityInterpolationBuffer`)**:
+  - Ring buffer of timestamped kinematic snapshots: position $(x, y, z)$, velocity $(vx, vy, vz)$, yaw, pitch, and movement flags.
+  - Configurable 100ms (2 simulation ticks) interpolation delay window for jitter-free 20 Hz to 60+ FPS rendering.
+  - Linear/Hermite position interpolation and shortest-arc spherical angle interpolation (`dYaw` wrapping normalization) preventing 359° $\to$ 1° rotational snapping.
+  - Teleport/snap threshold (> 10m) avoiding rubber-banding during respawns and zone transitions.
+  - Forward extrapolation up to 250ms with velocity decay during packet loss.
+- **Animation State Machine (`AnimationStateMachine`)**:
+  - Deterministic state transitions (`IDLE`, `WALK`, `RUN`, `JUMP`, `FALL`, `REST`, `ENGAGED`) driven by `MovementFlags` and horizontal entity speed.
+  - Normalized cross-fade blend timers ($0.0 \to 1.0$ weight over 0.15s) for smooth transitions between locomotion and resting/combat poses.
+  - Playback time scaling proportional to locomotion velocity.
+  - Integration with `SkeletonAnimation` and `CompositeCharacterModel` for FK joint pose evaluation.
+- **Authoritative Server NPC Patrol & Roam Simulation (`NpcPatrolSimulation`)**:
+  - Autonomous waypoint navigation (`NpcPatrolRoute`, `NpcPatrolWaypoint`) with dwell pause timers for town guards and wandering NPCs.
+  - Authoritative ground raycasting via `ZoneCollisionService` clamping patrolling NPCs to terrain, stairs, and bridges.
+  - Automatic heading calculation, speed regulation, and `SpatialGrid` updates streaming 20 Hz `EntityMovementUpdate` packets to nearby players within the 50m AoI.
+- **In-Game Remote Entity Visual Integration**:
+  - Desktop client in-game integration with `EntityInterpolationBuffer` updating remote positions smoothly every render frame.
+  - Batch 3D entity markers rendered in world coordinates with directional facing cones and proximity HUD.

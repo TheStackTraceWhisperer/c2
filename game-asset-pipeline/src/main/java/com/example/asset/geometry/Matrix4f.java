@@ -81,11 +81,33 @@ public final class Matrix4f {
         return mat3;
     }
 
+    public Matrix4f multiply(Matrix4f b) {
+        float[] res = new float[16];
+        for (int c = 0; c < 4; c++) {
+            for (int r = 0; r < 4; r++) {
+                res[c * 4 + r] =
+                        m[r] * b.m[c * 4] +
+                        m[4 + r] * b.m[c * 4 + 1] +
+                        m[8 + r] * b.m[c * 4 + 2] +
+                        m[12 + r] * b.m[c * 4 + 3];
+            }
+        }
+        return new Matrix4f(res);
+    }
+
     public static Matrix4f translation(float x, float y, float z) {
         Matrix4f mat = new Matrix4f();
         mat.m[12] = x;
         mat.m[13] = y;
         mat.m[14] = z;
+        return mat;
+    }
+
+    public static Matrix4f scaling(float sx, float sy, float sz) {
+        Matrix4f mat = new Matrix4f();
+        mat.m[0] = sx;
+        mat.m[5] = sy;
+        mat.m[10] = sz;
         return mat;
     }
 }

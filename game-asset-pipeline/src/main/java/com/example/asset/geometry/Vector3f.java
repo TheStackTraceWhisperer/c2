@@ -77,4 +77,12 @@ public record Vector3f(float x, float y, float z) {
     public float distance(Vector3f other) {
         return (float) Math.sqrt(distanceSquared(other));
     }
+
+    public static Vector3f lerp(Vector3f a, Vector3f b, float t) {
+        return new Vector3f(
+                a.x + (b.x - a.x) * t,
+                a.y + (b.y - a.y) * t,
+                a.z + (b.z - a.z) * t
+        );
+    }
 }

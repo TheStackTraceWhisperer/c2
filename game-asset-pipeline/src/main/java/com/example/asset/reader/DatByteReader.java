@@ -28,6 +28,14 @@ public final class DatByteReader {
         buffer.position(newPosition);
     }
 
+    public int capacity() {
+        return buffer.capacity();
+    }
+
+    public void skip(int bytes) {
+        buffer.position(buffer.position() + bytes);
+    }
+
     public int remaining() {
         return buffer.remaining();
     }

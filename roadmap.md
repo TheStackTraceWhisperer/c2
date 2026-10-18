@@ -11,8 +11,8 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
 | **Milestone 1** | Asset Foundation & Collision Mesh | DAT file decoding, bit-rotation decryption (`0x1B`), spatial collision grid, 3D math primitives, Khronos-validated binary `.glb` export, offline 3D collision exploration demo in `client-desktop` | **COMPLETED** ([`058a2e4`](https://github.com/TheStackTraceWhisperer/c2/commit/058a2e4), [`2689b45`](https://github.com/TheStackTraceWhisperer/c2/commit/2689b45)) | `game-asset-pipeline`, `client-desktop` |
 | **Milestone 2** | Authoritative Server Collision & Kinematics | `ZoneCollisionService` with authoritative zone mesh loading, floor clamping, slope/stair validation, floor penetration prevention, anti-flyhack validation, horizontal wall collision checks in `ZoneSimulationEngine` | **COMPLETED** ([`8897ea7`](https://github.com/TheStackTraceWhisperer/c2/commit/8897ea7)) | `platform-modulith`, `game-asset-pipeline` |
 | **Milestone 3** | Visual Zone Geometry & Textures | `S20_TEXTURE` parser (DXT1, DXT3, DXT5, 8-bit paletted textures), `S2E_ZONE_MESH` two-pass decryption & parser (interleaved vertices, normals, UVs, vertex colors, material assignments), `VisualZoneScene` / `VisualZoneLoader`, high-performance textured batch renderer `VisualZoneRenderer` with alpha discard & material sorting in `client-desktop` | **COMPLETED** | `game-asset-pipeline`, `client-desktop` |
-| **Milestone 4** | Character & Town NPC Visuals & Animation | `S29_SKELETON` (64-bone hierarchy, bind poses), `S2A`/`S25` skinned meshes (dual-bone weighted vertices), `S2B_SKELETON_ANIMATION` (LERP translation, SLERP quaternions), multi-slot equipment compositing (`ItemModelTable`), town NPC spawns & static poses (`NpcTable-V3.DAT`), GPU vertex skinning shader (`BonePalette` UBO) | **IN PROGRESS** | `game-asset-pipeline`, `client-desktop`, `common-protocol` |
-| **Milestone 5** | Entity Simulation, Interpolation & Polish | Remote entity 20 Hz to 60+ FPS visual interpolation buffer, animation state machine transitions (idle, run, combat), basic server-side NPC patrolling & line-of-sight aggro | **PLANNED** | `client-desktop`, `platform-modulith` |
+| **Milestone 4** | Character & Town NPC Visuals & Animation | `Quaternion` (SLERP/NLERP), `Joint` / `Skeleton` (`S29_SKELETON` forward kinematics), `SkinnedMesh` (`S2A`/`S25` dual-bone weights), `SkeletonAnimation` (`S2B_SKELETON_ANIMATION` keyframed tracks), `CompositeCharacterModel` (multi-slot equipment compositing), `NpcTable` (31,470 authentic NPCs across 279 zones), town NPC visual markers & proximity HUD in `OfflineWorldState` | **COMPLETED** | `game-asset-pipeline`, `client-desktop` |
+| **Milestone 5** | Entity Simulation, Interpolation & Polish | Remote entity 20 Hz to 60+ FPS visual interpolation buffer, animation state machine transitions (idle, run, combat), basic server-side NPC patrolling & line-of-sight aggro | **IN PROGRESS** | `client-desktop`, `platform-modulith` |
 
 ---
 
@@ -51,20 +51,26 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
   - `VisualZoneRenderer` in `client-desktop` with GLSL 3.30 core shaders, material-based batching (reducing 956 submeshes to ~50 GPU draw calls), directional sunlight, double-sided lighting fallbacks, and alpha discard tests (`uAlphaThreshold = 0.375`).
   - Integrated into `OfflineWorldState` with real-time HUD toggles: F1 (Wireframe), F2 (Visual Textured Zone), F3 (Collision Mesh Overlay).
 
-### Milestone 4: Character & Town NPC Visuals, Skeletal Animation & Poses (Specified)
+### Milestone 4: Character & Town NPC Visuals, Skeletal Animation & Poses (Completed)
+- **Quaternion 3D Rotations & Interpolation**:
+  - Implemented `Quaternion` record supporting identity, normalization, dot product, multiplication, and Matrix4f conversion.
+  - Implemented spherical linear interpolation (`slerp`) and normalized linear interpolation (`nlerp`) for smooth keyframed rotational tracks.
 - **Skeletal Hierarchy (`S29_SKELETON`)**:
-  - Bone tree hierarchy, parent indices, local translations, rotations, and inverse bind pose matrices (up to 64 bones).
-- **Skinned Mesh Decoding (`S2A_SKELETON_MESH` & `S25_WEIGHTED_MESH`)**:
-  - Vertex attributes: `[Pos: vec3 | Normal: vec3 | UV: vec2 | BoneIndices: ivec2 | BoneWeights: vec2]`.
-- **Multi-Mesh Equipment Compositing**:
-  - 5 body slots (`Head`, `Body`, `Hands`, `Legs`, `Feet`) + Weapons assembled onto a shared race/gender skeletal rig via `ItemModelTable.DAT`.
-- **Skeletal Keyframe Animation (`S2B_SKELETON_ANIMATION`)**:
-  - LERP for translation tracks, SLERP for rotation quaternions.
-  - Bone matrix evaluation: $M_{\text{bone}} = M_{\text{parent}} \times T_{\text{anim}} \times R_{\text{anim}} \times M_{\text{invBind}}$.
-- **GPU Hardware Skinning**:
-  - GLSL 3.30+ core shader with uniform buffer bone palettes (`layout(std140) uniform BonePalette { mat4 uBones[64]; };`).
-- **Town NPCs (Visuals & Static Poses)**:
-  - Read `NpcTable-V3.DAT` to spawn town NPC entities at static map coordinates with looped idle, standing, or seated poses (strictly visual scenery; no scripts or interaction dialogue).
+  - `Joint` record with bone index, parent index, rotation quaternion, and translation vector.
+  - `JointReference` sockets and standard anchor points.
+  - `Skeleton` record with hierarchical forward kinematics (`computeBindPoseMatrices`) traversing parent chains ($M_i = M_{\text{parent}} \times T_i \times R_i$).
+  - `SkeletonParser` for `S29_SKELETON` sections.
+- **Skinned Meshes (`S2A_SKELETON_MESH` & `S25_WEIGHTED_MESH`)**:
+  - `SkinnedVertex` with dual-bone skinning weights ($w_0 + w_1 = 1.0$), bone indices ($b_0, b_1$), positions, normals, and UV texture coordinates.
+  - `SkinnedSubMesh` and `SkinnedMesh` with material definitions and triangle indices.
+  - `SkeletonMeshParser` decoding `TriMesh` (`0x0054`) and `TriStrip` (`0x5453`) opcodes.
+- **Skeletal Keyframe Animation & Compositing**:
+  - `KeyFrameTransform` and `SkeletonAnimation` evaluating continuous joint poses at arbitrary floating-point frame times.
+  - `CompositeCharacterModel` assembling a shared race/gender skeleton with 8 equipment pieces (`Head`, `Body`, `Hands`, `Legs`, `Feet`, `Main`, `Sub`, `Ranged`) and evaluating FK pose matrices.
+- **Town NPCs (`NpcTable-V3.DAT`)**:
+  - `NpcTable` parser indexing 31,470 authentic NPCs across 279 zones with exact 3D coordinates, rotations, equipment slots, and flags.
+  - Extracted 668 town NPCs in South San d'Oria (Zone 230).
+  - Integrated into `OfflineWorldState` and `CollisionMeshRenderer` with real-time batched GPU rendering of NPC markers, proximity radar tracking nearest NPC name, distance, and model ID, and HUD toggles (F4).
 
 ### Milestone 5: Entity Simulation, Interpolation & Polish (Planned)
 - **Client Interpolation Buffer**:

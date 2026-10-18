@@ -87,6 +87,11 @@ public class CollisionMeshRenderer {
     private int playerVboId = 0;
     private int playerVertexCount = 0;
 
+    // Town NPC marker batch geometry
+    private int npcVaoId = 0;
+    private int npcVboId = 0;
+    private int npcVertexCount = 0;
+
     public void init() {
         shaderProgram = createShaderProgram(VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC);
 
@@ -213,6 +218,106 @@ public class CollisionMeshRenderer {
 
         GL30.glBindVertexArray(playerVaoId);
         GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, playerVertexCount);
+        GL30.glBindVertexArray(0);
+
+        GL20.glUseProgram(0);
+    }
+
+    public void uploadNpcMarkers(List<com.example.asset.npc.NpcInfo> npcs) {
+        if (npcs == null || npcs.isEmpty()) {
+            return;
+        }
+
+        float r = 0.35f;
+        float yBottom = 0.1f;
+        float yMid = 0.9f;
+        float yTop = 1.6f;
+        float[] color = new float[]{0.95f, 0.78f, 0.22f}; // Golden Amber for Town NPCs
+
+        int segments = 6;
+        int trisPerNpc = segments * 2;
+        int vertsPerNpc = trisPerNpc * 3;
+        this.npcVertexCount = npcs.size() * vertsPerNpc;
+
+        FloatBuffer buf = BufferUtils.createFloatBuffer(npcVertexCount * 9);
+
+        for (com.example.asset.npc.NpcInfo npc : npcs) {
+            float nx = npc.position().x();
+            float ny = npc.position().y();
+            float nz = npc.position().z();
+
+            for (int i = 0; i < segments; i++) {
+                double a0 = 2 * Math.PI * i / segments;
+                double a1 = 2 * Math.PI * (i + 1) / segments;
+
+                float x0 = nx + (float) Math.cos(a0) * r;
+                float z0 = nz + (float) Math.sin(a0) * r;
+                float x1 = nx + (float) Math.cos(a1) * r;
+                float z1 = nz + (float) Math.sin(a1) * r;
+
+                Vector3f top = new Vector3f(nx, ny + yTop, nz);
+                Vector3f v0 = new Vector3f(x0, ny + yMid, z0);
+                Vector3f v1 = new Vector3f(x1, ny + yMid, z1);
+                Vector3f nTop = v0.sub(top).cross(v1.sub(top)).normalize();
+                writeVertex(buf, top, nTop, color);
+                writeVertex(buf, v0, nTop, color);
+                writeVertex(buf, v1, nTop, color);
+
+                Vector3f bottom = new Vector3f(nx, ny + yBottom, nz);
+                Vector3f nBot = v1.sub(bottom).cross(v0.sub(bottom)).normalize();
+                writeVertex(buf, bottom, nBot, color);
+                writeVertex(buf, v1, nBot, color);
+                writeVertex(buf, v0, nBot, color);
+            }
+        }
+        buf.flip();
+
+        if (npcVaoId == 0) {
+            npcVaoId = GL30.glGenVertexArrays();
+        }
+        if (npcVboId == 0) {
+            npcVboId = GL15.glGenBuffers();
+        }
+
+        GL30.glBindVertexArray(npcVaoId);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, npcVboId);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
+
+        int stride = 9 * Float.BYTES;
+        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(2, 3, GL11.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+
+        GL30.glBindVertexArray(0);
+        log.info("Uploaded {} town NPC markers ({} vertices) to GPU", npcs.size(), npcVertexCount);
+    }
+
+    public void renderNpcMarkers(float[] projectionMatrix, float[] viewMatrix) {
+        if (npcVaoId == 0 || npcVertexCount == 0) {
+            return;
+        }
+
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL20.glUseProgram(shaderProgram);
+
+        GL20.glUniformMatrix4fv(uProjectionLoc, false, projectionMatrix);
+        GL20.glUniformMatrix4fv(uViewLoc, false, viewMatrix);
+
+        float[] identity = new float[]{
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                0f, 0f, 0f, 1f
+        };
+        GL20.glUniformMatrix4fv(uModelLoc, false, identity);
+        GL20.glUniform1i(uWireframeLoc, 0);
+        GL20.glUniform3f(uAmbientLoc, 0.85f, 0.85f, 0.85f);
+
+        GL30.glBindVertexArray(npcVaoId);
+        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, npcVertexCount);
         GL30.glBindVertexArray(0);
 
         GL20.glUseProgram(0);
@@ -346,6 +451,14 @@ public class CollisionMeshRenderer {
         if (playerVboId != 0) {
             GL15.glDeleteBuffers(playerVboId);
             playerVboId = 0;
+        }
+        if (npcVaoId != 0) {
+            GL30.glDeleteVertexArrays(npcVaoId);
+            npcVaoId = 0;
+        }
+        if (npcVboId != 0) {
+            GL15.glDeleteBuffers(npcVboId);
+            npcVboId = 0;
         }
         if (shaderProgram != 0) {
             GL20.glDeleteProgram(shaderProgram);

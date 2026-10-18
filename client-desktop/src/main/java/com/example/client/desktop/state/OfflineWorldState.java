@@ -8,6 +8,8 @@ import com.example.asset.parser.ZoneDefParser;
 import com.example.asset.reader.DatByteReader;
 import com.example.asset.mesh.VisualZoneLoader;
 import com.example.asset.mesh.VisualZoneScene;
+import com.example.asset.npc.NpcInfo;
+import com.example.asset.npc.NpcTable;
 import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
@@ -32,8 +34,8 @@ import java.util.Optional;
 
 /**
  * Interactive offline world simulation state.
- * Loads 3D zone collision geometry and authentic textured visual meshes directly
- * from game DAT files, allowing real-time avatar movement, collision physics,
+ * Loads 3D zone collision geometry, authentic textured visual meshes, and town NPCs
+ * directly from game DAT files, allowing real-time avatar movement, collision physics,
  * and camera control without requiring a running server.
  */
 @Slf4j
@@ -50,6 +52,8 @@ public class OfflineWorldState implements ApplicationState {
     private CollisionMeshRenderer collisionRenderer;
     private VisualZoneRenderer visualRenderer;
     private VisualZoneScene visualScene;
+    private NpcTable npcTable;
+    private List<NpcInfo> townNpcs = List.of();
 
     private float playerX = -50.0f;
     private float playerY = 2.0f;
@@ -63,6 +67,7 @@ public class OfflineWorldState implements ApplicationState {
 
     private boolean showVisualZone = true;
     private boolean showCollisionOverlay = false;
+    private boolean showTownNpcs = true;
     private boolean wireframe = false;
     private int collisionTriangleCount = 0;
     private float lastFloorY = 2.0f;
@@ -117,9 +122,42 @@ public class OfflineWorldState implements ApplicationState {
             visualRenderer.upload(this.visualScene);
             log.info("Loaded zone {} visual meshes: {} meshes, {} textures, {} visual triangles",
                     zoneId, visualScene.totalMeshCount(), visualScene.textures().size(), visualScene.totalTriangleCount());
+
+            // 3. Town NPCs
+            byte[] npcBytes = loadNpcBytes();
+            if (npcBytes != null) {
+                this.npcTable = NpcTable.load(npcBytes);
+                this.townNpcs = npcTable.getByZone(zoneId);
+                collisionRenderer.uploadNpcMarkers(this.townNpcs);
+                log.info("Loaded {} town NPCs for zone {}", townNpcs.size(), zoneId);
+            }
         } catch (Exception e) {
             log.error("Error loading zone DAT for offline exploration", e);
         }
+    }
+
+    byte[] loadNpcBytes() {
+        String resourcePath = "/dats/tables/landsandboat/NpcTable-V3.DAT";
+        try (InputStream stream = getClass().getResourceAsStream(resourcePath)) {
+            if (stream != null) {
+                return stream.readAllBytes();
+            }
+        } catch (Exception ignored) {}
+
+        List<Path> candidatePaths = List.of(
+                Path.of("game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
+                Path.of("../game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
+                Path.of("src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT")
+        );
+
+        for (Path p : candidatePaths) {
+            if (Files.isRegularFile(p)) {
+                try {
+                    return Files.readAllBytes(p);
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
     }
 
     byte[] loadZoneBytes(int zoneId) {
@@ -193,6 +231,11 @@ public class OfflineWorldState implements ApplicationState {
             collisionRenderer.render(proj, view, wireframe);
         }
 
+        // Render town NPC visual markers
+        if (collisionRenderer != null && showTownNpcs) {
+            collisionRenderer.renderNpcMarkers(proj, view);
+        }
+
         // Render player marker
         if (collisionRenderer != null) {
             collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
@@ -218,6 +261,10 @@ public class OfflineWorldState implements ApplicationState {
         // Toggle collision overlay on F3
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS) {
             showCollisionOverlay = !showCollisionOverlay;
+        }
+        // Toggle town NPCs on F4
+        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS) {
+            showTownNpcs = !showTownNpcs;
         }
 
         // Compute input direction from WASD / Arrow keys
@@ -331,18 +378,44 @@ public class OfflineWorldState implements ApplicationState {
                     visualScene.totalMeshCount(), visualScene.textures().size(), visualRenderer.totalTrianglesUploaded()));
         }
         ImGui.text(String.format("Collision Triangles: %,d", collisionTriangleCount));
+        ImGui.text(String.format("Town NPCs: %,d (NpcTable-V3)", townNpcs.size()));
         ImGui.text(String.format("Framerate: %.1f FPS", 1.0f / Math.max(dt, 0.0001f)));
         ImGui.separator();
 
-        if (ImGui.checkbox("Visual Textured Zone (F2)", showVisualZone)) {
+        if (ImGui.checkbox("Visual Zone (F2)", showVisualZone)) {
             showVisualZone = !showVisualZone;
         }
         ImGui.sameLine();
-        if (ImGui.checkbox("Collision Mesh (F3)", showCollisionOverlay)) {
+        if (ImGui.checkbox("Collision (F3)", showCollisionOverlay)) {
             showCollisionOverlay = !showCollisionOverlay;
+        }
+        ImGui.sameLine();
+        if (ImGui.checkbox("NPCs (F4)", showTownNpcs)) {
+            showTownNpcs = !showTownNpcs;
         }
         if (ImGui.checkbox("Wireframe Mode (F1)", wireframe)) {
             wireframe = !wireframe;
+        }
+
+        // Nearest NPC proximity info
+        if (!townNpcs.isEmpty()) {
+            NpcInfo nearest = null;
+            float nearestDistSq = Float.MAX_VALUE;
+            for (NpcInfo npc : townNpcs) {
+                float dx = npc.position().x() - playerX;
+                float dy = npc.position().y() - playerY;
+                float dz = npc.position().z() - playerZ;
+                float dSq = dx * dx + dy * dy + dz * dz;
+                if (dSq < nearestDistSq) {
+                    nearestDistSq = dSq;
+                    nearest = npc;
+                }
+            }
+            if (nearest != null) {
+                ImGui.textColored(0.95f, 0.78f, 0.22f, 1.0f,
+                        String.format("Nearest NPC #%d: dist=%.1fm, modelId=0x%X",
+                                nearest.id(), (float) Math.sqrt(nearestDistSq), nearest.modelId()));
+            }
         }
 
         float[] speedArr = new float[]{moveSpeed};

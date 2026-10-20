@@ -14,6 +14,7 @@ import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
@@ -209,6 +210,20 @@ public class OfflineWorldState implements ApplicationState {
                 return stream.readAllBytes();
             }
         } catch (Exception ignored) {}
+
+        // 1. Check retail FFXI installation directory
+        String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
+        if (relRom != null) {
+            Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
+            if (installedPath.isPresent() && Files.isRegularFile(installedPath.get())) {
+                try {
+                    log.info("Loading zone DAT from retail FFXI install: {}", installedPath.get().toAbsolutePath());
+                    return Files.readAllBytes(installedPath.get());
+                } catch (Exception e) {
+                    log.warn("Failed reading installed DAT at {}", installedPath.get(), e);
+                }
+            }
+        }
 
         List<Path> candidatePaths = List.of(
                 Path.of("game-asset-pipeline/src/test/resources/dats/zones/south_san_doria_230.DAT"),

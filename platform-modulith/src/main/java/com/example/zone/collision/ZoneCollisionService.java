@@ -1,6 +1,7 @@
 package com.example.zone.collision;
 
 import com.example.asset.collision.CollisionMap;
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.geometry.RayHit;
 import com.example.asset.geometry.Vector3f;
 import com.example.asset.parser.ZoneDefParser;
@@ -150,6 +151,20 @@ public class ZoneCollisionService {
     }
 
     private byte[] loadZoneDatBytes(int zoneId) {
+        // 1. Check retail FFXI installation directory
+        String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
+        if (relRom != null) {
+            Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
+            if (installedPath.isPresent() && Files.isRegularFile(installedPath.get())) {
+                try {
+                    log.info("[ZONE-COLLISION] Loading zone DAT from retail FFXI install: {}", installedPath.get().toAbsolutePath());
+                    return Files.readAllBytes(installedPath.get());
+                } catch (Exception e) {
+                    log.warn("[ZONE-COLLISION] Error reading installed DAT at {}", installedPath.get(), e);
+                }
+            }
+        }
+
         String filename = switch (zoneId) {
             case 230 -> "south_san_doria_230.DAT";
             case 100 -> "west_ronfaure_100.DAT";

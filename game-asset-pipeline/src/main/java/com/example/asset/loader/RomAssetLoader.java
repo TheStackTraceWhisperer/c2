@@ -1,5 +1,6 @@
 package com.example.asset.loader;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.model.DatSectionHeader;
 import com.example.asset.model.SectionType;
 import com.example.asset.parser.DatSectionScanner;
@@ -98,13 +99,28 @@ public class RomAssetLoader {
     public byte[] loadRomBytes(String relativePath) throws IOException {
         String cleanPath = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
 
-        // 1. Check local cache directory
+        // 1. Check retail FFXI installation directory ($HOME/Games/final-fantasy-xi-online/...)
+        Optional<Path> installedFile = FfxiPathConfig.resolveRomFile(cleanPath);
+        if (installedFile.isPresent()) {
+            Path path = installedFile.get();
+            try {
+                byte[] data = Files.readAllBytes(path);
+                if (data.length > 0) {
+                    log.info("Loaded ROM asset from retail FFXI directory: {}", path);
+                    return data;
+                }
+            } catch (IOException e) {
+                log.warn("Failed reading installed FFXI file {}: {}", path, e.getMessage());
+            }
+        }
+
+        // 2. Check local cache directory
         Path cachedFile = cacheDirectory.resolve(cleanPath);
         if (Files.exists(cachedFile) && Files.size(cachedFile) > 0) {
             return Files.readAllBytes(cachedFile);
         }
 
-        // 2. Check classpath
+        // 3. Check classpath
         String resourcePath = "/" + cleanPath;
         try (InputStream in = getClass().getResourceAsStream(resourcePath)) {
             if (in != null) {

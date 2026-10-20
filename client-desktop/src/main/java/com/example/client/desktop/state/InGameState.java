@@ -12,6 +12,7 @@ import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
@@ -197,6 +198,20 @@ public class InGameState implements ApplicationState {
     }
 
     byte[] loadZoneBytes(int zoneId) {
+        // 1. Check retail FFXI installation directory
+        String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
+        if (relRom != null) {
+            Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
+            if (installedPath.isPresent() && Files.isRegularFile(installedPath.get())) {
+                try {
+                    log.info("Loading zone DAT from retail FFXI install: {}", installedPath.get().toAbsolutePath());
+                    return Files.readAllBytes(installedPath.get());
+                } catch (Exception e) {
+                    log.warn("Failed reading installed DAT at {}", installedPath.get(), e);
+                }
+            }
+        }
+
         String specificResource = zoneId == 100
                 ? "/dats/zones/west_ronfaure_100.DAT"
                 : "/dats/zones/south_san_doria_230.DAT";

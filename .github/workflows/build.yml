@@ -1,14 +1,16 @@
 name: Java CI Build & Visual Test Artifacts
 
+# Automatic triggers temporarily disabled per user request while running builds locally
 on:
-  push:
-    branches:
-      - main
-      - '005-*'
-      - 'feature/**'
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - main
+#      - '005-*'
+#      - 'feature/**'
+#  pull_request:
+#    branches:
+#      - main
 
 jobs:
   build-and-test:

@@ -157,11 +157,7 @@ public class ClientAssetPipelineE2ETest {
     @Test
     @DisplayName("E2E: Authentic retail ROM character models and NPC geometry load, texture, and animate")
     void testAuthenticRomCharacterAndNpcModelsE2E() {
-        Path cacheDir = Path.of("cache/roms");
-        if (!Files.exists(cacheDir)) {
-            cacheDir = Path.of("../cache/roms");
-        }
-        RomAssetLoader romLoader = new RomAssetLoader(cacheDir, RomAssetLoader.DEFAULT_REMOTE_URL);
+        RomAssetLoader romLoader = RomAssetLoader.getInstance();
         RaceModelLoader raceLoader = new RaceModelLoader(romLoader);
 
         // 1. Authentic Hume Male PC actor

@@ -21,11 +21,8 @@ class RaceModelLoaderTest {
 
     @BeforeAll
     static void setUp() {
-        Path cacheDir = Path.of("cache/roms");
-        if (!Files.exists(cacheDir)) {
-            cacheDir = Path.of("../cache/roms");
-        }
-        RomAssetLoader romLoader = new RomAssetLoader(cacheDir, RomAssetLoader.DEFAULT_REMOTE_URL);
+        RomAssetLoader romLoader = RomAssetLoader.getInstance();
+        assertFalse(romLoader.isRemoteFetchEnabled(), "Remote fetch should be disabled when retail install directory exists");
         loader = new RaceModelLoader(romLoader);
     }
 

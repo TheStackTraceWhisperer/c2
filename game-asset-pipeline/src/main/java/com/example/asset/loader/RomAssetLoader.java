@@ -16,6 +16,7 @@ import com.example.asset.texture.TextureParser;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -43,19 +44,42 @@ public class RomAssetLoader {
 
     private final Path cacheDirectory;
     private final String remoteBaseUrl;
+    private final boolean remoteFetchEnabled;
 
     public RomAssetLoader() {
-        this(resolveDefaultCacheDir(), DEFAULT_REMOTE_URL);
+        this(resolveDefaultCacheDir(), DEFAULT_REMOTE_URL, shouldEnableRemoteFetch());
     }
 
     public RomAssetLoader(Path cacheDirectory, String remoteBaseUrl) {
+        this(cacheDirectory, remoteBaseUrl, shouldEnableRemoteFetch());
+    }
+
+    public RomAssetLoader(Path cacheDirectory, String remoteBaseUrl, boolean remoteFetchEnabled) {
         this.cacheDirectory = cacheDirectory;
         this.remoteBaseUrl = remoteBaseUrl.endsWith("/") ? remoteBaseUrl : remoteBaseUrl + "/";
+        this.remoteFetchEnabled = remoteFetchEnabled;
         try {
             Files.createDirectories(cacheDirectory);
         } catch (IOException e) {
             log.warn("Could not create ROM cache directory {}: {}", cacheDirectory, e.getMessage());
         }
+    }
+
+    private static boolean shouldEnableRemoteFetch() {
+        String sysProp = System.getProperty("c2.rom.remote.enabled");
+        if (sysProp != null && !sysProp.isBlank()) {
+            return Boolean.parseBoolean(sysProp);
+        }
+        // If the retail installation directory is present on disk, disable remote network fetch
+        Path retailDir = FfxiPathConfig.resolveFfxiInstallDirectory();
+        if (Files.isDirectory(retailDir)) {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean isRemoteFetchEnabled() {
+        return remoteFetchEnabled;
     }
 
     public static synchronized RomAssetLoader getInstance() {
@@ -142,7 +166,11 @@ public class RomAssetLoader {
             }
         }
 
-        // 3. Remote fallback download
+        // 4. Remote fallback download (only if enabled)
+        if (!remoteFetchEnabled) {
+            throw new FileNotFoundException("ROM asset '" + cleanPath + "' not found in retail FFXI installation or local cache (remote fetching disabled)");
+        }
+
         String urlString = remoteBaseUrl + cleanPath;
         log.info("Fetching authentic ROM asset from remote: {}", urlString);
         try {

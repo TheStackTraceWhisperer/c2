@@ -2,15 +2,19 @@ package com.example.client.desktop.renderer;
 
 import com.example.asset.environment.DiurnalLighting;
 import com.example.asset.geometry.Matrix4f;
+import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkinnedMesh;
 import com.example.asset.skeleton.SkinnedSubMesh;
 import com.example.asset.skeleton.SkinnedVertex;
+import com.example.asset.texture.DecodedTexture;
 import com.example.client.desktop.util.MatrixMath;
+import com.example.common.protocol.JobId;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
@@ -26,12 +30,12 @@ import java.util.Map;
 /**
  * High-performance 3D OpenGL hardware skinned mesh renderer for player avatars, remote players, and NPCs.
  * Evaluates GPU linear blend skinning (LBS) driven by skeletal animation poses,
- * matching atmospheric diurnal lighting and distance fog.
+ * matching atmospheric diurnal lighting, distance fog, and authentic ROM DAT textures.
  */
 @Slf4j
 public class CharacterRenderer {
 
-    public static final int MAX_BONES = 32;
+    public static final int MAX_BONES = 128;
 
     private static final String VERTEX_SHADER_SRC = """
             #version 460 core
@@ -45,7 +49,7 @@ public class CharacterRenderer {
             uniform mat4 uProjection;
             uniform mat4 uView;
             uniform mat4 uModel;
-            uniform mat4 uBones[32];
+            uniform mat4 uBones[128];
 
             out vec3 vNormal;
             out vec2 vTexCoord;
@@ -91,6 +95,9 @@ public class CharacterRenderer {
             uniform vec3 uFogColor;
             uniform int uFogEnabled;
 
+            uniform sampler2D uTexture;
+            uniform int uHasTexture;
+
             out vec4 FragColor;
 
             void main() {
@@ -101,7 +108,14 @@ public class CharacterRenderer {
                 diff = max(diff, max(dot(-norm, lightDir) * 0.35, 0.0));
 
                 vec3 lighting = uAmbient + diff * uLightColor;
-                vec3 finalRgb = vColor.rgb * lighting;
+
+                vec4 texColor = (uHasTexture == 1) ? texture(uTexture, vTexCoord) : vec4(1.0);
+                vec4 baseColor = vColor * texColor;
+                if (baseColor.a < 0.1) {
+                    discard;
+                }
+
+                vec3 finalRgb = baseColor.rgb * lighting;
 
                 if (uFogEnabled == 1) {
                     float dist = length(vWorldPos - uCameraPos);
@@ -109,21 +123,36 @@ public class CharacterRenderer {
                     finalRgb = mix(finalRgb, uFogColor, fogFactor);
                 }
 
-                FragColor = vec4(finalRgb, vColor.a);
+                FragColor = vec4(finalRgb, baseColor.a);
             }
             """;
+
+    public record GpuSubMeshBatch(
+            int indexStart,
+            int indexCount,
+            int textureId,
+            boolean blendEnabled,
+            boolean cullBackFaces
+    ) {}
 
     public record GpuCharacterMesh(
             int vaoId,
             int vboId,
             int eboId,
             int indexCount,
-            CompositeCharacterModel model
+            CompositeCharacterModel model,
+            List<GpuSubMeshBatch> batches,
+            Map<String, Integer> glTextures
     ) {
         public void cleanup() {
             if (eboId != 0) GL15.glDeleteBuffers(eboId);
             if (vboId != 0) GL15.glDeleteBuffers(vboId);
             if (vaoId != 0) GL30.glDeleteVertexArrays(vaoId);
+            if (glTextures != null) {
+                for (int texId : glTextures.values()) {
+                    if (texId != 0) GL11.glDeleteTextures(texId);
+                }
+            }
         }
     }
 
@@ -140,10 +169,17 @@ public class CharacterRenderer {
     private int uFogEndLoc = -1;
     private int uFogColorLoc = -1;
     private int uFogEnabledLoc = -1;
+    private int uTextureLoc = -1;
+    private int uHasTextureLoc = -1;
 
     private final Map<Short, GpuCharacterMesh> jobModelCache = new HashMap<>();
     private final FloatBuffer bonesBuffer = BufferUtils.createFloatBuffer(MAX_BONES * 16);
     private final float[] identityElements = new Matrix4f().elements();
+    private final RaceModelLoader raceModelLoader = new RaceModelLoader();
+
+    public RaceModelLoader getRaceModelLoader() {
+        return raceModelLoader;
+    }
 
     public void init() {
         shaderProgram = createShaderProgram(VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC);
@@ -160,28 +196,51 @@ public class CharacterRenderer {
         uFogEndLoc = GL20.glGetUniformLocation(shaderProgram, "uFogEnd");
         uFogColorLoc = GL20.glGetUniformLocation(shaderProgram, "uFogColor");
         uFogEnabledLoc = GL20.glGetUniformLocation(shaderProgram, "uFogEnabled");
+        uTextureLoc = GL20.glGetUniformLocation(shaderProgram, "uTexture");
+        uHasTextureLoc = GL20.glGetUniformLocation(shaderProgram, "uHasTexture");
 
         log.info("CharacterRenderer initialized with shader program: {}", shaderProgram);
     }
 
     /**
-     * Uploads a CompositeCharacterModel to GPU memory as a unified VAO/VBO/EBO mesh.
+     * Uploads a CompositeCharacterModel to GPU memory as a unified VAO/VBO/EBO mesh with authentic textures.
      */
     public GpuCharacterMesh uploadModel(CompositeCharacterModel model) {
         if (model == null) {
             return null;
         }
 
+        // 1. Upload textures to OpenGL
+        Map<String, Integer> glTextures = new HashMap<>();
+        if (model.textures() != null) {
+            for (Map.Entry<String, DecodedTexture> entry : model.textures().entrySet()) {
+                String name = entry.getKey().toLowerCase();
+                if (!glTextures.containsKey(name)) {
+                    int texId = uploadTextureToGl(entry.getValue());
+                    glTextures.put(name, texId);
+                }
+            }
+        }
+
         List<SkinnedVertex> allVertices = new ArrayList<>();
         List<Integer> allIndices = new ArrayList<>();
+        List<GpuSubMeshBatch> batches = new ArrayList<>();
 
         for (SkinnedMesh mesh : model.equipmentSlots().values()) {
             for (SkinnedSubMesh sub : mesh.subMeshes()) {
                 int baseVertex = allVertices.size();
+                int indexStart = allIndices.size();
+
                 allVertices.addAll(sub.vertices());
                 for (int idx : sub.indices()) {
                     allIndices.add(baseVertex + idx);
                 }
+
+                int indexCount = sub.indices().size();
+                String texName = sub.textureName() != null ? sub.textureName().trim().toLowerCase() : "";
+                int texId = glTextures.getOrDefault(texName, 0);
+
+                batches.add(new GpuSubMeshBatch(indexStart, indexCount, texId, sub.blendEnabled(), sub.backFaceCulling()));
             }
         }
 
@@ -246,15 +305,63 @@ public class CharacterRenderer {
 
         GL30.glBindVertexArray(0);
 
-        return new GpuCharacterMesh(vaoId, vboId, eboId, allIndices.size(), model);
+        return new GpuCharacterMesh(vaoId, vboId, eboId, allIndices.size(), model, batches, glTextures);
+    }
+
+    private int uploadTextureToGl(DecodedTexture tex) {
+        int texId = GL11.glGenTextures();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+
+        ByteBuffer buf = BufferUtils.createByteBuffer(tex.rgbaPixels().length);
+        buf.put(tex.rgbaPixels());
+        buf.flip();
+
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, tex.width(), tex.height(), 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buf);
+        GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
+
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR);
+        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        return texId;
     }
 
     /**
      * Retrieves an existing cached model or creates and uploads a new one for the given job.
+     * Loads authentic retail character race and NPC models directly from game ROMs.
      */
     public CompositeCharacterModel getOrCreateModel(short jobId) {
         GpuCharacterMesh mesh = jobModelCache.computeIfAbsent(jobId, id -> {
-            CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(id);
+            CompositeCharacterModel model = null;
+            try {
+                if (id == JobId.NPC) {
+                    model = raceModelLoader.loadNpcModel(0, null);
+                } else if (id == JobId.WARRIOR) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
+                } else if (id == JobId.THIEF) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.MITHRA);
+                } else if (id == JobId.WHITE_MAGE) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.TARUTARU_MALE);
+                } else if (id == JobId.BLACK_MAGE) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.TARUTARU_FEMALE);
+                } else if (id == JobId.PALADIN) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.ELVAAN_MALE);
+                } else if (id == JobId.RED_MAGE) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.HUME_FEMALE);
+                } else if (id == JobId.MONK) {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.GALKA);
+                } else {
+                    model = raceModelLoader.loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to load authentic race model for job {}, falling back: {}", id, e.getMessage());
+            }
+
+            if (model == null || model.equipmentSlots().isEmpty()) {
+                model = CharacterMeshGenerator.createCharacterModel(id);
+            }
             return uploadModel(model);
         });
         return mesh != null ? mesh.model() : null;
@@ -272,7 +379,7 @@ public class CharacterRenderer {
         }
 
         GpuCharacterMesh mesh = jobModelCache.computeIfAbsent(jobId, id -> {
-            CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(id);
+            CompositeCharacterModel model = getOrCreateModel(id);
             return uploadModel(model);
         });
 
@@ -295,8 +402,6 @@ public class CharacterRenderer {
         }
 
         GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_CULL_FACE);
-        GL11.glCullFace(GL11.GL_BACK);
 
         GL20.glUseProgram(shaderProgram);
 
@@ -343,9 +448,35 @@ public class CharacterRenderer {
         }
 
         GL30.glBindVertexArray(mesh.vaoId());
-        GL11.glDrawElements(GL11.GL_TRIANGLES, mesh.indexCount(), GL11.GL_UNSIGNED_INT, 0);
-        GL30.glBindVertexArray(0);
 
+        if (mesh.batches() != null && !mesh.batches().isEmpty()) {
+            for (GpuSubMeshBatch batch : mesh.batches()) {
+                if (batch.cullBackFaces()) {
+                    GL11.glEnable(GL11.GL_CULL_FACE);
+                    GL11.glCullFace(GL11.GL_BACK);
+                } else {
+                    GL11.glDisable(GL11.GL_CULL_FACE);
+                }
+
+                if (batch.textureId() > 0) {
+                    GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, batch.textureId());
+                    GL20.glUniform1i(uTextureLoc, 0);
+                    GL20.glUniform1i(uHasTextureLoc, 1);
+                } else {
+                    GL20.glUniform1i(uHasTextureLoc, 0);
+                }
+
+                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(), GL11.GL_UNSIGNED_INT, (long) batch.indexStart() * Integer.BYTES);
+            }
+        } else {
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glCullFace(GL11.GL_BACK);
+            GL20.glUniform1i(uHasTextureLoc, 0);
+            GL11.glDrawElements(GL11.GL_TRIANGLES, mesh.indexCount(), GL11.GL_UNSIGNED_INT, 0);
+        }
+
+        GL30.glBindVertexArray(0);
         GL20.glUseProgram(0);
     }
 

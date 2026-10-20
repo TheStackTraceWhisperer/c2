@@ -18,3 +18,4 @@ reference/
 # Game Assets (Proprietary Binary Data)
 *.[dD][aA][tT]
 **/dats/
+cache/

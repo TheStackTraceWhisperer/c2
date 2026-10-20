@@ -1,6 +1,7 @@
 package com.example.asset.skeleton;
 
 import com.example.asset.geometry.Matrix4f;
+import com.example.asset.texture.DecodedTexture;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,11 +10,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Composite character actor model assembling a shared skeletal rig and multiple equipment pieces.
+ * Composite character actor model assembling a shared skeletal rig, multiple equipment pieces,
+ * and authentic game textures decoded from ROM DAT sections.
  */
 public record CompositeCharacterModel(
         Skeleton skeleton,
-        Map<Integer, SkinnedMesh> equipmentSlots
+        Map<Integer, SkinnedMesh> equipmentSlots,
+        Map<String, DecodedTexture> textures
 ) {
     public static final int SLOT_HEAD = 0;
     public static final int SLOT_BODY = 1;
@@ -24,8 +27,13 @@ public record CompositeCharacterModel(
     public static final int SLOT_SUB = 6;
     public static final int SLOT_RANGED = 7;
 
+    public CompositeCharacterModel(Skeleton skeleton, Map<Integer, SkinnedMesh> equipmentSlots) {
+        this(skeleton, equipmentSlots, Map.of());
+    }
+
     public CompositeCharacterModel {
         equipmentSlots = Collections.unmodifiableMap(new HashMap<>(equipmentSlots));
+        textures = Collections.unmodifiableMap(new HashMap<>(textures));
     }
 
     /**

@@ -1,6 +1,8 @@
 package com.example.client.desktop.e2e;
 
 import com.example.asset.environment.DiurnalLighting;
+import com.example.asset.loader.RaceModelLoader;
+import com.example.asset.loader.RomAssetLoader;
 import com.example.asset.mesh.VisualSubMesh;
 import com.example.asset.mesh.VisualZoneLoader;
 import com.example.asset.mesh.VisualZoneScene;
@@ -8,6 +10,7 @@ import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
 import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;
 import com.example.client.desktop.ui.ScreenFader;
 import com.example.client.interp.EntityInterpolationBuffer;
@@ -149,6 +152,60 @@ public class ClientAssetPipelineE2ETest {
             g.dispose();
             ScreenshotCapture.saveBufferedImage(posePreview, "e2e_character_locomotion");
         });
+    }
+
+    @Test
+    @DisplayName("E2E: Authentic retail ROM character models and NPC geometry load, texture, and animate")
+    void testAuthenticRomCharacterAndNpcModelsE2E() {
+        Path cacheDir = Path.of("cache/roms");
+        if (!Files.exists(cacheDir)) {
+            cacheDir = Path.of("../cache/roms");
+        }
+        RomAssetLoader romLoader = new RomAssetLoader(cacheDir, RomAssetLoader.DEFAULT_REMOTE_URL);
+        RaceModelLoader raceLoader = new RaceModelLoader(romLoader);
+
+        // 1. Authentic Hume Male PC actor
+        CompositeCharacterModel hume = raceLoader.loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
+        assertThat(hume).isNotNull();
+        assertThat(hume.skeleton()).isNotNull();
+        assertThat(hume.skeleton().boneCount()).isGreaterThan(20);
+        assertThat(hume.equipmentSlots()).containsKeys(
+                CompositeCharacterModel.SLOT_HEAD,
+                CompositeCharacterModel.SLOT_BODY,
+                CompositeCharacterModel.SLOT_HANDS,
+                CompositeCharacterModel.SLOT_LEGS,
+                CompositeCharacterModel.SLOT_FEET
+        );
+        assertThat(hume.textures()).isNotEmpty();
+
+        // 2. Authentic Town Guard NPC actor
+        CompositeCharacterModel npc = raceLoader.loadNpcModel(0, null);
+        assertThat(npc).isNotNull();
+        assertThat(npc.skeleton()).isNotNull();
+        assertThat(npc.equipmentSlots()).containsKey(CompositeCharacterModel.SLOT_BODY);
+        assertThat(npc.textures()).isNotEmpty();
+
+        // 3. Evaluate authentic S2B idle animation track
+        var anims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
+        assertThat(anims).containsKey("idl0");
+        SkeletonAnimation idl0 = anims.get("idl0");
+        List<com.example.asset.geometry.Matrix4f> pose = hume.computePoseMatrices(idl0, 0.0f);
+        assertThat(pose).hasSize(hume.skeleton().boneCount());
+
+        // 4. Capture screenshot of authentic skeletal pose
+        BufferedImage preview = new BufferedImage(320, 320, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = preview.createGraphics();
+        g.setColor(new Color(20, 24, 30));
+        g.fillRect(0, 0, 320, 320);
+        g.setColor(new Color(100, 200, 255));
+        for (int i = 0; i < pose.size(); i++) {
+            float[] elem = pose.get(i).elements();
+            int sx = (int) (160 + elem[12] * 80.0f);
+            int sy = (int) (270 - elem[13] * 100.0f);
+            g.fillOval(sx - 3, sy - 3, 6, 6);
+        }
+        g.dispose();
+        ScreenshotCapture.saveBufferedImage(preview, "e2e_authentic_hume_pose");
     }
 
     @Test

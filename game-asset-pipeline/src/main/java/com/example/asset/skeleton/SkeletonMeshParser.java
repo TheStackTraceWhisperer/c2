@@ -161,7 +161,7 @@ public final class SkeletonMeshParser {
                         String[] parts = currentTextureName.split("\\s+");
                         currentTextureName = parts[parts.length - 1].replaceAll("[^a-zA-Z0-9_-]", "").trim();
                     } else if (opCode == 0x8010) {
-                        payload.skip(48); // Skip render properties
+                        payload.skip(44); // Skip 44-byte render properties (alpha/blend/cull)
                     } else if (opCode == 0x0054) { // TriMesh
                         int numTriangles = payload.nextU16();
                         List<SkinnedVertex> verts = new ArrayList<>();

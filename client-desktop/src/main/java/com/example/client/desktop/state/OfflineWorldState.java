@@ -14,10 +14,13 @@ import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
+import com.example.asset.loader.RaceModelLoader;
+import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
 import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;
 import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
@@ -41,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -102,6 +106,22 @@ public class OfflineWorldState implements ApplicationState {
             collisionRenderer.init();
             visualRenderer.init();
             characterRenderer.init();
+
+            // Wire authentic FFXI locomotion animations from game ROMs
+            try {
+                RaceModelLoader raceLoader = characterRenderer.getRaceModelLoader();
+                Map<String, SkeletonAnimation> humeAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
+                if (humeAnims.containsKey("idl0")) playerAnimation.registerAnimation(AnimationState.IDLE, humeAnims.get("idl0"));
+                if (humeAnims.containsKey("wlk0")) playerAnimation.registerAnimation(AnimationState.WALK, humeAnims.get("wlk0"));
+                if (humeAnims.containsKey("run0")) playerAnimation.registerAnimation(AnimationState.RUN, humeAnims.get("run0"));
+
+                Map<String, SkeletonAnimation> npcAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.ELVAAN_MALE);
+                if (npcAnims.containsKey("idl0")) npcAnimation.registerAnimation(AnimationState.IDLE, npcAnims.get("idl0"));
+                if (npcAnims.containsKey("wlk0")) npcAnimation.registerAnimation(AnimationState.WALK, npcAnims.get("wlk0"));
+                if (npcAnims.containsKey("run0")) npcAnimation.registerAnimation(AnimationState.RUN, npcAnims.get("run0"));
+            } catch (Exception e) {
+                log.warn("Could not load authentic ROM animations, using procedural fallback: {}", e.getMessage());
+            }
         } catch (Exception e) {
             log.error("Failed to initialize OpenGL renderers", e);
         }

@@ -1,0 +1,266 @@
+package com.example.asset.loader;
+
+import com.example.asset.model.DatSectionHeader;
+import com.example.asset.model.SectionType;
+import com.example.asset.parser.DatSectionScanner;
+import com.example.asset.reader.DatByteReader;
+import com.example.asset.skeleton.Skeleton;
+import com.example.asset.skeleton.SkeletonAnimation;
+import com.example.asset.skeleton.SkeletonAnimationParser;
+import com.example.asset.skeleton.SkeletonMeshParser;
+import com.example.asset.skeleton.SkeletonParser;
+import com.example.asset.skeleton.SkinnedMesh;
+import com.example.asset.texture.DecodedTexture;
+import com.example.asset.texture.TextureParser;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * On-demand ROM file loader with local disk caching and remote fallback to public ROM endpoints.
+ * Provides unified extraction of authentic skeletons, animations, skinned meshes, and textures.
+ */
+@Slf4j
+public class RomAssetLoader {
+
+    public static final String DEFAULT_REMOTE_URL = "https://ximv.dev/";
+
+    private static RomAssetLoader instance;
+
+    private final Path cacheDirectory;
+    private final String remoteBaseUrl;
+
+    public RomAssetLoader() {
+        this(resolveDefaultCacheDir(), DEFAULT_REMOTE_URL);
+    }
+
+    public RomAssetLoader(Path cacheDirectory, String remoteBaseUrl) {
+        this.cacheDirectory = cacheDirectory;
+        this.remoteBaseUrl = remoteBaseUrl.endsWith("/") ? remoteBaseUrl : remoteBaseUrl + "/";
+        try {
+            Files.createDirectories(cacheDirectory);
+        } catch (IOException e) {
+            log.warn("Could not create ROM cache directory {}: {}", cacheDirectory, e.getMessage());
+        }
+    }
+
+    public static synchronized RomAssetLoader getInstance() {
+        if (instance == null) {
+            instance = new RomAssetLoader();
+        }
+        return instance;
+    }
+
+    public Path getCacheDirectory() {
+        return cacheDirectory;
+    }
+
+    public String getRemoteBaseUrl() {
+        return remoteBaseUrl;
+    }
+
+    private static Path resolveDefaultCacheDir() {
+        String sysProp = System.getProperty("c2.rom.cache.dir");
+        if (sysProp != null && !sysProp.isBlank()) {
+            return Path.of(sysProp);
+        }
+        String env = System.getenv("C2_ROM_CACHE_DIR");
+        if (env != null && !env.isBlank()) {
+            return Path.of(env);
+        }
+        Path projectCache = Path.of("cache/roms");
+        if (Files.exists(projectCache)) {
+            return projectCache;
+        }
+        Path userHome = Path.of(System.getProperty("user.home"), ".c2/roms");
+        if (Files.exists(userHome)) {
+            return userHome;
+        }
+        return projectCache;
+    }
+
+    /**
+     * Loads raw DAT bytes for the given canonical relative path (e.g. "ROM/27/82.DAT").
+     */
+    public byte[] loadRomBytes(String relativePath) throws IOException {
+        String cleanPath = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+
+        // 1. Check local cache directory
+        Path cachedFile = cacheDirectory.resolve(cleanPath);
+        if (Files.exists(cachedFile) && Files.size(cachedFile) > 0) {
+            return Files.readAllBytes(cachedFile);
+        }
+
+        // 2. Check classpath
+        String resourcePath = "/" + cleanPath;
+        try (InputStream in = getClass().getResourceAsStream(resourcePath)) {
+            if (in != null) {
+                byte[] data = in.readAllBytes();
+                if (data.length > 0) {
+                    return data;
+                }
+            }
+        }
+
+        // Check alternate classpath location (/dats/...)
+        String datsResource = "/dats/" + cleanPath;
+        try (InputStream in = getClass().getResourceAsStream(datsResource)) {
+            if (in != null) {
+                byte[] data = in.readAllBytes();
+                if (data.length > 0) {
+                    return data;
+                }
+            }
+        }
+
+        // 3. Remote fallback download
+        String urlString = remoteBaseUrl + cleanPath;
+        log.info("Fetching authentic ROM asset from remote: {}", urlString);
+        try {
+            URI uri = URI.create(urlString);
+            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout((int) Duration.ofSeconds(5).toMillis());
+            conn.setReadTimeout((int) Duration.ofSeconds(10).toMillis());
+            conn.setRequestProperty("User-Agent", "C2-Engine/1.0");
+
+            int responseCode = conn.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                byte[] data;
+                try (InputStream stream = conn.getInputStream()) {
+                    data = stream.readAllBytes();
+                }
+                // Save to local cache
+                try {
+                    Files.createDirectories(cachedFile.getParent());
+                    Files.write(cachedFile, data);
+                    log.info("Saved {} bytes to local cache: {}", data.length, cachedFile);
+                } catch (IOException ioEx) {
+                    log.warn("Failed to write cached file {}: {}", cachedFile, ioEx.getMessage());
+                }
+                return data;
+            } else {
+                throw new IOException("Remote server returned HTTP " + responseCode + " for " + urlString);
+            }
+        } catch (Exception e) {
+            throw new IOException("Unable to load ROM asset '" + cleanPath + "': " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Loads a DatByteReader for the given relative ROM path.
+     */
+    public DatByteReader loadRomDat(String relativePath) throws IOException {
+        byte[] bytes = loadRomBytes(relativePath);
+        return new DatByteReader(bytes);
+    }
+
+    /**
+     * Loads the authentic skeleton (0x29) from a ROM file if present.
+     */
+    public Optional<Skeleton> loadSkeleton(String relativePath) {
+        try {
+            DatByteReader reader = loadRomDat(relativePath);
+            List<DatSectionHeader> headers = DatSectionScanner.scanSections(reader);
+            for (DatSectionHeader header : headers) {
+                if (header.sectionType() == SectionType.S29_SKELETON) {
+                    DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
+                    return SkeletonParser.parseSkeleton(header, payload);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load skeleton from {}: {}", relativePath, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Loads all authentic S2B (0x2B) animations from a ROM file.
+     */
+    public Map<String, SkeletonAnimation> loadAnimations(String relativePath) {
+        Map<String, SkeletonAnimation> animations = new HashMap<>();
+        try {
+            DatByteReader reader = loadRomDat(relativePath);
+            List<DatSectionHeader> headers = DatSectionScanner.scanSections(reader);
+            for (DatSectionHeader header : headers) {
+                if (header.sectionType() == SectionType.S2B_SKELETON_ANIMATION) {
+                    DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
+                    SkeletonAnimationParser.parse(header, payload).ifPresent(anim -> {
+                        String name = header.sectionId().trim().toLowerCase();
+                        animations.put(name, anim);
+                    });
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load animations from {}: {}", relativePath, e.getMessage());
+        }
+        return Collections.unmodifiableMap(animations);
+    }
+
+    /**
+     * Loads a specific animation by tag (e.g. "idl0", "wlk0", "run0").
+     */
+    public Optional<SkeletonAnimation> loadAnimation(String relativePath, String animTag) {
+        Map<String, SkeletonAnimation> anims = loadAnimations(relativePath);
+        SkeletonAnimation anim = anims.get(animTag.trim().toLowerCase());
+        return Optional.ofNullable(anim);
+    }
+
+    /**
+     * Loads all authentic S2A / S25 skinned meshes from a ROM file.
+     */
+    public Optional<SkinnedMesh> loadSkinnedMesh(String relativePath) {
+        try {
+            DatByteReader reader = loadRomDat(relativePath);
+            List<DatSectionHeader> headers = DatSectionScanner.scanSections(reader);
+            for (DatSectionHeader header : headers) {
+                if (header.sectionType() == SectionType.S2A_SKELETON_MESH
+                        || header.sectionType() == SectionType.S25_WEIGHTED_MESH) {
+                    DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
+                    return SkeletonMeshParser.parse(header, payload);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load skinned mesh from {}: {}", relativePath, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Loads all decoded textures (0x20) from a ROM file.
+     */
+    public Map<String, DecodedTexture> loadTextures(String relativePath) {
+        Map<String, DecodedTexture> textures = new HashMap<>();
+        try {
+            DatByteReader reader = loadRomDat(relativePath);
+            List<DatSectionHeader> headers = DatSectionScanner.scanSections(reader);
+            for (DatSectionHeader header : headers) {
+                if (header.sectionType() == SectionType.S20_TEXTURE) {
+                    DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
+                    TextureParser.parseTexture(payload).ifPresent(tex -> {
+                        String name = tex.name() != null ? tex.name().trim().toLowerCase() : header.sectionId().trim().toLowerCase();
+                        textures.put(name, tex);
+                        // Also index under header ID
+                        textures.put(header.sectionId().trim().toLowerCase(), tex);
+                    });
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to load textures from {}: {}", relativePath, e.getMessage());
+        }
+        return Collections.unmodifiableMap(textures);
+    }
+}

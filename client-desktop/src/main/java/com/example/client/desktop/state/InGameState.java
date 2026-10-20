@@ -12,10 +12,13 @@ import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
+import com.example.asset.loader.RaceModelLoader;
+import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
 import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;
 import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
@@ -151,6 +154,17 @@ public class InGameState implements ApplicationState {
                 visualRenderer.init();
                 collisionRenderer.init();
                 characterRenderer.init();
+
+                // Wire authentic FFXI locomotion animations from game ROMs
+                try {
+                    RaceModelLoader raceLoader = characterRenderer.getRaceModelLoader();
+                    Map<String, SkeletonAnimation> humeAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
+                    if (humeAnims.containsKey("idl0")) localPlayerAnimation.registerAnimation(AnimationState.IDLE, humeAnims.get("idl0"));
+                    if (humeAnims.containsKey("wlk0")) localPlayerAnimation.registerAnimation(AnimationState.WALK, humeAnims.get("wlk0"));
+                    if (humeAnims.containsKey("run0")) localPlayerAnimation.registerAnimation(AnimationState.RUN, humeAnims.get("run0"));
+                } catch (Exception ex) {
+                    log.warn("Could not load authentic ROM animations for local player: {}", ex.getMessage());
+                }
             } catch (Exception e) {
                 log.error("Failed to initialize 3D OpenGL renderers in InGameState", e);
             }

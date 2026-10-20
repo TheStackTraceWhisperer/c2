@@ -26,6 +26,10 @@ public record Skeleton(
         return joints.size();
     }
 
+    public int jointCount() {
+        return joints.size();
+    }
+
     /**
      * Computes the model-space bind pose matrices for all joints by hierarchical forward kinematics.
      */

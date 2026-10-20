@@ -216,7 +216,7 @@ public class ZoneSimulationEngine {
       double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
       boolean reconciled = false;
-      if (!zoneChanged && dist > MAX_DISTANCE_PER_TICK && state.getLastUpdatedTick() > 0 && state.getLastUpdatedTick() != tickNumber) {
+      if (!zoneChanged && dist > MAX_DISTANCE_PER_TICK && state.getLastUpdatedTick() != tickNumber) {
         log.warn("[ZONE-KINEMATICS] Client #{} exceeded max movement distance (dist={}/max={}). Reconciling.",
           charId, String.format("%.2f", dist), MAX_DISTANCE_PER_TICK);
         reconciled = true;

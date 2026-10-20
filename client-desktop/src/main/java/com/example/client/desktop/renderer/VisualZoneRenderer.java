@@ -183,16 +183,75 @@ public class VisualZoneRenderer {
 
         // 2. Group submeshes by BatchKey
         Map<BatchKey, SubMeshBatch> batchMap = new HashMap<>();
-        for (VisualZoneMesh mesh : scene.meshes()) {
-            for (VisualSubMesh subMesh : mesh.subMeshes()) {
-                String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
-                BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling());
-                SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
 
-                int baseVertex = batch.vertices.size();
-                batch.vertices.addAll(subMesh.vertices());
-                for (int idx : subMesh.indices()) {
-                    batch.indices.add(baseVertex + idx);
+        if (scene.zoneObjects() != null && !scene.zoneObjects().isEmpty()) {
+            // Authentic FFXI Zone Object instancing: place objects across the world
+            for (com.example.asset.mesh.ZoneObject obj : scene.zoneObjects()) {
+                com.example.asset.mesh.VisualZoneMesh mesh = scene.getMesh(obj.meshName()).orElse(null);
+                if (mesh == null) {
+                    continue;
+                }
+                float[] model = obj.toModelMatrix();
+                boolean mirrored = obj.isMirrored();
+
+                for (VisualSubMesh subMesh : mesh.subMeshes()) {
+                    String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
+                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling());
+                    SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
+
+                    int baseVertex = batch.vertices.size();
+                    for (ZoneMeshVertex v : subMesh.vertices()) {
+                        // Transform vertex position by object model matrix
+                        float vx = model[0] * v.position().x() + model[4] * v.position().y() + model[8] * v.position().z() + model[12];
+                        float vy = model[1] * v.position().x() + model[5] * v.position().y() + model[9] * v.position().z() + model[13];
+                        float vz = model[2] * v.position().x() + model[6] * v.position().y() + model[10] * v.position().z() + model[14];
+
+                        // Transform surface normal
+                        float nx = model[0] * v.normal().x() + model[4] * v.normal().y() + model[8] * v.normal().z();
+                        float ny = model[1] * v.normal().x() + model[5] * v.normal().y() + model[9] * v.normal().z();
+                        float nz = model[2] * v.normal().x() + model[6] * v.normal().y() + model[10] * v.normal().z();
+                        float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+                        if (len > 1e-4f) {
+                            nx /= len;
+                            ny /= len;
+                            nz /= len;
+                        }
+
+                        batch.vertices.add(new ZoneMeshVertex(
+                                new com.example.asset.geometry.Vector3f(vx, vy, vz),
+                                new com.example.asset.geometry.Vector3f(nx, ny, nz),
+                                v.u(), v.v(), v.r(), v.g(), v.b(), v.a()
+                        ));
+                    }
+
+                    List<Integer> subIndices = subMesh.indices();
+                    if (mirrored) {
+                        // Flip winding for mirrored objects to preserve CW backface culling
+                        for (int i = 0; i + 2 < subIndices.size(); i += 3) {
+                            batch.indices.add(baseVertex + subIndices.get(i + 2));
+                            batch.indices.add(baseVertex + subIndices.get(i + 1));
+                            batch.indices.add(baseVertex + subIndices.get(i));
+                        }
+                    } else {
+                        for (int idx : subIndices) {
+                            batch.indices.add(baseVertex + idx);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Standalone meshes fallback (no zone definition)
+            for (VisualZoneMesh mesh : scene.meshes()) {
+                for (VisualSubMesh subMesh : mesh.subMeshes()) {
+                    String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
+                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling());
+                    SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
+
+                    int baseVertex = batch.vertices.size();
+                    batch.vertices.addAll(subMesh.vertices());
+                    for (int idx : subMesh.indices()) {
+                        batch.indices.add(baseVertex + idx);
+                    }
                 }
             }
         }
@@ -374,11 +433,20 @@ public class VisualZoneRenderer {
         if (batch.key.backFaceCulling()) {
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glCullFace(GL11.GL_BACK);
+            GL11.glFrontFace(GL11.GL_CW);
         } else {
             GL11.glDisable(GL11.GL_CULL_FACE);
         }
 
         Integer texId = glTextureMap.get(batch.key.textureName());
+        if (texId == null && batch.key.textureName() != null) {
+            String name = batch.key.textureName().trim().toLowerCase();
+            texId = glTextureMap.get(name);
+            if (texId == null && name.contains(" ")) {
+                String[] parts = name.split("\\s+");
+                texId = glTextureMap.get(parts[parts.length - 1]);
+            }
+        }
         if (texId != null && texId > 0) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);

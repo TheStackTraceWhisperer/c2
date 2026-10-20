@@ -156,6 +156,7 @@ public class CollisionMeshRenderer {
 
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDisable(GL11.GL_CULL_FACE);
 
         GL20.glUseProgram(shaderProgram);
 

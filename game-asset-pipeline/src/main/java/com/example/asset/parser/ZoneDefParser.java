@@ -45,6 +45,51 @@ public final class ZoneDefParser {
     }
 
     /**
+     * Scans the DAT buffer for the S1C_ZONE_DEF section and parses placed 3D zone objects.
+     */
+    public static List<com.example.asset.mesh.ZoneObject> parseZoneObjectsFromDat(DatByteReader reader) {
+        reader.position(0);
+        List<DatSectionHeader> sections = DatSectionScanner.scanSections(reader);
+        for (DatSectionHeader header : sections) {
+            if (header.sectionType() == SectionType.S1C_ZONE_DEF) {
+                return parseZoneObjects(reader, header);
+            }
+        }
+        return List.of();
+    }
+
+    /**
+     * Parses placed 3D zone objects from a S1C_ZONE_DEF section.
+     */
+    public static List<com.example.asset.mesh.ZoneObject> parseZoneObjects(DatByteReader reader, DatSectionHeader header) {
+        if (header.sectionType() != SectionType.S1C_ZONE_DEF) {
+            return List.of();
+        }
+
+        com.example.asset.decoder.ZoneDecrypt.decryptZoneObjects(header, reader);
+
+        reader.position(header.dataStartPosition() + 4);
+        int keyNodeData = reader.nextI32();
+        int nodeCount = keyNodeData & 0x00FFFFFF;
+
+        int namesStart = header.sectionStartPosition() + 0x30;
+        List<com.example.asset.mesh.ZoneObject> objects = new ArrayList<>(nodeCount);
+
+        for (int i = 0; i < nodeCount; i++) {
+            reader.position(namesStart + i * 0x64);
+            String name = reader.nextString(16).trim();
+            Vector3f pos = reader.nextVector3f();
+            Vector3f rot = reader.nextVector3f();
+            Vector3f scale = reader.nextVector3f();
+
+            if (!name.isEmpty()) {
+                objects.add(new com.example.asset.mesh.ZoneObject(i, name, pos, rot, scale));
+            }
+        }
+        return objects;
+    }
+
+    /**
      * Parses collision geometry from a specific S1C_ZONE_DEF section header.
      */
     public static CollisionMap parse(DatByteReader reader, DatSectionHeader header) {

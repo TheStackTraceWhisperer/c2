@@ -10,11 +10,15 @@ import java.util.Optional;
  */
 public final class TextureParser {
 
-    private static final int HEADER_OFFSET_NAME = 0;
+    private static final int HEADER_OFFSET_TYPE = 0x00;
+    private static final int HEADER_OFFSET_NAME = 0x01; // 16 bytes
     private static final int HEADER_OFFSET_WIDTH = 0x15;
     private static final int HEADER_OFFSET_HEIGHT = 0x19;
+    private static final int HEADER_OFFSET_BITCOUNT = 0x1F;
     private static final int HEADER_OFFSET_FOURCC = 0x39;
-    private static final int HEADER_DATA_START = 0x50; // 80 bytes
+    private static final int DXT_DATA_START = 0x45; // 69 bytes (0x39 + 4 + 4 + 4)
+    private static final int PALETTED_91_DATA_START = 0x39;
+    private static final int PALETTED_B1_DATA_START = 0x3D;
 
     private TextureParser() {
     }
@@ -23,17 +27,19 @@ public final class TextureParser {
      * Parses a raw S20_TEXTURE payload slice and returns a DecodedTexture.
      */
     public static Optional<DecodedTexture> parseTexture(DatByteReader payload) {
-        if (payload.remaining() < HEADER_DATA_START) {
+        if (payload.remaining() < 0x39) {
             return Optional.empty();
         }
 
-        // 1. Read Texture Name (First 16 bytes)
+        // 1. Read Type and Texture Name
+        payload.position(HEADER_OFFSET_TYPE);
+        int textureType = payload.nextU8();
+
         payload.position(HEADER_OFFSET_NAME);
         String rawName = payload.nextString(16).trim();
-        String[] parts = rawName.split("\\s+");
-        String textureName = parts[parts.length - 1].replaceAll("[^a-zA-Z0-9_-]", "").trim();
+        String textureName = rawName.replaceAll("[\0\r\n]", "").trim();
         if (textureName.isEmpty()) {
-            textureName = rawName.replaceAll("[^a-zA-Z0-9_-]", "").trim();
+            return Optional.empty();
         }
 
         // 2. Read Dimensions
@@ -46,33 +52,79 @@ public final class TextureParser {
             return Optional.empty();
         }
 
-        // 3. Read Compression FourCC
-        payload.position(HEADER_OFFSET_FOURCC);
-        byte[] fourCcBytes = payload.nextBytes(4);
-        String fourCc = new String(fourCcBytes, StandardCharsets.US_ASCII);
-
-        payload.position(HEADER_DATA_START);
-        byte[] compressedData = payload.nextBytes(payload.remaining());
+        payload.position(HEADER_OFFSET_BITCOUNT);
+        int bitCount = payload.nextU16();
 
         byte[] rgbaPixels;
         String format;
 
-        if (fourCc.contains("DXT3") || fourCc.contains("3TXD")) {
-            rgbaPixels = DxtDecompressor.decompressDxt3(compressedData, width, height);
-            format = "DXT3";
-        } else if (fourCc.contains("DXT5") || fourCc.contains("5TXD")) {
-            rgbaPixels = DxtDecompressor.decompressDxt5(compressedData, width, height);
-            format = "DXT5";
-        } else if (fourCc.contains("DXT1") || fourCc.contains("1TXD")) {
-            rgbaPixels = DxtDecompressor.decompressDxt1(compressedData, width, height);
-            format = "DXT1";
+        if (textureType == 0xA1) {
+            // DXT Compressed Texture
+            payload.position(HEADER_OFFSET_FOURCC);
+            byte[] fourCcBytes = payload.nextBytes(4);
+            String fourCc = new String(fourCcBytes, StandardCharsets.US_ASCII);
+
+            if (payload.remaining() < (DXT_DATA_START - payload.position())) {
+                return Optional.empty();
+            }
+
+            payload.position(DXT_DATA_START);
+            byte[] compressedData = payload.nextBytes(payload.remaining());
+
+            if (fourCc.contains("DXT3") || fourCc.contains("3TXD")) {
+                rgbaPixels = DxtDecompressor.decompressDxt3(compressedData, width, height);
+                format = "DXT3";
+            } else if (fourCc.contains("DXT5") || fourCc.contains("5TXD")) {
+                rgbaPixels = DxtDecompressor.decompressDxt5(compressedData, width, height);
+                format = "DXT5";
+            } else if (fourCc.contains("DXT1") || fourCc.contains("1TXD")) {
+                rgbaPixels = DxtDecompressor.decompressDxt1(compressedData, width, height);
+                format = "DXT1";
+            } else {
+                return Optional.empty();
+            }
+        } else if (textureType == 0x91 || textureType == 0xB1) {
+            int dataStart = (textureType == 0xB1) ? PALETTED_B1_DATA_START : PALETTED_91_DATA_START;
+            if (payload.remaining() < (dataStart - payload.position())) {
+                return Optional.empty();
+            }
+            payload.position(dataStart);
+            byte[] rawData = payload.nextBytes(payload.remaining());
+
+            if (bitCount == 32) {
+                format = "RGBA32";
+                rgbaPixels = decodeDirect32(rawData, width, height);
+            } else {
+                format = "PALETTED_8BIT";
+                rgbaPixels = decodePaletted(rawData, width, height);
+            }
         } else {
-            // Uncompressed or 8-bit paletted fallback
-            format = "PALETTED_8BIT";
-            rgbaPixels = decodePaletted(compressedData, width, height);
+            return Optional.empty();
         }
 
         return Optional.of(new DecodedTexture(textureName, width, height, format, rgbaPixels));
+    }
+
+    private static byte[] decodeDirect32(byte[] data, int width, int height) {
+        byte[] rgba = new byte[width * height * 4];
+        int pixelOffset = 0;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                if (pixelOffset + 4 > data.length) break;
+                int b = data[pixelOffset++] & 0xFF;
+                int g = data[pixelOffset++] & 0xFF;
+                int r = data[pixelOffset++] & 0xFF;
+                int a = data[pixelOffset++] & 0xFF;
+
+                // Vertical flip (FFXI bitmap convention)
+                int outIdx = (width * (height - (y + 1)) + x) * 4;
+                rgba[outIdx] = (byte) r;
+                rgba[outIdx + 1] = (byte) g;
+                rgba[outIdx + 2] = (byte) b;
+                rgba[outIdx + 3] = (byte) a;
+            }
+        }
+        return rgba;
     }
 
     private static byte[] decodePaletted(byte[] data, int width, int height) {
@@ -82,13 +134,16 @@ public final class TextureParser {
         }
 
         // First 1024 bytes (256 * 4) palette (BGRA)
-        int[] palette = new int[256];
+        int[] paletteR = new int[256];
+        int[] paletteG = new int[256];
+        int[] paletteB = new int[256];
+        int[] paletteA = new int[256];
+
         for (int i = 0; i < 256; i++) {
-            int b = data[i * 4] & 0xFF;
-            int g = data[i * 4 + 1] & 0xFF;
-            int r = data[i * 4 + 2] & 0xFF;
-            int a = data[i * 4 + 3] & 0xFF;
-            palette[i] = (r << 24) | (g << 16) | (b << 8) | a;
+            paletteB[i] = data[i * 4] & 0xFF;
+            paletteG[i] = data[i * 4 + 1] & 0xFF;
+            paletteR[i] = data[i * 4 + 2] & 0xFF;
+            paletteA[i] = data[i * 4 + 3] & 0xFF;
         }
 
         int pixelOffset = 1024;
@@ -96,12 +151,13 @@ public final class TextureParser {
             for (int x = 0; x < width; x++) {
                 if (pixelOffset >= data.length) break;
                 int idx = data[pixelOffset++] & 0xFF;
-                int color = palette[idx];
-                int outOffset = (y * width + x) * 4;
-                rgba[outOffset] = (byte) ((color >>> 24) & 0xFF);
-                rgba[outOffset + 1] = (byte) ((color >>> 16) & 0xFF);
-                rgba[outOffset + 2] = (byte) ((color >>> 8) & 0xFF);
-                rgba[outOffset + 3] = (byte) (color & 0xFF);
+
+                // Vertical flip (matching xim / FFXI DirectX surface convention)
+                int outOffset = (width * (height - (y + 1)) + x) * 4;
+                rgba[outOffset] = (byte) paletteR[idx];
+                rgba[outOffset + 1] = (byte) paletteG[idx];
+                rgba[outOffset + 2] = (byte) paletteB[idx];
+                rgba[outOffset + 3] = (byte) paletteA[idx];
             }
         }
         return rgba;

@@ -104,13 +104,17 @@ public final class CharacterMeshGenerator {
     private static SkinnedMesh createHeadMesh() {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
-        // Face & Cranium (attached to BONE_HEAD)
-        subs.add(createBoxMesh("face", 0f, 1.58f, 0f, 0.18f, 0.22f, 0.18f,
-                BONE_HEAD, BONE_NECK, 0.85f, 0.15f, 235, 195, 165));
+        // Cranium (attached to BONE_HEAD)
+        subs.add(createContouredLimb("face", 0f, 1.62f, 0f, 0.09f, 0.08f, 0.16f, 8,
+                BONE_HEAD, BONE_NECK, 0.95f, 0.05f, 235, 195, 165));
 
         // Hair / Helmet
-        subs.add(createBoxMesh("hair", 0f, 1.68f, -0.02f, 0.20f, 0.10f, 0.20f,
-                BONE_HEAD, BONE_NECK, 0.95f, 0.05f, 75, 50, 30));
+        subs.add(createContouredLimb("hair", 0f, 1.68f, -0.01f, 0.10f, 0.095f, 0.10f, 8,
+                BONE_HEAD, BONE_NECK, 0.98f, 0.02f, 75, 50, 30));
+
+        // Neck
+        subs.add(createContouredLimb("neck", 0f, 1.48f, 0f, 0.06f, 0.065f, 0.10f, 6,
+                BONE_NECK, BONE_CHEST, 0.70f, 0.30f, 225, 185, 155));
 
         return new SkinnedMesh("head", subs);
     }
@@ -119,18 +123,18 @@ public final class CharacterMeshGenerator {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
         // Chest / Upper Torso (blended BONE_CHEST & BONE_SPINE)
-        subs.add(createBoxMesh("chest", 0f, 1.34f, 0f, 0.32f, 0.26f, 0.22f,
-                BONE_CHEST, BONE_SPINE, 0.70f, 0.30f, primary[0], primary[1], primary[2]));
+        subs.add(createContouredLimb("chest", 0f, 1.34f, 0f, 0.18f, 0.15f, 0.24f, 8,
+                BONE_CHEST, BONE_SPINE, 0.75f, 0.25f, primary[0], primary[1], primary[2]));
 
         // Waist / Lower Torso (blended BONE_SPINE & BONE_ROOT)
-        subs.add(createBoxMesh("waist", 0f, 1.12f, 0f, 0.28f, 0.20f, 0.20f,
+        subs.add(createContouredLimb("waist", 0f, 1.12f, 0f, 0.15f, 0.14f, 0.20f, 8,
                 BONE_SPINE, BONE_ROOT, 0.60f, 0.40f, primary[0], primary[1], primary[2]));
 
-        // Shoulders / Epaulets
-        subs.add(createBoxMesh("l_shoulder_pad", -0.22f, 1.40f, 0f, 0.14f, 0.10f, 0.14f,
-                BONE_L_SHOULDER, BONE_CHEST, 0.80f, 0.20f, trim[0], trim[1], trim[2]));
-        subs.add(createBoxMesh("r_shoulder_pad", 0.22f, 1.40f, 0f, 0.14f, 0.10f, 0.14f,
-                BONE_R_SHOULDER, BONE_CHEST, 0.80f, 0.20f, trim[0], trim[1], trim[2]));
+        // Shoulders / Pauldrons
+        subs.add(createContouredLimb("l_shoulder_pad", -0.24f, 1.40f, 0f, 0.08f, 0.07f, 0.10f, 6,
+                BONE_L_SHOULDER, BONE_CHEST, 0.85f, 0.15f, trim[0], trim[1], trim[2]));
+        subs.add(createContouredLimb("r_shoulder_pad", 0.24f, 1.40f, 0f, 0.08f, 0.07f, 0.10f, 6,
+                BONE_R_SHOULDER, BONE_CHEST, 0.85f, 0.15f, trim[0], trim[1], trim[2]));
 
         return new SkinnedMesh("body", subs);
     }
@@ -139,20 +143,20 @@ public final class CharacterMeshGenerator {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
         // Left Arm: Upper arm & Forearm & Hand
-        subs.add(createBoxMesh("l_upper_arm", -0.24f, 1.25f, 0f, 0.10f, 0.22f, 0.10f,
+        subs.add(createContouredLimb("l_upper_arm", -0.24f, 1.25f, 0f, 0.065f, 0.055f, 0.22f, 6,
                 BONE_L_ARM, BONE_L_SHOULDER, 0.85f, 0.15f, primary[0], primary[1], primary[2]));
-        subs.add(createBoxMesh("l_forearm", -0.25f, 1.02f, 0f, 0.09f, 0.22f, 0.09f,
+        subs.add(createContouredLimb("l_forearm", -0.25f, 1.02f, 0f, 0.055f, 0.048f, 0.22f, 6,
                 BONE_L_FOREARM, BONE_L_ARM, 0.85f, 0.15f, trim[0], trim[1], trim[2]));
-        subs.add(createBoxMesh("l_hand", -0.25f, 0.86f, 0f, 0.08f, 0.10f, 0.08f,
-                BONE_L_HAND, BONE_L_FOREARM, 0.90f, 0.10f, 220, 180, 150));
+        subs.add(createContouredLimb("l_hand", -0.25f, 0.86f, 0f, 0.048f, 0.040f, 0.10f, 6,
+                BONE_L_HAND, BONE_L_FOREARM, 0.95f, 0.05f, 220, 180, 150));
 
         // Right Arm: Upper arm & Forearm & Hand
-        subs.add(createBoxMesh("r_upper_arm", 0.24f, 1.25f, 0f, 0.10f, 0.22f, 0.10f,
+        subs.add(createContouredLimb("r_upper_arm", 0.24f, 1.25f, 0f, 0.065f, 0.055f, 0.22f, 6,
                 BONE_R_ARM, BONE_R_SHOULDER, 0.85f, 0.15f, primary[0], primary[1], primary[2]));
-        subs.add(createBoxMesh("r_forearm", 0.25f, 1.02f, 0f, 0.09f, 0.22f, 0.09f,
+        subs.add(createContouredLimb("r_forearm", 0.25f, 1.02f, 0f, 0.055f, 0.048f, 0.22f, 6,
                 BONE_R_FOREARM, BONE_R_ARM, 0.85f, 0.15f, trim[0], trim[1], trim[2]));
-        subs.add(createBoxMesh("r_hand", 0.25f, 0.86f, 0f, 0.08f, 0.10f, 0.08f,
-                BONE_R_HAND, BONE_R_FOREARM, 0.90f, 0.10f, 220, 180, 150));
+        subs.add(createContouredLimb("r_hand", 0.25f, 0.86f, 0f, 0.048f, 0.040f, 0.10f, 6,
+                BONE_R_HAND, BONE_R_FOREARM, 0.95f, 0.05f, 220, 180, 150));
 
         return new SkinnedMesh("hands", subs);
     }
@@ -161,12 +165,12 @@ public final class CharacterMeshGenerator {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
         // Left Thigh
-        subs.add(createBoxMesh("l_thigh", -0.12f, 0.76f, 0f, 0.13f, 0.36f, 0.14f,
-                BONE_L_THIGH, BONE_L_HIP, 0.80f, 0.20f, pantsColor[0], pantsColor[1], pantsColor[2]));
+        subs.add(createContouredLimb("l_thigh", -0.12f, 0.76f, 0f, 0.085f, 0.070f, 0.36f, 8,
+                BONE_L_THIGH, BONE_L_HIP, 0.85f, 0.15f, pantsColor[0], pantsColor[1], pantsColor[2]));
 
         // Right Thigh
-        subs.add(createBoxMesh("r_thigh", 0.12f, 0.76f, 0f, 0.13f, 0.36f, 0.14f,
-                BONE_R_THIGH, BONE_R_HIP, 0.80f, 0.20f, pantsColor[0], pantsColor[1], pantsColor[2]));
+        subs.add(createContouredLimb("r_thigh", 0.12f, 0.76f, 0f, 0.085f, 0.070f, 0.36f, 8,
+                BONE_R_THIGH, BONE_R_HIP, 0.85f, 0.15f, pantsColor[0], pantsColor[1], pantsColor[2]));
 
         return new SkinnedMesh("legs", subs);
     }
@@ -175,15 +179,15 @@ public final class CharacterMeshGenerator {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
         // Left Shin / Calf & Foot
-        subs.add(createBoxMesh("l_calf", -0.12f, 0.38f, 0f, 0.12f, 0.36f, 0.13f,
+        subs.add(createContouredLimb("l_calf", -0.12f, 0.38f, 0f, 0.070f, 0.055f, 0.36f, 8,
                 BONE_L_CALF, BONE_L_THIGH, 0.85f, 0.15f, bootsColor[0], bootsColor[1], bootsColor[2]));
-        subs.add(createBoxMesh("l_foot", -0.12f, 0.08f, 0.06f, 0.12f, 0.12f, 0.24f,
+        subs.add(createBoxMesh("l_foot", -0.12f, 0.08f, 0.06f, 0.11f, 0.10f, 0.22f,
                 BONE_L_FOOT, BONE_L_CALF, 0.90f, 0.10f, bootsColor[0], bootsColor[1], bootsColor[2]));
 
         // Right Shin / Calf & Foot
-        subs.add(createBoxMesh("r_calf", 0.12f, 0.38f, 0f, 0.12f, 0.36f, 0.13f,
+        subs.add(createContouredLimb("r_calf", 0.12f, 0.38f, 0f, 0.070f, 0.055f, 0.36f, 8,
                 BONE_R_CALF, BONE_R_THIGH, 0.85f, 0.15f, bootsColor[0], bootsColor[1], bootsColor[2]));
-        subs.add(createBoxMesh("r_foot", 0.12f, 0.08f, 0.06f, 0.12f, 0.12f, 0.24f,
+        subs.add(createBoxMesh("r_foot", 0.12f, 0.08f, 0.06f, 0.11f, 0.10f, 0.22f,
                 BONE_R_FOOT, BONE_R_CALF, 0.90f, 0.10f, bootsColor[0], bootsColor[1], bootsColor[2]));
 
         return new SkinnedMesh("feet", subs);
@@ -193,18 +197,18 @@ public final class CharacterMeshGenerator {
         List<SkinnedSubMesh> subs = new ArrayList<>();
 
         if (isStaff) {
-            // Wooden Staff: Shaft + Golden finial attached to right hand
-            subs.add(createBoxMesh("staff_shaft", 0.26f, 0.95f, 0f, 0.035f, 1.60f, 0.035f,
+            // Wooden Staff: Round shaft + Golden finial attached to right hand
+            subs.add(createContouredLimb("staff_shaft", 0.26f, 0.95f, 0f, 0.025f, 0.025f, 1.60f, 6,
                     BONE_R_HAND, BONE_R_FOREARM, 1.0f, 0.0f, 130, 85, 45));
-            subs.add(createBoxMesh("staff_head", 0.26f, 1.78f, 0f, 0.12f, 0.14f, 0.12f,
+            subs.add(createContouredLimb("staff_head", 0.26f, 1.78f, 0f, 0.08f, 0.04f, 0.16f, 8,
                     BONE_R_HAND, BONE_R_FOREARM, 1.0f, 0.0f, 235, 195, 45));
         } else {
-            // Steel Broadsword: Blade, Guard, Grip, Pommel attached to right hand
-            subs.add(createBoxMesh("sword_blade", 0.26f, 1.15f, 0f, 0.03f, 0.85f, 0.08f,
+            // Steel Broadsword: Blade, Guard, Grip attached to right hand
+            subs.add(createContouredLimb("sword_blade", 0.26f, 1.15f, 0f, 0.01f, 0.04f, 0.85f, 6,
                     BONE_R_HAND, BONE_R_FOREARM, 1.0f, 0.0f, 215, 225, 235));
             subs.add(createBoxMesh("sword_guard", 0.26f, 0.76f, 0f, 0.04f, 0.04f, 0.20f,
                     BONE_R_HAND, BONE_R_FOREARM, 1.0f, 0.0f, 185, 150, 40));
-            subs.add(createBoxMesh("sword_hilt", 0.26f, 0.68f, 0f, 0.03f, 0.14f, 0.03f,
+            subs.add(createContouredLimb("sword_hilt", 0.26f, 0.68f, 0f, 0.02f, 0.02f, 0.14f, 6,
                     BONE_R_HAND, BONE_R_FOREARM, 1.0f, 0.0f, 95, 55, 30));
         }
 
@@ -214,11 +218,104 @@ public final class CharacterMeshGenerator {
     private static SkinnedMesh createShieldMesh() {
         List<SkinnedSubMesh> subs = new ArrayList<>();
         // Knight's Heater Shield attached to left forearm
-        subs.add(createBoxMesh("shield_face", -0.32f, 1.02f, 0.04f, 0.04f, 0.45f, 0.32f,
+        subs.add(createContouredLimb("shield_face", -0.32f, 1.02f, 0.04f, 0.16f, 0.10f, 0.45f, 6,
                 BONE_L_FOREARM, BONE_L_HAND, 0.90f, 0.10f, 50, 85, 160));
         subs.add(createBoxMesh("shield_rim", -0.31f, 1.02f, 0.04f, 0.045f, 0.47f, 0.34f,
                 BONE_L_FOREARM, BONE_L_HAND, 0.90f, 0.10f, 215, 185, 45));
         return new SkinnedMesh("sub_shield", subs);
+    }
+
+    /**
+     * Constructs a smooth contoured, multi-faceted anatomical limb with dual-bone skinning weights and radial normals.
+     */
+    private static SkinnedSubMesh createContouredLimb(
+            String name,
+            float cx, float cy, float cz,
+            float radiusTop, float radiusBottom, float height,
+            int radialSegments,
+            int j0, int j1,
+            float w0Top, float w0Bot,
+            int r, int g, int b
+    ) {
+        float halfH = height * 0.5f;
+        List<SkinnedVertex> verts = new ArrayList<>();
+        List<Integer> indices = new ArrayList<>();
+
+        for (int i = 0; i < radialSegments; i++) {
+            double angle = 2.0 * Math.PI * i / radialSegments;
+            float cos = (float) Math.cos(angle);
+            float sin = (float) Math.sin(angle);
+
+            float dr = radiusBottom - radiusTop;
+            Vector3f sideNormal = new Vector3f(cos, dr / height, sin).normalize();
+
+            float tx = cx + cos * radiusTop;
+            float ty = cy + halfH;
+            float tz = cz + sin * radiusTop;
+            float u = (float) i / radialSegments;
+            verts.add(new SkinnedVertex(
+                    new Vector3f(tx, ty, tz), sideNormal,
+                    u, 0.0f,
+                    j0, j1, w0Top, 1.0f - w0Top,
+                    r, g, b, 255
+            ));
+
+            float bx = cx + cos * radiusBottom;
+            float by = cy - halfH;
+            float bz = cz + sin * radiusBottom;
+            verts.add(new SkinnedVertex(
+                    new Vector3f(bx, by, bz), sideNormal,
+                    u, 1.0f,
+                    j0, j1, w0Bot, 1.0f - w0Bot,
+                    r, g, b, 255
+            ));
+        }
+
+        for (int i = 0; i < radialSegments; i++) {
+            int next = (i + 1) % radialSegments;
+            int t0 = 2 * i;
+            int b0 = 2 * i + 1;
+            int t1 = 2 * next;
+            int b1 = 2 * next + 1;
+
+            indices.add(t0);
+            indices.add(b0);
+            indices.add(t1);
+
+            indices.add(t1);
+            indices.add(b0);
+            indices.add(b1);
+        }
+
+        int topCenterIdx = verts.size();
+        verts.add(new SkinnedVertex(
+                new Vector3f(cx, cy + halfH, cz), new Vector3f(0f, 1f, 0f),
+                0.5f, 0.5f,
+                j0, j1, w0Top, 1.0f - w0Top,
+                r, g, b, 255
+        ));
+        for (int i = 0; i < radialSegments; i++) {
+            int next = (i + 1) % radialSegments;
+            indices.add(topCenterIdx);
+            indices.add(2 * i);
+            indices.add(2 * next);
+        }
+
+        int botCenterIdx = verts.size();
+        verts.add(new SkinnedVertex(
+                new Vector3f(cx, cy - halfH, cz), new Vector3f(0f, -1f, 0f),
+                0.5f, 0.5f,
+                j0, j1, w0Bot, 1.0f - w0Bot,
+                r, g, b, 255
+        ));
+        for (int i = 0; i < radialSegments; i++) {
+            int next = (i + 1) % radialSegments;
+            indices.add(botCenterIdx);
+            indices.add(2 * next + 1);
+            indices.add(2 * i + 1);
+        }
+
+        return new SkinnedSubMesh(name, false, true, verts, indices);
     }
 
     /**

@@ -37,7 +37,23 @@ public final class VisualZoneLoader {
             if (header.sectionType() == SectionType.S20_TEXTURE) {
                 DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
                 Optional<DecodedTexture> texOpt = TextureParser.parseTexture(payload);
-                texOpt.ifPresent(tex -> textures.put(tex.name().trim().toLowerCase(), tex));
+                if (texOpt.isPresent()) {
+                    DecodedTexture tex = texOpt.get();
+                    String raw = tex.name().trim();
+                    String lower = raw.toLowerCase();
+                    textures.put(lower, tex);
+                    textures.put(raw, tex);
+
+                    // Also index short name if prefixed with "model "
+                    if (lower.startsWith("model ")) {
+                        String shortName = lower.substring(6).trim();
+                        textures.putIfAbsent(shortName, tex);
+                    }
+                    String[] parts = lower.split("\\s+");
+                    if (parts.length > 1) {
+                        textures.putIfAbsent(parts[parts.length - 1], tex);
+                    }
+                }
             }
         }
 
@@ -49,7 +65,15 @@ public final class VisualZoneLoader {
             }
         }
 
-        return new VisualZoneScene(textures, meshes);
+        // 3. Third pass: parse placed ZoneObjects from S1C_ZONE_DEF
+        List<ZoneObject> zoneObjects = new ArrayList<>();
+        for (DatSectionHeader header : sections) {
+            if (header.sectionType() == SectionType.S1C_ZONE_DEF) {
+                zoneObjects.addAll(com.example.asset.parser.ZoneDefParser.parseZoneObjects(reader, header));
+            }
+        }
+
+        return new VisualZoneScene(textures, meshes, zoneObjects);
     }
 
     public static VisualZoneScene load(InputStream stream) throws IOException {

@@ -1,0 +1,56 @@
+name: Java CI Build & Visual Test Artifacts
+
+on:
+  push:
+    branches:
+      - main
+      - '005-*'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build & Test with Visual Snapshot Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'oracle'
+          cache: 'maven'
+
+      - name: Make Maven Wrapper Executable
+        run: chmod +x mvnw
+
+      - name: Build and Run Tests
+        run: ./mvnw -B test -Dsurefire.failIfNoSpecifiedTests=false
+        env:
+          C2_SNAPSHOTS_DIR: target/snapshots
+          C2_RENDERDOC_DIR: target/renderdoc
+
+      - name: Upload Scene Visual Snapshots & RenderDoc Captures
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scene-visual-snapshots
+          path: |
+            **/target/snapshots/*.png
+            **/target/renderdoc/*.rdc
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload Surefire Test Reports on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/*'
+          if-no-files-found: ignore
+          retention-days: 7

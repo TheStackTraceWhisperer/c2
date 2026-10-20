@@ -61,6 +61,10 @@
       <groupId>org.lwjgl</groupId>
       <artifactId>lwjgl-opengl</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.lwjgl</groupId>
+      <artifactId>lwjgl-renderdoc</artifactId>
+    </dependency>
 
     <!-- LWJGL Natives (Linux default) -->
     <dependency>

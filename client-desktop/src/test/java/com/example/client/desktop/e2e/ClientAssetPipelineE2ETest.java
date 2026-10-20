@@ -18,8 +18,14 @@ import com.example.common.protocol.MovementFlags;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
 import com.example.world.dto.ZoneTransferNotification;
+import com.example.client.desktop.capture.RenderDocCapture;
+import com.example.client.desktop.capture.ScreenshotCapture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -125,6 +131,24 @@ public class ClientAssetPipelineE2ETest {
             for (float v : elements) sum += Math.abs(v);
             assertThat(sum).isGreaterThan(0.5f); // Valid non-zero transform
         }
+
+        // Capture visual snapshot of the animated rig and trigger RenderDoc hook
+        RenderDocCapture.captureFrameIfAvailable(0L, () -> {
+            BufferedImage posePreview = new BufferedImage(320, 320, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = posePreview.createGraphics();
+            g.setColor(new Color(25, 28, 35));
+            g.fillRect(0, 0, 320, 320);
+            g.setColor(new Color(255, 215, 0));
+            var joints = model.skeleton().joints();
+            for (int i = 0; i < joints.size(); i++) {
+                float[] elem = pose.jointPoseMatrices().get(i).elements();
+                int sx = (int) (160 + elem[12] * 100.0f);
+                int sy = (int) (260 - elem[13] * 120.0f);
+                g.fillOval(sx - 3, sy - 3, 6, 6);
+            }
+            g.dispose();
+            ScreenshotCapture.saveBufferedImage(posePreview, "e2e_character_locomotion");
+        });
     }
 
     @Test
@@ -151,6 +175,18 @@ public class ClientAssetPipelineE2ETest {
 
         // Distance fog under FOG weather should be denser (shorter fogEnd) than CLEAR weather
         assertThat(fogLighting.getFogEnd()).isLessThan(noonLighting.getFogEnd());
+
+        // Capture diurnal skybox snapshot
+        BufferedImage swatch = new BufferedImage(400, 150, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = swatch.createGraphics();
+        float[] skyNoon = noonLighting.getSkyColor();
+        float[] skyNight = midnightLighting.getSkyColor();
+        g.setColor(new Color(skyNoon[0], skyNoon[1], skyNoon[2]));
+        g.fillRect(0, 0, 200, 150);
+        g.setColor(new Color(skyNight[0], skyNight[1], skyNight[2]));
+        g.fillRect(200, 0, 200, 150);
+        g.dispose();
+        ScreenshotCapture.saveBufferedImage(swatch, "e2e_diurnal_lighting_swatch");
     }
 
     @Test

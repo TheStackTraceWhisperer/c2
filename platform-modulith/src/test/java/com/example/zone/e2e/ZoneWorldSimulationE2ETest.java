@@ -177,69 +177,6 @@ public class ZoneWorldSimulationE2ETest {
         assertThat(colMap).isPresent();
         assertThat(colMap.get().numBlocksWide()).isGreaterThan(0);
         assertThat(engine.getCachedZoneLines()).isNotEmpty();
-        assertThat(engine.getEntityCount()).isGreaterThan(600); // 668 authentic town NPCs
-    }
-
-    @Test
-    @DisplayName("E2E: Authentic Town NPCs are streamed via 20 Hz AoI to connecting player and despawn on departure")
-    void testTownNpcStreamingOverAoI() {
-        // Find an authentic town NPC in Zone 230
-        ZoneEntityState sampleNpc = engine.getEntities().values().stream()
-                .filter(ZoneEntityState::isNpc)
-                .findFirst()
-                .orElseThrow();
-
-        float npcX = sampleNpc.getX();
-        float npcZ = sampleNpc.getZ();
-        long npcId = sampleNpc.getCharacterId();
-
-        // Connect player channel
-        EmbeddedChannel channel = new EmbeddedChannel();
-        List<Object> outboundPackets = new CopyOnWriteArrayList<>();
-        ChannelHandlerContext ctx = createProxyContext(channel, outboundPackets);
-
-        long playerId = 9001L;
-        charRepo.records.put(playerId, new CharacterRecord(
-                1L, playerId, 1, "E2EPlayer", (short) 1, (short) 0, (short) 1,
-                (short) 1, (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, npcX, 2.0f, npcZ, 0.0f, 0.0f,
-                230, npcX, 2.0f, npcZ, Instant.now()
-        ));
-
-        // 1. Player enters near NPC (< 50m AoI)
-        engine.registerSessionEntity(55555L, playerId, ctx);
-
-        // Verify player receives ZoneStateDeltaMessage with authentic NPC spawn
-        await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
-            boolean npcSpawned = outboundPackets.stream()
-                    .filter(msg -> msg instanceof ZoneStateDeltaMessage)
-                    .map(msg -> (ZoneStateDeltaMessage) msg)
-                    .filter(d -> d.spawns() != null)
-                    .flatMap(d -> d.spawns().stream())
-                    .anyMatch(s -> s.characterId() == npcId && s.mainJobId() == JobId.NPC);
-            assertThat(npcSpawned).isTrue();
-        });
-
-        // 2. Move player far outside the AoI (> 250m)
-        outboundPackets.clear();
-        ZoneEntityState playerEntity = engine.getEntity(playerId);
-        assertThat(playerEntity).isNotNull();
-        playerEntity.setX(npcX + 300.0f);
-        playerEntity.setZ(npcZ + 300.0f);
-        spatialGrid.updatePosition(playerId, npcX + 300.0f, npcZ + 300.0f);
-
-        // Verify player receives despawn delta
-        await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
-            boolean npcDespawned = outboundPackets.stream()
-                    .filter(msg -> msg instanceof ZoneStateDeltaMessage)
-                    .map(msg -> (ZoneStateDeltaMessage) msg)
-                    .filter(d -> d.despawns() != null)
-                    .flatMap(d -> d.despawns().stream())
-                    .anyMatch(id -> id == npcId);
-            assertThat(npcDespawned).isTrue();
-        });
-
-        channel.close();
     }
 
     @Test

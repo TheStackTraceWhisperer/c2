@@ -44,11 +44,19 @@ class ZoneDefParserTest {
         System.out.printf("South San d'Oria total collision triangles: %d%n", allTriangles.size());
         assertTrue(allTriangles.size() >= 100_000, "Expected at least 100,000 collision triangles for South San d'Oria");
 
+        float minY = Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (CollisionTriangle tri : allTriangles) {
+            minY = Math.min(minY, Math.min(tri.v0().y(), Math.min(tri.v1().y(), tri.v2().y())));
+            maxY = Math.max(maxY, Math.max(tri.v0().y(), Math.max(tri.v1().y(), tri.v2().y())));
+        }
+        System.out.printf("South San d'Oria collision Y range: [%.2f, %.2f]%n", minY, maxY);
+
         // Verify broadphase raycast floor height detection
         boolean foundGround = false;
-        for (float x = -50f; x <= 50f; x += 10f) {
-            for (float z = -50f; z <= 50f; z += 10f) {
-                Optional<RayHit> hit = map.raycastFloor(new Vector3f(x, 10f, z), 2.0f, 50.0f, true);
+        for (float x = -100f; x <= 100f; x += 20f) {
+            for (float z = -100f; z <= 100f; z += 20f) {
+                Optional<RayHit> hit = map.raycastFloor(new Vector3f(x, 100f, z), 50.0f, 500.0f, true);
                 if (hit.isPresent()) {
                     foundGround = true;
                     System.out.printf("Ground hit found at (%.1f, %.1f) -> height y = %.3f (distance = %.3f)%n",

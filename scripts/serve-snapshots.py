@@ -233,35 +233,56 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
 
     def serve_gallery(self):
-        images = []
-        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
-            images.extend(glob.glob(os.path.join(self.snapshots_dir, ext)))
-        images.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        files = []
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.glb"):
+            files.extend(glob.glob(os.path.join(self.snapshots_dir, ext)))
+        files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
 
         cards = []
-        for img_path in images:
-            fname = os.path.basename(img_path)
-            sz = os.path.getsize(img_path)
-            mtime = datetime.fromtimestamp(os.path.getmtime(img_path)).strftime("%Y-%m-%d %H:%M:%S")
-            card_html = f"""
-            <div class="card">
-                <div class="img-container" onclick="openLightbox('/snapshots/{fname}')">
-                    <img src="/snapshots/{fname}" alt="{fname}" loading="lazy">
-                </div>
-                <div class="card-body">
-                    <div class="filename">{fname}</div>
-                    <div class="details">
-                        <span>{sz / 1024:.1f} KB</span>
-                        <span>{mtime}</span>
+        for file_path in files:
+            fname = os.path.basename(file_path)
+            sz = os.path.getsize(file_path)
+            mtime = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime("%Y-%m-%d %H:%M:%S")
+            size_str = f"{sz / 1024:.1f} KB" if sz < 1024 * 1024 else f"{sz / (1024 * 1024):.2f} MB"
+
+            if fname.lower().endswith(".glb"):
+                card_html = f"""
+                <div class="card">
+                    <div class="img-container" style="background:#111622;display:flex;align-items:center;justify-content:center;color:#38bdf8;font-size:2rem;">
+                        <span>📦 3D GLB</span>
                     </div>
-                    <div class="card-actions">
-                        <a class="action-link" href="/snapshots/{fname}" target="_blank">Open Full Image</a>
-                        &bull;
-                        <a class="action-link" href="/snapshots/{fname}" download>Download</a>
+                    <div class="card-body">
+                        <div class="filename">{fname}</div>
+                        <div class="details">
+                            <span>{size_str}</span>
+                            <span>{mtime}</span>
+                        </div>
+                        <div class="card-actions">
+                            <a class="action-link" href="/snapshots/{fname}" download>Download GLB Model</a>
+                        </div>
                     </div>
                 </div>
-            </div>
-            """
+                """
+            else:
+                card_html = f"""
+                <div class="card">
+                    <div class="img-container" onclick="openLightbox('/snapshots/{fname}')">
+                        <img src="/snapshots/{fname}" alt="{fname}" loading="lazy">
+                    </div>
+                    <div class="card-body">
+                        <div class="filename">{fname}</div>
+                        <div class="details">
+                            <span>{size_str}</span>
+                            <span>{mtime}</span>
+                        </div>
+                        <div class="card-actions">
+                            <a class="action-link" href="/snapshots/{fname}" target="_blank">Open Full Image</a>
+                            &bull;
+                            <a class="action-link" href="/snapshots/{fname}" download>Download</a>
+                        </div>
+                    </div>
+                </div>
+                """
             cards.append(card_html)
 
         if not cards:
@@ -270,7 +291,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             cards_html = "\n".join(cards)
 
         html = HTML_TEMPLATE.replace("__DIRECTORY__", self.snapshots_dir) \
-                             .replace("__COUNT__", str(len(images))) \
+                             .replace("__COUNT__", str(len(files))) \
                              .replace("__CARDS__", cards_html)
 
         data = html.encode("utf-8")
@@ -288,7 +309,9 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             return
 
         mime_type, _ = mimetypes.guess_type(safe_path)
-        if not mime_type:
+        if filename.lower().endswith(".glb"):
+            mime_type = "model/gltf-binary"
+        elif not mime_type:
             mime_type = "application/octet-stream"
 
         sz = os.path.getsize(safe_path)

@@ -85,6 +85,26 @@ public final class DatByteReader {
         return buffer.getInt();
     }
 
+    public int next32BE() {
+        int b0 = buffer.get() & 0xFF;
+        int b1 = buffer.get() & 0xFF;
+        int b2 = buffer.get() & 0xFF;
+        int b3 = buffer.get() & 0xFF;
+        return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+    }
+
+    public long next64BE() {
+        long high = next32BE() & 0xFFFFFFFFL;
+        long low = next32BE() & 0xFFFFFFFFL;
+        return (high << 32) | low;
+    }
+
+    public int readU16(int offset) {
+        int b0 = buffer.get(offset) & 0xFF;
+        int b1 = buffer.get(offset + 1) & 0xFF;
+        return b0 | (b1 << 8);
+    }
+
     public float nextFloat() {
         return buffer.getFloat();
     }

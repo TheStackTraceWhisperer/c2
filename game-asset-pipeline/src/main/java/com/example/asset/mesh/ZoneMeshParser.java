@@ -89,40 +89,27 @@ public final class ZoneMeshParser {
             float u = reader.nextFloat();
             float v = reader.nextFloat();
 
-            verts.add(new ZoneMeshVertex(p0, n0, u, v, r, g, b, a));
+            // Convert FFXI coordinates (-x, -y, z) to glTF / OpenGL standard Y-up
+            float px = ZoneMeshMath.sanitizeFinite(-p0.x());
+            float py = ZoneMeshMath.sanitizeFinite(-p0.y());
+            float pz = ZoneMeshMath.sanitizeFinite(p0.z());
+            float nx = ZoneMeshMath.sanitizeFinite(-n0.x());
+            float ny = ZoneMeshMath.sanitizeFinite(-n0.y());
+            float nz = ZoneMeshMath.sanitizeFinite(n0.z());
+
+            verts.add(new ZoneMeshVertex(new Vector3f(px, py, pz), new Vector3f(nx, ny, nz), u, v, r, g, b, a));
         }
 
         int numIndices = reader.nextU16();
         int unk1 = reader.nextU16();
 
-        int[] rawIndices = new int[numIndices];
+        List<Integer> rawIndices = new ArrayList<>(numIndices);
         for (int i = 0; i < numIndices; i++) {
-            rawIndices[i] = reader.nextU16();
+            rawIndices.add(reader.nextU16());
         }
 
-        List<Integer> triangleIndices = new ArrayList<>();
-        if (meshTypeFlag == 0) {
-            // Standard Triangle List
-            for (int i = 0; i + 2 < numIndices; i += 3) {
-                triangleIndices.add(rawIndices[i]);
-                triangleIndices.add(rawIndices[i + 1]);
-                triangleIndices.add(rawIndices[i + 2]);
-            }
-        } else {
-            // Triangle Strip conversion to Triangle List
-            for (int i = 0; i < numIndices - 2; i++) {
-                int idx0 = (i % 2 == 0) ? rawIndices[i] : rawIndices[i + 1];
-                int idx1 = (i % 2 == 0) ? rawIndices[i + 1] : rawIndices[i];
-                int idx2 = rawIndices[i + 2];
-
-                // Skip degenerate strip vertices
-                if (idx0 != idx1 && idx1 != idx2 && idx0 != idx2) {
-                    triangleIndices.add(idx0);
-                    triangleIndices.add(idx1);
-                    triangleIndices.add(idx2);
-                }
-            }
-        }
+        boolean isTriStrip = (meshTypeFlag == 1);
+        List<Integer> triangleIndices = ZoneMeshMath.expandTriangles(isTriStrip, rawIndices);
 
         return new VisualSubMesh(textureName, blendEnabled, backFaceCulling, verts, triangleIndices);
     }

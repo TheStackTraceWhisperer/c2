@@ -89,7 +89,7 @@ public class VisualZoneRenderer {
                 diff = max(diff, max(dot(-norm, normalize(uLightDir)) * 0.4, 0.0));
 
                 vec3 lighting = uAmbient + diff * uLightColor;
-                vec3 finalRgb = texColor.rgb * vColor.rgb * lighting;
+                vec3 finalRgb = 2.0 * texColor.rgb * vColor.rgb * lighting;
 
                 if (uFogEnabled == 1) {
                     float dist = length(vWorldPos - uCameraPos);
@@ -97,7 +97,7 @@ public class VisualZoneRenderer {
                     finalRgb = mix(finalRgb, uFogColor, fogFactor);
                 }
 
-                FragColor = vec4(finalRgb, texColor.a * vColor.a);
+                FragColor = vec4(finalRgb, clamp(4.0 * texColor.a * vColor.a, 0.0, 1.0));
             }
             """;
 
@@ -433,7 +433,7 @@ public class VisualZoneRenderer {
         if (batch.key.backFaceCulling()) {
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glCullFace(GL11.GL_BACK);
-            GL11.glFrontFace(GL11.GL_CW);
+            GL11.glFrontFace(GL11.GL_CCW);
         } else {
             GL11.glDisable(GL11.GL_CULL_FACE);
         }

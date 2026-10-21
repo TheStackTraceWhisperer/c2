@@ -88,6 +88,27 @@ public final class FfxiPathConfig {
         return Optional.empty();
     }
 
+    public static Path resolveRelativeFile(Path rootDir, String relativePath) {
+        if (rootDir == null || relativePath == null) {
+            return null;
+        }
+        String clean = relativePath.startsWith("/") ? relativePath.substring(1) : relativePath;
+        Path direct = rootDir.resolve(clean);
+        if (Files.exists(direct)) {
+            return direct;
+        }
+        Path current = rootDir;
+        String[] segments = clean.replace('\\', '/').split("/");
+        for (String segment : segments) {
+            Path next = findChildCaseInsensitive(current, segment);
+            if (next == null) {
+                return null;
+            }
+            current = next;
+        }
+        return current;
+    }
+
     private static Path findChildCaseInsensitive(Path parent, String name) {
         if (!Files.isDirectory(parent)) {
             return null;

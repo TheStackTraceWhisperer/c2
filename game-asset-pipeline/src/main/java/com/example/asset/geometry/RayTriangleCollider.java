@@ -42,14 +42,15 @@ public final class RayTriangleCollider {
 
         Vector3f q = origin.add(direction.mul(rayDistance));
 
-        // Inside-outside test using edge normals
-        if (tri.v0().sub(tri.v1()).cross(q.sub(tri.v0())).dot(normal) < EDGE_TOLERANCE) {
-            return Optional.empty();
-        }
-        if (tri.v1().sub(tri.v2()).cross(q.sub(tri.v1())).dot(normal) < EDGE_TOLERANCE) {
-            return Optional.empty();
-        }
-        if (tri.v2().sub(tri.v0()).cross(q.sub(tri.v2())).dot(normal) < EDGE_TOLERANCE) {
+        // Inside-outside test using edge cross products (works for both CCW and CW windings)
+        float c0 = tri.v1().sub(tri.v0()).cross(q.sub(tri.v0())).dot(normal);
+        float c1 = tri.v2().sub(tri.v1()).cross(q.sub(tri.v1())).dot(normal);
+        float c2 = tri.v0().sub(tri.v2()).cross(q.sub(tri.v2())).dot(normal);
+
+        boolean hasNeg = (c0 < EDGE_TOLERANCE) || (c1 < EDGE_TOLERANCE) || (c2 < EDGE_TOLERANCE);
+        boolean hasPos = (c0 > -EDGE_TOLERANCE) || (c1 > -EDGE_TOLERANCE) || (c2 > -EDGE_TOLERANCE);
+
+        if (hasNeg && hasPos) {
             return Optional.empty();
         }
 

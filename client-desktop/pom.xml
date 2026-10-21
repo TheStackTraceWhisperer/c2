@@ -32,6 +32,11 @@
       <groupId>com.example</groupId>
       <artifactId>game-asset-pipeline</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.joml</groupId>
+      <artifactId>joml</artifactId>
+      <version>1.10.9</version>
+    </dependency>
 
     <!-- Micronaut & DI -->
     <dependency>

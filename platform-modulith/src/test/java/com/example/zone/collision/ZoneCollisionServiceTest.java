@@ -41,16 +41,16 @@ class ZoneCollisionServiceTest {
     @Test
     @DisplayName("Normal ground movement clamps to floor height without reconciliation flag")
     void testGroundMovementClamping() {
-        // Spawn near (-50, -30), where floor is at y = 2.0f
+        // Spawn near (-50, -30), where floor is at y = -2.0f
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,
-                -50.0f, 2.0f, -30.0f,
-                -49.5f, 2.3f, -30.0f
+                -50.0f, -2.0f, -30.0f,
+                -49.5f, -1.8f, -30.0f
         );
 
         assertNotNull(res);
         assertFalse(res.reconciled(), "Small step within maxStepHeight should not flag reconciliation");
-        assertEquals(2.0f, res.y(), 0.1f, "Height should be clamped to floor terrain level");
+        assertEquals(-2.0f, res.y(), 0.1f, "Height should be clamped to floor terrain level");
     }
 
     @Test
@@ -59,28 +59,28 @@ class ZoneCollisionServiceTest {
         // Target Y is far below floor at y = -10.0f
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,
-                -50.0f, 2.0f, -30.0f,
+                -50.0f, -2.0f, -30.0f,
                 -50.0f, -10.0f, -30.0f
         );
 
         assertTrue(res.reconciled(), "Penetrating below floor must flag reconciliation");
         assertEquals("FLOOR_PENETRATION", res.reason());
-        assertEquals(2.0f, res.y(), 0.1f, "Height must be snapped back to floor level");
+        assertEquals(-2.0f, res.y(), 0.1f, "Height must be snapped back to floor level");
     }
 
     @Test
     @DisplayName("Exceeding max jump/flight height triggers reconciliation and clamps to jump ceiling")
     void testFlyHackReconciliation() {
-        // Target Y is 40m in the air (floor is at y = 2.0f, maxJump is 3.5f)
+        // Target Y is 40m in the air (floor is at y = -2.0f, maxJump is 3.5f -> ceiling = 1.5f)
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,
-                -50.0f, 2.0f, -30.0f,
+                -50.0f, -2.0f, -30.0f,
                 -50.0f, 40.0f, -30.0f
         );
 
         assertTrue(res.reconciled(), "Flying above max jump height must flag reconciliation");
         assertEquals("EXCEEDED_MAX_JUMP_HEIGHT", res.reason());
-        assertEquals(5.5f, res.y(), 0.15f, "Height must be clamped to floor + maxJumpHeight");
+        assertEquals(1.5f, res.y(), 0.15f, "Height must be clamped to floor + maxJumpHeight");
     }
 
     @Test

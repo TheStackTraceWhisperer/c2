@@ -25,50 +25,32 @@ public record ZoneObject(
 
     /**
      * Builds a 4x4 column-major model matrix combining translation, ZYX rotation, and scale.
-     * Matches xim: translate(pos) * rotateZYX(rot) * scale(scale).
+     * Matches xim reference: translate(-pos.x, -pos.y, pos.z) * rotate(negateXY(quat)) * scale(scale).
      */
     public float[] toModelMatrix() {
-        float xRad = rotation.x();
-        float yRad = rotation.y();
-        float zRad = rotation.z();
+        float[] q = ZoneMeshMath.negateXYQuaternion(
+                ZoneMeshMath.quaternionFromZYXEuler(rotation.x(), rotation.y(), rotation.z())
+        );
+        org.joml.Matrix4f mat = new org.joml.Matrix4f()
+                .translate(ZoneMeshMath.sanitizeFinite(-position.x()),
+                           ZoneMeshMath.sanitizeFinite(-position.y()),
+                           ZoneMeshMath.sanitizeFinite(position.z()))
+                .rotate(new org.joml.Quaternionf(q[0], q[1], q[2], q[3]))
+                .scale(ZoneMeshMath.sanitizeFinite(scale.x()),
+                       ZoneMeshMath.sanitizeFinite(scale.y()),
+                       ZoneMeshMath.sanitizeFinite(scale.z()));
 
-        float sinX = (float) Math.sin(xRad);
-        float cosX = (float) Math.cos(xRad);
-        float sinY = (float) Math.sin(yRad);
-        float cosY = (float) Math.cos(yRad);
-        float sinZ = (float) Math.sin(zRad);
-        float cosZ = (float) Math.cos(zRad);
-
-        // Rotation matrix elements (column-major)
-        float r0 = cosY * cosZ;
-        float r1 = cosY * sinZ;
-        float r2 = -sinY;
-
-        float r4 = sinX * sinY * cosZ - cosX * sinZ;
-        float r5 = sinX * sinY * sinZ + cosX * cosZ;
-        float r6 = sinX * cosY;
-
-        float r8 = cosX * sinY * cosZ + sinX * sinZ;
-        float r9 = cosX * sinY * sinZ - sinX * cosZ;
-        float r10 = cosX * cosY;
-
-        // Multiply columns by scale, and set translation
-        float sx = scale.x();
-        float sy = scale.y();
-        float sz = scale.z();
-
-        return new float[]{
-                r0 * sx, r1 * sx, r2 * sx, 0f,
-                r4 * sy, r5 * sy, r6 * sy, 0f,
-                r8 * sz, r9 * sz, r10 * sz, 0f,
-                position.x(), position.y(), position.z(), 1f
-        };
+        float[] result = new float[16];
+        mat.get(result);
+        return result;
     }
 
     /**
-     * Checks if the object has negative scaling determinant (requiring winding flip).
+     * Checks if the object has negative determinant (requiring winding flip).
      */
     public boolean isMirrored() {
-        return (scale.x() * scale.y() * scale.z()) < 0f;
+        float[] model = toModelMatrix();
+        org.joml.Matrix4f mat = new org.joml.Matrix4f().set(model);
+        return mat.determinant() < 0.0f;
     }
 }

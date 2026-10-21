@@ -77,13 +77,17 @@ public final class CollisionMap {
     }
 
     public int[] positionToBlock(Vector3f position) {
+        return positionToBlock(-position.x(), position.z());
+    }
+
+    public int[] positionToBlock(float ffxiX, float ffxiZ) {
         float halfMapWidth = blockWidth * numBlocksWide / 2.0f;
-        float positiveX = position.x() + halfMapWidth;
+        float positiveX = ffxiX + halfMapWidth;
         float cellWidth = blockWidth / (float) subBlocksX;
         int xBlock = (int) (positiveX / cellWidth);
 
         float halfMapLength = blockLength * numBlocksLong / 2.0f;
-        float positiveZ = position.z() + halfMapLength;
+        float positiveZ = ffxiZ + halfMapLength;
         float cellLength = blockLength / (float) subBlocksZ;
         int zBlock = (int) (positiveZ / cellLength);
 
@@ -167,7 +171,7 @@ public final class CollisionMap {
         for (CollisionObjectGroup group : groups) {
             for (CollisionObject obj : group.collisionObjects()) {
                 for (CollisionTriangle tri : obj.worldSpaceTriangles()) {
-                    if (ignoreWalls && tri.flags().isHitWall()) {
+                    if (ignoreWalls && (tri.flags().isHitWall() || tri.normal().y() < 0.3f)) {
                         continue;
                     }
                     Optional<RayHit> hit = RayTriangleCollider.intersect(

@@ -1,9 +1,7 @@
 package com.ffxi.viewer;
 
-import com.example.asset.geometry.Matrix4f;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
-import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.SkinnedMesh;
 import com.example.asset.skeleton.SkinnedSubMesh;
 import com.example.asset.skeleton.SkinnedVertex;
@@ -18,7 +16,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,9 +52,7 @@ public class CharacterSnapshotSuiteTest {
             assertNotNull(model, "Character should load for " + cfg.race.displayName());
             assertNotNull(model.skeleton(), "Skeleton must exist for " + cfg.race.displayName());
 
-            Map<String, SkeletonAnimation> anims = loader.loadRaceAnimations(cfg.race);
-
-            BufferedImage snapshot = renderCharacterSnapshot(model, anims, cfg.race.displayName());
+            BufferedImage snapshot = renderCharacterSnapshot(model);
             File outFile = OUTPUT_DIR.resolve("character_idle_" + cfg.snapshotKey + ".png").toFile();
             ImageIO.write(snapshot, "PNG", outFile);
             assertTrue(outFile.exists() && outFile.length() > 0, "Snapshot file should be written");
@@ -63,37 +60,25 @@ public class CharacterSnapshotSuiteTest {
         }
     }
 
-    private BufferedImage renderCharacterSnapshot(CompositeCharacterModel model, Map<String, SkeletonAnimation> anims, String raceName) {
+    private BufferedImage renderCharacterSnapshot(CompositeCharacterModel model) {
         int width = 480;
         int height = 540;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         float[] zBuffer = new float[width * height];
         Arrays.fill(zBuffer, Float.POSITIVE_INFINITY);
 
-        // Dark gradient background
+        // Retail-style UI dark slate gradient background
         Graphics2D g = image.createGraphics();
         for (int y = 0; y < height; y++) {
             float ratio = (float) y / height;
-            int r = (int) (18 + ratio * 8);
-            int gr = (int) (22 + ratio * 10);
-            int b = (int) (28 + ratio * 14);
+            int r = (int) (18 + ratio * 10);
+            int gr = (int) (22 + ratio * 12);
+            int b = (int) (30 + ratio * 18);
             g.setColor(new Color(r, gr, b));
             g.drawLine(0, y, width, y);
         }
         g.dispose();
 
-        // 1. Evaluate idle animation pose and compute skinning matrices
-        SkeletonAnimation idle = anims != null ? anims.get("idl0") : null;
-        if (idle == null && anims != null && !anims.isEmpty()) {
-            idle = anims.values().iterator().next();
-        }
-
-        List<Matrix4f> pose = idle != null ? model.computePoseMatrices(idle, 0.0f) : null;
-        List<Matrix4f> skinning = (pose != null && model.skeleton() != null)
-                ? model.skeleton().computeSkinningMatrices(pose)
-                : null;
-
-        // 2. Compute skinned bounding box
         float minX = 1e9f, maxX = -1e9f;
         float minY = 1e9f, maxY = -1e9f;
         float minZ = 1e9f, maxZ = -1e9f;
@@ -101,10 +86,12 @@ public class CharacterSnapshotSuiteTest {
         for (SkinnedMesh mesh : model.equipmentSlots().values()) {
             for (SkinnedSubMesh sub : mesh.subMeshes()) {
                 for (SkinnedVertex v : sub.vertices()) {
-                    float[] p = getSkinnedPos(v, skinning);
-                    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
-                    minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
-                    minZ = Math.min(minZ, p[2]); maxZ = Math.max(maxZ, p[2]);
+                    float x = v.position().x();
+                    float y = v.position().y();
+                    float z = v.position().z();
+                    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+                    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
                 }
             }
         }
@@ -114,20 +101,19 @@ public class CharacterSnapshotSuiteTest {
         float cz = (minZ + maxZ) * 0.5f;
         float charHeight = Math.max(0.5f, maxY - minY);
 
-        // 3. Perspective camera looking at character center from front-quarter view
-        // In retail FFXI model coordinates, character faces +X.
-        // Looking from front-quarter: angle around Y axis
+        // Retail FFXI front-quarter angle
         float angle = (float) Math.toRadians(25.0);
         float cosA = (float) Math.cos(angle);
         float sinA = (float) Math.sin(angle);
-
         float dist = charHeight * 1.55f;
-        float fov = (float) Math.tan(Math.toRadians(22.0)); // half-fov
+        float fov = (float) Math.tan(Math.toRadians(20.0));
 
         int[] pixels = new int[width * height];
         image.getRGB(0, 0, width, height, pixels, 0, width);
 
-        // 4. Render each submesh with authentic textures & diffuse shading
+        // Directional key light from camera upper-front-right
+        float lx = 0.40f, ly = 0.70f, lz = 0.59f;
+
         for (SkinnedMesh mesh : model.equipmentSlots().values()) {
             for (SkinnedSubMesh sub : mesh.subMeshes()) {
                 DecodedTexture tex = model.textures().get(sub.textureName());
@@ -139,18 +125,12 @@ public class CharacterSnapshotSuiteTest {
                     SkinnedVertex v1 = verts.get(indices.get(i + 1));
                     SkinnedVertex v2 = verts.get(indices.get(i + 2));
 
-                    float[] p0 = getSkinnedPos(v0, skinning);
-                    float[] p1 = getSkinnedPos(v1, skinning);
-                    float[] p2 = getSkinnedPos(v2, skinning);
-
-                    // Transform to camera coordinates
-                    float[] c0 = transformToCamera(p0[0] - cx, p0[1] - cy, p0[2] - cz, cosA, sinA, dist);
-                    float[] c1 = transformToCamera(p1[0] - cx, p1[1] - cy, p1[2] - cz, cosA, sinA, dist);
-                    float[] c2 = transformToCamera(p2[0] - cx, p2[1] - cy, p2[2] - cz, cosA, sinA, dist);
+                    float[] c0 = toCamera(v0.position().x() - cx, -(v0.position().y() - cy), v0.position().z() - cz, cosA, sinA, dist);
+                    float[] c1 = toCamera(v1.position().x() - cx, -(v1.position().y() - cy), v1.position().z() - cz, cosA, sinA, dist);
+                    float[] c2 = toCamera(v2.position().x() - cx, -(v2.position().y() - cy), v2.position().z() - cz, cosA, sinA, dist);
 
                     if (c0[2] <= 0.1f || c1[2] <= 0.1f || c2[2] <= 0.1f) continue;
 
-                    // Perspective projection
                     float sx0 = (c0[0] / (c0[2] * fov) * 0.5f + 0.5f) * width;
                     float sy0 = (0.5f - c0[1] / (c0[2] * fov) * 0.5f) * height;
 
@@ -160,11 +140,16 @@ public class CharacterSnapshotSuiteTest {
                     float sx2 = (c2[0] / (c2[2] * fov) * 0.5f + 0.5f) * width;
                     float sy2 = (0.5f - c2[1] / (c2[2] * fov) * 0.5f) * height;
 
-                    // Diffuse lighting
-                    float nx = (v0.normal().x() + v1.normal().x() + v2.normal().x()) / 3f;
-                    float ny = (v0.normal().y() + v1.normal().y() + v2.normal().y()) / 3f;
-                    float nz = (v0.normal().z() + v1.normal().z() + v2.normal().z()) / 3f;
-                    float diff = Math.max(0.35f, nx * 0.6f + ny * 0.6f + nz * 0.4f);
+                    float ax = c1[0] - c0[0], ay = c1[1] - c0[1], az = c1[2] - c0[2];
+                    float bx = c2[0] - c0[0], by = c2[1] - c0[1], bz = c2[2] - c0[2];
+                    float fnx = ay * bz - az * by;
+                    float fny = az * bx - ax * bz;
+                    float fnz = ax * by - ay * bx;
+                    float fnlen = (float) Math.sqrt(fnx * fnx + fny * fny + fnz * fnz);
+                    if (fnlen > 1e-4f) { fnx /= fnlen; fny /= fnlen; fnz /= fnlen; }
+
+                    float dot = fnx * lx + fny * ly + fnz * lz;
+                    float diff = Math.max(0.45f, Math.abs(dot) * 0.55f + 0.45f);
 
                     rasterizeTriangle(pixels, zBuffer, width, height,
                             sx0, sy0, c0[2], v0.u(), v0.v(), diff,
@@ -179,16 +164,11 @@ public class CharacterSnapshotSuiteTest {
         return image;
     }
 
-    private static float[] getSkinnedPos(SkinnedVertex v, List<Matrix4f> skinning) {
-        return new float[] { v.position().x(), v.position().y(), v.position().z() };
-    }
-
-    private static float[] transformToCamera(float x, float y, float z, float cosA, float sinA, float dist) {
-        // Character faces +X in model coordinates. Camera looks from +X, offset by angle:
-        float viewZ = dist - (cosA * x - sinA * z);
-        float viewX = sinA * x + cosA * z;
-        float viewY = y;
-        return new float[] { viewX, viewY, viewZ };
+    private static float[] toCamera(float fwd, float up, float right, float cosA, float sinA, float dist) {
+        float camZ = dist - (cosA * fwd - sinA * right);
+        float camX = sinA * fwd + cosA * right;
+        float camY = up;
+        return new float[] { camX, camY, camZ };
     }
 
     private static void rasterizeTriangle(int[] pixels, float[] zBuffer, int width, int height,
@@ -217,27 +197,27 @@ public class CharacterSnapshotSuiteTest {
                     float z = w0 * z0 + w1 * z1 + w2 * z2;
                     int idx = y * width + x;
                     if (z < zBuffer[idx]) {
-                        zBuffer[idx] = z;
-
                         float u = w0 * u0 + w1 * u1 + w2 * u2;
                         float v = w0 * v0 + w1 * v1 + w2 * v2;
-                        float light = Math.max(0f, Math.min(1.5f, w0 * l0 + w1 * l1 + w2 * l2));
+                        float diff = w0 * l0 + w1 * l1 + w2 * l2;
 
-                        int color;
                         if (texture != null && texture.rgbaPixels() != null && texture.rgbaPixels().length > 0) {
-                            color = sampleTexture(texture, u, v, light);
+                            int texColor = sampleOpaque(texture, u, v, diff);
+                            if (texColor == 0) continue; // transparent / alpha discard
+                            zBuffer[idx] = z;
+                            pixels[idx] = texColor;
                         } else {
-                            int gray = (int) (180 * Math.min(1f, light));
-                            color = (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
+                            zBuffer[idx] = z;
+                            int gray = (int) (180 * Math.min(1f, diff));
+                            pixels[idx] = (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
                         }
-                        pixels[idx] = color;
                     }
                 }
             }
         }
     }
 
-    private static int sampleTexture(DecodedTexture tex, float u, float v, float light) {
+    private static int sampleOpaque(DecodedTexture tex, float u, float v, float light) {
         int width = tex.width();
         int height = tex.height();
         float fu = u - (float) Math.floor(u);
@@ -247,16 +227,18 @@ public class CharacterSnapshotSuiteTest {
         int offset = (ty * width + tx) * 4;
 
         byte[] rgba = tex.rgbaPixels();
-        if (offset + 3 >= rgba.length) return 0xFF888888;
+        if (offset + 3 >= rgba.length) return 0;
+        int a = rgba[offset + 3] & 0xFF;
+        if (a < 32) return 0; // discard transparent fringe
+
         int r = rgba[offset] & 0xFF;
         int g = rgba[offset + 1] & 0xFF;
         int b = rgba[offset + 2] & 0xFF;
-        int a = rgba[offset + 3] & 0xFF;
 
         r = Math.min(255, (int) (r * light));
         g = Math.min(255, (int) (g * light));
         b = Math.min(255, (int) (b * light));
 
-        return (a << 24) | (r << 16) | (g << 8) | b;
+        return (0xFF << 24) | (r << 16) | (g << 8) | b;
     }
 }

@@ -906,12 +906,13 @@ public final class CharacterViewer {
         shader.setDiscardThreshold(0.0f); // Disabled for debugging
         shader.uploadJointMatrices(jointMatrices);
 
+        glDisable(GL_CULL_FACE);
         glActiveTexture(GL_TEXTURE0);
         for (CharacterMeshBuffer meshBuffer : meshBuffers) {
-            glFrontFace(meshBuffer.mirrored() ? GL_CCW : GL_CW);
             glBindTexture(GL_TEXTURE_2D, textureLoader.textureId(meshBuffer.textureName()));
             meshBuffer.draw();
         }
+        glEnable(GL_CULL_FACE);
         glFrontFace(GL_CCW);
     }
 

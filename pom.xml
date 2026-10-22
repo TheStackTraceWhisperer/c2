@@ -38,6 +38,7 @@
     <fabric8.version>6.13.4</fabric8.version>
     <lwjgl.version>3.4.2</lwjgl.version>
     <imgui.version>1.86.11</imgui.version>
+    <exec.skip>true</exec.skip>
   </properties>
 
   <dependencyManagement>
@@ -183,6 +184,11 @@
               </path>
             </annotationProcessorPaths>
           </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>3.6.3</version>
         </plugin>
       </plugins>
     </pluginManagement>

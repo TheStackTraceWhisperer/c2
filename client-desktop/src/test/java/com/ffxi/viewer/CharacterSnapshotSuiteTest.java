@@ -61,8 +61,8 @@ public class CharacterSnapshotSuiteTest {
     }
 
     private BufferedImage renderCharacterSnapshot(CompositeCharacterModel model) {
-        int width = 480;
-        int height = 540;
+        int width = 1440;
+        int height = 1620;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         float[] zBuffer = new float[width * height];
         Arrays.fill(zBuffer, Float.POSITIVE_INFINITY);

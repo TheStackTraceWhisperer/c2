@@ -1,6 +1,5 @@
 package com.example.client.desktop.renderer;
 
-import com.example.asset.environment.DiurnalLighting;
 import com.example.asset.geometry.Matrix4f;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
@@ -373,7 +372,7 @@ public class CharacterRenderer {
     public void render(short jobId, List<Matrix4f> poseMatrices,
                        float x, float y, float z, float yawDegrees,
                        float[] projectionMatrix, float[] viewMatrix,
-                       DiurnalLighting lighting, float camX, float camY, float camZ) {
+                       float camX, float camY, float camZ) {
         if (shaderProgram == 0) {
             return;
         }
@@ -388,16 +387,16 @@ public class CharacterRenderer {
             return;
         }
 
-        renderMesh(mesh, poseMatrices, x, y, z, yawDegrees, projectionMatrix, viewMatrix, lighting, camX, camY, camZ);
+        renderMesh(mesh, poseMatrices, x, y, z, yawDegrees, projectionMatrix, viewMatrix, camX, camY, camZ);
     }
 
     /**
-     * Renders an uploaded GPU character mesh given bone pose matrices, spatial coordinates, and lighting.
+     * Renders an uploaded GPU character mesh given bone pose matrices, spatial coordinates, and camera position.
      */
     public void renderMesh(GpuCharacterMesh mesh, List<Matrix4f> poseMatrices,
                            float x, float y, float z, float yawDegrees,
                            float[] projectionMatrix, float[] viewMatrix,
-                           DiurnalLighting lighting, float camX, float camY, float camZ) {
+                           float camX, float camY, float camZ) {
         if (shaderProgram == 0 || mesh == null || mesh.vaoId() == 0) {
             return;
         }
@@ -432,25 +431,12 @@ public class CharacterRenderer {
         bonesBuffer.flip();
         GL20.glUniformMatrix4fv(uBonesLoc, false, bonesBuffer);
 
-        // Atmospheric lighting
-        if (lighting != null) {
-            GL20.glUniform3f(uLightDirLoc, lighting.getSunDirection().x(), lighting.getSunDirection().y(), lighting.getSunDirection().z());
-            GL20.glUniform3f(uLightColorLoc, lighting.getSunColor()[0], lighting.getSunColor()[1], lighting.getSunColor()[2]);
-            GL20.glUniform3f(uAmbientLoc, lighting.getAmbientColor()[0], lighting.getAmbientColor()[1], lighting.getAmbientColor()[2]);
-
-            GL20.glUniform3f(uCameraPosLoc, camX, camY, camZ);
-            GL20.glUniform1f(uFogStartLoc, lighting.getFogStart());
-            GL20.glUniform1f(uFogEndLoc, lighting.getFogEnd());
-            float[] fogColor = lighting.getFogColor();
-            GL20.glUniform3f(uFogColorLoc, fogColor[0], fogColor[1], fogColor[2]);
-            GL20.glUniform1i(uFogEnabledLoc, 1);
-        } else {
-            // Default daytime illumination
-            GL20.glUniform3f(uLightDirLoc, 0.4f, 0.8f, 0.4f);
-            GL20.glUniform3f(uLightColorLoc, 0.95f, 0.95f, 0.90f);
-            GL20.glUniform3f(uAmbientLoc, 0.35f, 0.35f, 0.40f);
-            GL20.glUniform1i(uFogEnabledLoc, 0);
-        }
+        // Default neutral illumination
+        GL20.glUniform3f(uLightDirLoc, 0.4f, 0.8f, 0.4f);
+        GL20.glUniform3f(uLightColorLoc, 0.95f, 0.95f, 0.90f);
+        GL20.glUniform3f(uAmbientLoc, 0.35f, 0.35f, 0.40f);
+        GL20.glUniform3f(uCameraPosLoc, camX, camY, camZ);
+        GL20.glUniform1i(uFogEnabledLoc, 0);
 
         GL30.glBindVertexArray(mesh.vaoId());
 

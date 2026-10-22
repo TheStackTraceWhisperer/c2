@@ -352,14 +352,13 @@ public class VisualZoneRenderer {
      * Renders all visual zone batches with default daytime lighting.
      */
     public void render(float[] projectionMatrix, float[] viewMatrix, boolean wireframe) {
-        render(projectionMatrix, viewMatrix, wireframe, null, 0.0f, 0.0f, 0.0f);
+        render(projectionMatrix, viewMatrix, wireframe, 0.0f, 0.0f, 0.0f);
     }
 
     /**
-     * Renders all visual zone batches with dynamic diurnal celestial lighting and distance fog.
+     * Renders all visual zone batches.
      */
     public void render(float[] projectionMatrix, float[] viewMatrix, boolean wireframe,
-                       com.example.asset.environment.DiurnalLighting lighting,
                        float camX, float camY, float camZ) {
         if (opaqueBatches.isEmpty() && blendedBatches.isEmpty()) {
             return;
@@ -381,22 +380,12 @@ public class VisualZoneRenderer {
         };
         GL20.glUniformMatrix4fv(uModelLoc, false, identity);
 
-        if (lighting != null) {
-            GL20.glUniform3f(uLightDirLoc, lighting.getSunDirection().x(), lighting.getSunDirection().y(), lighting.getSunDirection().z());
-            GL20.glUniform3f(uLightColorLoc, lighting.getSunColor()[0], lighting.getSunColor()[1], lighting.getSunColor()[2]);
-            GL20.glUniform3f(uAmbientLoc, lighting.getAmbientColor()[0], lighting.getAmbientColor()[1], lighting.getAmbientColor()[2]);
-            GL20.glUniform3f(uCameraPosLoc, camX, camY, camZ);
-            GL20.glUniform1f(uFogStartLoc, lighting.getFogStart());
-            GL20.glUniform1f(uFogEndLoc, lighting.getFogEnd());
-            GL20.glUniform3f(uFogColorLoc, lighting.getFogColor()[0], lighting.getFogColor()[1], lighting.getFogColor()[2]);
-            GL20.glUniform1i(uFogEnabledLoc, 1);
-        } else {
-            // Default midday lighting
-            GL20.glUniform3f(uLightDirLoc, 0.4f, 1.0f, 0.5f);
-            GL20.glUniform3f(uLightColorLoc, 1.0f, 0.96f, 0.90f);
-            GL20.glUniform3f(uAmbientLoc, 0.40f, 0.40f, 0.44f);
-            GL20.glUniform1i(uFogEnabledLoc, 0);
-        }
+        // Default neutral midday lighting
+        GL20.glUniform3f(uLightDirLoc, 0.4f, 1.0f, 0.5f);
+        GL20.glUniform3f(uLightColorLoc, 1.0f, 0.96f, 0.90f);
+        GL20.glUniform3f(uAmbientLoc, 0.40f, 0.40f, 0.44f);
+        GL20.glUniform3f(uCameraPosLoc, camX, camY, camZ);
+        GL20.glUniform1i(uFogEnabledLoc, 0);
 
         GL20.glUniform1f(uAlphaThresholdLoc, 0.375f);
         GL20.glUniform1i(uTextureLoc, 0);

@@ -1,6 +1,5 @@
 package com.example.client.desktop.state;
 
-import com.example.asset.environment.DiurnalLighting;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.asset.mesh.VisualZoneLoader;
@@ -354,11 +353,6 @@ public class InGameState implements ApplicationState {
         }
 
         // 3. Render 3D OpenGL Viewport (when running with valid window handle)
-        VanadielTime vTime = manualTimeOverride
-                ? VanadielTime.ofHour(manualTimeHour)
-                : VanadielTime.now();
-        DiurnalLighting lighting = DiurnalLighting.compute(vTime, currentWeather);
-
         if (handle != 0L) {
             int[] width = new int[1];
             int[] height = new int[1];
@@ -367,8 +361,7 @@ public class InGameState implements ApplicationState {
             int fbHeight = Math.max(1, height[0]);
             GL11.glViewport(0, 0, fbWidth, fbHeight);
 
-            float[] sky = lighting.getSkyColor();
-            GL11.glClearColor(sky[0], sky[1], sky[2], 1.0f);
+            GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             float aspect = (float) fbWidth / (float) fbHeight;
@@ -381,7 +374,7 @@ public class InGameState implements ApplicationState {
 
             // Render 3D textured visual zone
             if (visualRenderer != null && showVisualZone) {
-                visualRenderer.render(proj, view, wireframe, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                visualRenderer.render(proj, view, wireframe, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
             }
 
             // Render 3D animated character models for local player and remote actors / NPCs
@@ -393,7 +386,7 @@ public class InGameState implements ApplicationState {
                     characterRenderer.render(
                             localJob, localPose.jointPoseMatrices(),
                             clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
-                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                            proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
                     );
                 }
 
@@ -409,7 +402,7 @@ public class InGameState implements ApplicationState {
                         characterRenderer.render(
                                 entity.mainJobId(), pose.jointPoseMatrices(),
                                 interp.x(), interp.y(), interp.z(), interp.yaw(),
-                                proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                                proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
                         );
                     }
                 }
@@ -441,6 +434,9 @@ public class InGameState implements ApplicationState {
 
         // 4. Render UI Panels & Clock HUD
         if (handle != 0L) {
+            VanadielTime vTime = manualTimeOverride
+                    ? VanadielTime.ofHour(manualTimeHour)
+                    : VanadielTime.now();
             renderClockBanner(vTime);
         }
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());

@@ -406,13 +406,7 @@ public class OfflineWorldState implements ApplicationState {
         int fbHeight = Math.max(1, height[0]);
         GL11.glViewport(0, 0, fbWidth, fbHeight);
 
-        VanadielTime vTime = manualTimeOverride
-                ? VanadielTime.ofHour(manualTimeHour)
-                : VanadielTime.now();
-        com.example.asset.environment.DiurnalLighting lighting = com.example.asset.environment.DiurnalLighting.compute(vTime, currentWeather);
-        float[] sky = lighting.getSkyColor();
-
-        GL11.glClearColor(sky[0], sky[1], sky[2], 1.0f);
+        GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthMask(true);
@@ -470,7 +464,7 @@ public class OfflineWorldState implements ApplicationState {
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glFrontFace(GL11.GL_CCW);
         } else if (visualRenderer != null && showVisualZone) {
-            visualRenderer.render(proj, view, wireframe, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+            visualRenderer.render(proj, view, wireframe, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
         }
 
         // Render collision overlay if enabled
@@ -511,7 +505,7 @@ public class OfflineWorldState implements ApplicationState {
                     BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
                     characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
                             playerX, playerY, playerZ, playerYaw,
-                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                            proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
                 }
             }
 
@@ -523,7 +517,7 @@ public class OfflineWorldState implements ApplicationState {
                         float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
                         characterRenderer.render(JobId.NPC, npcPose.jointPoseMatrices(),
                                 npc.position().x(), npc.position().y(), npc.position().z(), npcYaw,
-                                proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                                proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
                     }
                 }
             }

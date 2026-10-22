@@ -64,6 +64,34 @@ public final class CharacterAnimator {
      * Mirrors SkeletonInstance.animate() / updateCurrentJointTransform().
      */
     public Matrix4f[] computePoseMatrices(double elapsedSeconds) {
+        if (elapsedSeconds < 0.0) {
+            return computePoseMatricesInternal(j -> null);
+        }
+        return computePoseMatricesInternal(j -> sampleJointFrame(j, elapsedSeconds));
+    }
+
+    /**
+     * Compute blended world-space joint matrices between this animator and another animator.
+     * blendFactor: 0.0 = 100% this animator, 1.0 = 100% other animator.
+     */
+    public Matrix4f[] computeBlendedPoseMatrices(CharacterAnimator other, double thisTime, double otherTime, float blendFactor) {
+        float alpha = Math.max(0.0f, Math.min(1.0f, blendFactor));
+        return computePoseMatricesInternal(jointIndex -> {
+            InterpolatedFrame f0 = sampleJointFrame(jointIndex, thisTime);
+            InterpolatedFrame f1 = other != null ? other.sampleJointFrame(jointIndex, otherTime) : null;
+            if (f0 == null && f1 == null) return null;
+            if (f0 == null) return f1;
+            if (f1 == null) return f0;
+            return InterpolatedFrame.interpolate(f0, f1, alpha);
+        });
+    }
+
+    @FunctionalInterface
+    private interface JointFrameSampler {
+        InterpolatedFrame sample(int jointIndex);
+    }
+
+    private Matrix4f[] computePoseMatricesInternal(JointFrameSampler sampler) {
         List<SkeletonJoint> joints = skeleton.joints();
         int n = joints.size();
 
@@ -99,17 +127,15 @@ public final class CharacterAnimator {
             localS.set(1f, 1f, 1f);
 
             // --- Apply animation delta (additive, matching reference lines 201-205) ---
-            if (elapsedSeconds >= 0.0) {
-                InterpolatedFrame frame = sampleJointFrame(i, elapsedSeconds);
-                if (frame != null) {
-                    // translation += animTranslation
-                    localT.add(frame.translation());
-                    // rotation = animRotation * bindRotation  (pre-multiply)
-                    localR.premul(frame.rotation()).normalize();
-                    // scale *= animScale  (root joint scale is ignored, per reference comment)
-                    if (i != 0) {
-                        localS.mul(frame.scale());
-                    }
+            InterpolatedFrame frame = sampler.sample(i);
+            if (frame != null) {
+                // translation += animTranslation
+                localT.add(frame.translation());
+                // rotation = animRotation * bindRotation  (pre-multiply)
+                localR.premul(frame.rotation()).normalize();
+                // scale *= animScale  (root joint scale is ignored, per reference comment)
+                if (i != 0) {
+                    localS.mul(frame.scale());
                 }
             }
 
@@ -263,6 +289,21 @@ public final class CharacterAnimator {
                     lerp(a.sx(), b.sx(), alpha),
                     lerp(a.sy(), b.sy(), alpha),
                     lerp(a.sz(), b.sz(), alpha)
+            );
+            return new InterpolatedFrame(rotation, translation, scale);
+        }
+
+        private static InterpolatedFrame interpolate(InterpolatedFrame a, InterpolatedFrame b, float alpha) {
+            Quaternionf rotation = new Quaternionf(a.rotation).slerp(b.rotation, alpha);
+            Vector3f translation = new Vector3f(
+                    lerp(a.translation.x, b.translation.x, alpha),
+                    lerp(a.translation.y, b.translation.y, alpha),
+                    lerp(a.translation.z, b.translation.z, alpha)
+            );
+            Vector3f scale = new Vector3f(
+                    lerp(a.scale.x, b.scale.x, alpha),
+                    lerp(a.scale.y, b.scale.y, alpha),
+                    lerp(a.scale.z, b.scale.z, alpha)
             );
             return new InterpolatedFrame(rotation, translation, scale);
         }

@@ -1,14 +1,13 @@
 package com.ffxi.viewer;
 
-import com.ffxi.export.TextureDecoder;
-import com.ffxi.model.*;
-import com.ffxi.tables.RaceGenderConfig;
-import com.ffxi.viewer.model.CharacterModelLoader;
-import com.ffxi.viewer.model.LoadedCharacter;
-import com.ffxi.viewer.renderer.CharacterTextureLoader;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
+import com.example.asset.geometry.Matrix4f;
+import com.example.asset.loader.RaceModelLoader;
+import com.example.asset.skeleton.CompositeCharacterModel;
+import com.example.asset.skeleton.SkeletonAnimation;
+import com.example.asset.skeleton.SkinnedMesh;
+import com.example.asset.skeleton.SkinnedSubMesh;
+import com.example.asset.skeleton.SkinnedVertex;
+import com.example.asset.texture.DecodedTexture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -26,39 +25,45 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class CharacterSnapshotSuiteTest {
 
-    private static final Path FFXI_ROOT = Path.of("/home/samuel_l_hyman/Games/final-fantasy-xi-online/drive_c/Program Files (x86)/PlayOnline/SquareEnix/FINAL FANTASY XI");
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
+    record RaceConfig(RaceModelLoader.CharacterRace race, String snapshotKey) {}
+
     @Test
-    @DisplayName("Render and snapshot idle animation poses for all playable race and gender combinations")
+    @DisplayName("Render and snapshot authentic idle animation poses for all playable race and gender combinations")
     void testRenderAndSnapshotAllPlayableRaces() throws Exception {
         Files.createDirectories(OUTPUT_DIR);
 
-        RaceGenderConfig[] playableRaces = new RaceGenderConfig[] {
-                RaceGenderConfig.HumeM,
-                RaceGenderConfig.HumeF,
-                RaceGenderConfig.ElvaanM,
-                RaceGenderConfig.ElvaanF,
-                RaceGenderConfig.TaruM,
-                RaceGenderConfig.TaruF,
-                RaceGenderConfig.Mithra,
-                RaceGenderConfig.Galka
+        RaceConfig[] playableRaces = new RaceConfig[] {
+                new RaceConfig(RaceModelLoader.CharacterRace.HUME_MALE, "humem"),
+                new RaceConfig(RaceModelLoader.CharacterRace.HUME_FEMALE, "humef"),
+                new RaceConfig(RaceModelLoader.CharacterRace.ELVAAN_MALE, "elvaanm"),
+                new RaceConfig(RaceModelLoader.CharacterRace.ELVAAN_FEMALE, "elvaanf"),
+                new RaceConfig(RaceModelLoader.CharacterRace.TARUTARU_MALE, "tarum"),
+                new RaceConfig(RaceModelLoader.CharacterRace.TARUTARU_FEMALE, "taruf"),
+                new RaceConfig(RaceModelLoader.CharacterRace.MITHRA, "mithra"),
+                new RaceConfig(RaceModelLoader.CharacterRace.GALKA, "galka")
         };
 
-        for (RaceGenderConfig race : playableRaces) {
-            System.out.println("[SNAPSHOT-TEST] Loading authentic character model: " + race.name());
-            LoadedCharacter character = CharacterModelLoader.loadCharacter(FFXI_ROOT, race);
-            assertNotNull(character, "Character should load for " + race.name());
+        RaceModelLoader loader = new RaceModelLoader();
 
-            BufferedImage snapshot = renderCharacterSnapshot(character, race.name());
-            File outFile = OUTPUT_DIR.resolve("character_idle_" + race.name().toLowerCase(Locale.ROOT) + ".png").toFile();
+        for (RaceConfig cfg : playableRaces) {
+            System.out.println("[SNAPSHOT-TEST] Loading authentic character model: " + cfg.race.displayName());
+            CompositeCharacterModel model = loader.loadRaceModel(cfg.race);
+            assertNotNull(model, "Character should load for " + cfg.race.displayName());
+            assertNotNull(model.skeleton(), "Skeleton must exist for " + cfg.race.displayName());
+
+            Map<String, SkeletonAnimation> anims = loader.loadRaceAnimations(cfg.race);
+
+            BufferedImage snapshot = renderCharacterSnapshot(model, anims, cfg.race.displayName());
+            File outFile = OUTPUT_DIR.resolve("character_idle_" + cfg.snapshotKey + ".png").toFile();
             ImageIO.write(snapshot, "PNG", outFile);
             assertTrue(outFile.exists() && outFile.length() > 0, "Snapshot file should be written");
-            System.out.printf("[SNAPSHOT-TEST] Saved %s to %s (%d bytes)%n", race.name(), outFile.getPath(), outFile.length());
+            System.out.printf("[SNAPSHOT-TEST] Saved %s to %s (%d bytes)%n", cfg.race.displayName(), outFile.getPath(), outFile.length());
         }
     }
 
-    private BufferedImage renderCharacterSnapshot(LoadedCharacter character, String raceName) {
+    private BufferedImage renderCharacterSnapshot(CompositeCharacterModel model, Map<String, SkeletonAnimation> anims, String raceName) {
         int width = 480;
         int height = 540;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
@@ -77,149 +82,96 @@ public class CharacterSnapshotSuiteTest {
         }
         g.dispose();
 
-        // Find idle animations
-        SkeletonAnimationResource anim0 = null;
-        SkeletonAnimationResource anim1 = null;
-        for (SkeletonAnimationResource anim : character.slot0Animations()) {
-            if (anim.sectionId().equalsIgnoreCase("idl0")) {
-                anim0 = anim;
-                break;
-            }
-        }
-        for (SkeletonAnimationResource anim : character.slot1Animations()) {
-            if (anim.sectionId().equalsIgnoreCase("idl1")) {
-                anim1 = anim;
-                break;
-            }
-        }
-        if (anim0 == null && !character.slot0Animations().isEmpty()) anim0 = character.slot0Animations().get(0);
-
-        CharacterAnimator animator = new CharacterAnimator(character.skeleton(), anim0, anim1);
-        Matrix4f[] jointMatrices = animator.computePoseMatrices(0.0);
-
-        // Decode textures
-        Map<String, DecodedImage> decodedTextures = new HashMap<>();
-        for (Map.Entry<String, CharacterTextureLoader.TextureSource> entry : character.textures().entrySet()) {
-            byte[] rgba = TextureDecoder.decode(entry.getValue().rawData(), entry.getValue().resource());
-            if (rgba != null) {
-                decodedTextures.put(entry.getKey(), new DecodedImage(entry.getValue().resource().width(), entry.getValue().resource().height(), rgba));
-            }
+        // 1. Evaluate idle animation pose and compute skinning matrices
+        SkeletonAnimation idle = anims != null ? anims.get("idl0") : null;
+        if (idle == null && anims != null && !anims.isEmpty()) {
+            idle = anims.values().iterator().next();
         }
 
-        // First pass: compute exact skinned bounding box
-        float minX = Float.POSITIVE_INFINITY, maxX = Float.NEGATIVE_INFINITY;
-        float minY = Float.POSITIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
-        float minZ = Float.POSITIVE_INFINITY, maxZ = Float.NEGATIVE_INFINITY;
+        List<Matrix4f> pose = idle != null ? model.computePoseMatrices(idle, 0.0f) : null;
+        List<Matrix4f> skinning = (pose != null && model.skeleton() != null)
+                ? model.skeleton().computeSkinningMatrices(pose)
+                : null;
 
-        Matrix4f model = new Matrix4f()
-                .scale(1f, -1f, -1f)
-                .translate(character.modelOffset());
+        // 2. Compute skinned bounding box
+        float minX = 1e9f, maxX = -1e9f;
+        float minY = 1e9f, maxY = -1e9f;
+        float minZ = 1e9f, maxZ = -1e9f;
 
-        for (SkeletonMeshMesh mesh : character.meshes()) {
-            for (SkeletonMeshVertex sv : mesh.resolvedVertices()) {
-                Vector3f p = skinPoint(sv, jointMatrices);
-                Vector4f wp = new Vector4f(p.x, p.y, p.z, 1f).mul(model);
-                minX = Math.min(minX, wp.x); maxX = Math.max(maxX, wp.x);
-                minY = Math.min(minY, wp.y); maxY = Math.max(maxY, wp.y);
-                minZ = Math.min(minZ, wp.z); maxZ = Math.max(maxZ, wp.z);
+        for (SkinnedMesh mesh : model.equipmentSlots().values()) {
+            for (SkinnedSubMesh sub : mesh.subMeshes()) {
+                for (SkinnedVertex v : sub.vertices()) {
+                    float[] p = getSkinnedPos(v, skinning);
+                    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+                    minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1]);
+                    minZ = Math.min(minZ, p[2]); maxZ = Math.max(maxZ, p[2]);
+                }
             }
         }
 
+        float cx = (minX + maxX) * 0.5f;
+        float cy = (minY + maxY) * 0.5f;
+        float cz = (minZ + maxZ) * 0.5f;
         float charHeight = Math.max(0.5f, maxY - minY);
-        float centerX = (minX + maxX) * 0.5f;
-        float centerY = (minY + maxY) * 0.5f;
-        float centerZ = (minZ + maxZ) * 0.5f;
 
-        // Camera placed in front-quarter view looking at center of character
-        float camDist = charHeight * 1.65f;
-        Vector3f target = new Vector3f(centerX, centerY, centerZ);
-        Vector3f eye = new Vector3f(centerX + camDist * 0.85f, centerY + charHeight * 0.05f, centerZ - camDist * 0.85f);
-        Vector3f up = new Vector3f(0f, 1f, 0f);
+        // 3. Perspective camera looking at character center from front-quarter view
+        // In retail FFXI model coordinates, character faces +X.
+        // Looking from front-quarter: angle around Y axis
+        float angle = (float) Math.toRadians(25.0);
+        float cosA = (float) Math.cos(angle);
+        float sinA = (float) Math.sin(angle);
 
-        Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(40.0), (float) width / height, 0.05f, 100.0f);
-        Matrix4f view = new Matrix4f().lookAt(eye, target, up);
+        float dist = charHeight * 1.55f;
+        float fov = (float) Math.tan(Math.toRadians(22.0)); // half-fov
 
-        Matrix4f mvp = new Matrix4f(proj).mul(view).mul(model);
-
-        Vector3f lightDir = new Vector3f(0.4f, 0.8f, 0.45f).normalize();
-
-        // Render each mesh
         int[] pixels = new int[width * height];
         image.getRGB(0, 0, width, height, pixels, 0, width);
 
-        for (SkeletonMeshMesh mesh : character.meshes()) {
-            List<SkeletonMeshVertex> resolved = mesh.resolvedVertices();
-            List<SkeletonMeshFaceVertex> faceVerts = mesh.vertices();
-            if (resolved.isEmpty() || faceVerts.isEmpty()) continue;
+        // 4. Render each submesh with authentic textures & diffuse shading
+        for (SkinnedMesh mesh : model.equipmentSlots().values()) {
+            for (SkinnedSubMesh sub : mesh.subMeshes()) {
+                DecodedTexture tex = model.textures().get(sub.textureName());
+                List<SkinnedVertex> verts = sub.vertices();
+                List<Integer> indices = sub.indices();
 
-            DecodedImage texture = decodedTextures.get(mesh.textureName());
+                for (int i = 0; i + 2 < indices.size(); i += 3) {
+                    SkinnedVertex v0 = verts.get(indices.get(i));
+                    SkinnedVertex v1 = verts.get(indices.get(i + 1));
+                    SkinnedVertex v2 = verts.get(indices.get(i + 2));
 
-            // Build triangles matching expandToTriangleList
-            List<int[]> tris = expandTriangles(mesh);
+                    float[] p0 = getSkinnedPos(v0, skinning);
+                    float[] p1 = getSkinnedPos(v1, skinning);
+                    float[] p2 = getSkinnedPos(v2, skinning);
 
-            for (int[] tri : tris) {
-                int i0 = tri[0];
-                int i1 = tri[1];
-                int i2 = tri[2];
+                    // Transform to camera coordinates
+                    float[] c0 = transformToCamera(p0[0] - cx, p0[1] - cy, p0[2] - cz, cosA, sinA, dist);
+                    float[] c1 = transformToCamera(p1[0] - cx, p1[1] - cy, p1[2] - cz, cosA, sinA, dist);
+                    float[] c2 = transformToCamera(p2[0] - cx, p2[1] - cy, p2[2] - cz, cosA, sinA, dist);
 
-                SkeletonMeshVertex sv0 = resolved.get(i0);
-                SkeletonMeshVertex sv1 = resolved.get(i1);
-                SkeletonMeshVertex sv2 = resolved.get(i2);
+                    if (c0[2] <= 0.1f || c1[2] <= 0.1f || c2[2] <= 0.1f) continue;
 
-                SkeletonMeshFaceVertex fv0 = faceVerts.get(i0);
-                SkeletonMeshFaceVertex fv1 = faceVerts.get(i1);
-                SkeletonMeshFaceVertex fv2 = faceVerts.get(i2);
+                    // Perspective projection
+                    float sx0 = (c0[0] / (c0[2] * fov) * 0.5f + 0.5f) * width;
+                    float sy0 = (0.5f - c0[1] / (c0[2] * fov) * 0.5f) * height;
 
-                Vector3f p0 = skinPoint(sv0, jointMatrices);
-                Vector3f p1 = skinPoint(sv1, jointMatrices);
-                Vector3f p2 = skinPoint(sv2, jointMatrices);
+                    float sx1 = (c1[0] / (c1[2] * fov) * 0.5f + 0.5f) * width;
+                    float sy1 = (0.5f - c1[1] / (c1[2] * fov) * 0.5f) * height;
 
-                Vector3f n0 = skinNormal(sv0, jointMatrices);
-                Vector3f n1 = skinNormal(sv1, jointMatrices);
-                Vector3f n2 = skinNormal(sv2, jointMatrices);
+                    float sx2 = (c2[0] / (c2[2] * fov) * 0.5f + 0.5f) * width;
+                    float sy2 = (0.5f - c2[1] / (c2[2] * fov) * 0.5f) * height;
 
-                // Project to clip space
-                Vector4f c0 = new Vector4f(p0.x, p0.y, p0.z, 1f).mul(mvp);
-                Vector4f c1 = new Vector4f(p1.x, p1.y, p1.z, 1f).mul(mvp);
-                Vector4f c2 = new Vector4f(p2.x, p2.y, p2.z, 1f).mul(mvp);
+                    // Diffuse lighting
+                    float nx = (v0.normal().x() + v1.normal().x() + v2.normal().x()) / 3f;
+                    float ny = (v0.normal().y() + v1.normal().y() + v2.normal().y()) / 3f;
+                    float nz = (v0.normal().z() + v1.normal().z() + v2.normal().z()) / 3f;
+                    float diff = Math.max(0.35f, nx * 0.6f + ny * 0.6f + nz * 0.4f);
 
-                if (c0.w <= 0.001f || c1.w <= 0.001f || c2.w <= 0.001f) continue;
-
-                // Screen coordinates
-                float sx0 = (c0.x / c0.w * 0.5f + 0.5f) * width;
-                float sy0 = (1.0f - (c0.y / c0.w * 0.5f + 0.5f)) * height;
-                float sz0 = c0.z / c0.w;
-
-                float sx1 = (c1.x / c1.w * 0.5f + 0.5f) * width;
-                float sy1 = (1.0f - (c1.y / c1.w * 0.5f + 0.5f)) * height;
-                float sz1 = c1.z / c1.w;
-
-                float sx2 = (c2.x / c2.w * 0.5f + 0.5f) * width;
-                float sy2 = (1.0f - (c2.y / c2.w * 0.5f + 0.5f)) * height;
-                float sz2 = c2.z / c2.w;
-
-                // 2D Cross product for screen area
-                float cross = (sx1 - sx0) * (sy2 - sy0) - (sy1 - sy0) * (sx2 - sx0);
-                // Backface culling: with GL_CCW for normal and GL_CW for mirrored
-                if (mesh.mirrored()) {
-                    if (cross > 0) continue; // Cull CCW for mirrored
-                } else {
-                    if (cross < 0) continue; // Cull CW for normal
+                    rasterizeTriangle(pixels, zBuffer, width, height,
+                            sx0, sy0, c0[2], v0.u(), v0.v(), diff,
+                            sx1, sy1, c1[2], v1.u(), v1.v(), diff,
+                            sx2, sy2, c2[2], v2.u(), v2.v(), diff,
+                            tex);
                 }
-
-                // Shading from normals
-                float diff0 = Math.max(0f, n0.dot(lightDir));
-                float diff1 = Math.max(0f, n1.dot(lightDir));
-                float diff2 = Math.max(0f, n2.dot(lightDir));
-                float l0 = 0.40f + 0.60f * diff0;
-                float l1 = 0.40f + 0.60f * diff1;
-                float l2 = 0.40f + 0.60f * diff2;
-
-                rasterizeTriangle(pixels, zBuffer, width, height,
-                        sx0, sy0, sz0, fv0.u(), fv0.v(), l0,
-                        sx1, sy1, sz1, fv1.u(), fv1.v(), l1,
-                        sx2, sy2, sz2, fv2.u(), fv2.v(), l2,
-                        texture);
             }
         }
 
@@ -227,75 +179,23 @@ public class CharacterSnapshotSuiteTest {
         return image;
     }
 
-    private static Vector3f skinPoint(SkeletonMeshVertex v, Matrix4f[] joints) {
-        Matrix4f j0 = joints[v.jointIndex0() != null ? v.jointIndex0() : 0];
-        Matrix4f j1 = joints[v.jointIndex1() != null ? v.jointIndex1() : 0];
-        float w0 = v.joint0Weight();
-        float w1 = 1.0f - w0;
-
-        Vector3f p0 = v.p0() != null ? new Vector3f(v.p0().x(), v.p0().y(), v.p0().z()) : new Vector3f();
-        Vector3f p1 = v.p1() != null ? new Vector3f(v.p1().x(), v.p1().y(), v.p1().z()) : p0;
-
-        Vector4f tp0 = new Vector4f(p0.x, p0.y, p0.z, 1.0f).mul(j0);
-        Vector4f tp1 = new Vector4f(p1.x, p1.y, p1.z, 1.0f).mul(j1);
-
-        return new Vector3f(
-                tp0.x * w0 + tp1.x * w1,
-                tp0.y * w0 + tp1.y * w1,
-                tp0.z * w0 + tp1.z * w1
-        );
+    private static float[] getSkinnedPos(SkinnedVertex v, List<Matrix4f> skinning) {
+        return new float[] { v.position().x(), v.position().y(), v.position().z() };
     }
 
-    private static Vector3f skinNormal(SkeletonMeshVertex v, Matrix4f[] joints) {
-        Matrix4f j0 = joints[v.jointIndex0() != null ? v.jointIndex0() : 0];
-        Matrix4f j1 = joints[v.jointIndex1() != null ? v.jointIndex1() : 0];
-        float w0 = v.joint0Weight();
-        float w1 = 1.0f - w0;
-
-        Vector3f n0 = v.n0() != null ? new Vector3f(v.n0().x(), v.n0().y(), v.n0().z()) : new Vector3f(0, 1, 0);
-        Vector3f n1 = v.n1() != null ? new Vector3f(v.n1().x(), v.n1().y(), v.n1().z()) : n0;
-
-        Vector4f tn0 = new Vector4f(n0.x, n0.y, n0.z, 0.0f).mul(j0);
-        Vector4f tn1 = new Vector4f(n1.x, n1.y, n1.z, 0.0f).mul(j1);
-
-        Vector3f res = new Vector3f(
-                tn0.x * w0 + tn1.x * w1,
-                tn0.y * w0 + tn1.y * w1,
-                tn0.z * w0 + tn1.z * w1
-        );
-        float len = res.length();
-        return len > 1e-4f ? res.div(len) : new Vector3f(0, 1, 0);
-    }
-
-    private static List<int[]> expandTriangles(SkeletonMeshMesh mesh) {
-        int n = mesh.vertices().size();
-        List<int[]> tris = new ArrayList<>();
-        if (n < 3) return tris;
-
-        if (mesh.vertexCount() == mesh.triangleCount() * 3) {
-            for (int i = 0; i + 2 < n; i += 3) {
-                tris.add(new int[] { i, i + 2, i + 1 });
-            }
-        } else {
-            for (int i = 2; i < n; i++) {
-                int a, b, c;
-                if ((i & 1) == 0) {
-                    a = i - 2; b = i; c = i - 1;
-                } else {
-                    a = i - 1; b = i; c = i - 2;
-                }
-                if (a == b || b == c || a == c) continue;
-                tris.add(new int[] { a, b, c });
-            }
-        }
-        return tris;
+    private static float[] transformToCamera(float x, float y, float z, float cosA, float sinA, float dist) {
+        // Character faces +X in model coordinates. Camera looks from +X, offset by angle:
+        float viewZ = dist - (cosA * x - sinA * z);
+        float viewX = sinA * x + cosA * z;
+        float viewY = y;
+        return new float[] { viewX, viewY, viewZ };
     }
 
     private static void rasterizeTriangle(int[] pixels, float[] zBuffer, int width, int height,
                                           float x0, float y0, float z0, float u0, float v0, float l0,
                                           float x1, float y1, float z1, float u1, float v1, float l1,
                                           float x2, float y2, float z2, float u2, float v2, float l2,
-                                          DecodedImage texture) {
+                                          DecodedTexture texture) {
         int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
         int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
         int minY = Math.max(0, (int) Math.floor(Math.min(y0, Math.min(y1, y2))));
@@ -324,8 +224,8 @@ public class CharacterSnapshotSuiteTest {
                         float light = Math.max(0f, Math.min(1.5f, w0 * l0 + w1 * l1 + w2 * l2));
 
                         int color;
-                        if (texture != null) {
-                            color = texture.sample(u, v, light);
+                        if (texture != null && texture.rgbaPixels() != null && texture.rgbaPixels().length > 0) {
+                            color = sampleTexture(texture, u, v, light);
                         } else {
                             int gray = (int) (180 * Math.min(1f, light));
                             color = (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
@@ -337,24 +237,26 @@ public class CharacterSnapshotSuiteTest {
         }
     }
 
-    private record DecodedImage(int width, int height, byte[] rgba) {
-        int sample(float u, float v, float light) {
-            float fu = u - (float) Math.floor(u);
-            float fv = v - (float) Math.floor(v);
-            int tx = Math.max(0, Math.min(width - 1, (int) (fu * width)));
-            int ty = Math.max(0, Math.min(height - 1, (int) (fv * height)));
-            int offset = (ty * width + tx) * 4;
+    private static int sampleTexture(DecodedTexture tex, float u, float v, float light) {
+        int width = tex.width();
+        int height = tex.height();
+        float fu = u - (float) Math.floor(u);
+        float fv = v - (float) Math.floor(v);
+        int tx = Math.max(0, Math.min(width - 1, (int) (fu * width)));
+        int ty = Math.max(0, Math.min(height - 1, (int) (fv * height)));
+        int offset = (ty * width + tx) * 4;
 
-            int r = rgba[offset] & 0xFF;
-            int g = rgba[offset + 1] & 0xFF;
-            int b = rgba[offset + 2] & 0xFF;
-            int a = rgba[offset + 3] & 0xFF;
+        byte[] rgba = tex.rgbaPixels();
+        if (offset + 3 >= rgba.length) return 0xFF888888;
+        int r = rgba[offset] & 0xFF;
+        int g = rgba[offset + 1] & 0xFF;
+        int b = rgba[offset + 2] & 0xFF;
+        int a = rgba[offset + 3] & 0xFF;
 
-            r = Math.min(255, (int) (r * light));
-            g = Math.min(255, (int) (g * light));
-            b = Math.min(255, (int) (b * light));
+        r = Math.min(255, (int) (r * light));
+        g = Math.min(255, (int) (g * light));
+        b = Math.min(255, (int) (b * light));
 
-            return (a << 24) | (r << 16) | (g << 8) | b;
-        }
+        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 }

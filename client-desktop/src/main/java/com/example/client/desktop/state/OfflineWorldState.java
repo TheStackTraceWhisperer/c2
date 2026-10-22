@@ -39,10 +39,27 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+
+import com.ffxi.model.SkeletonAnimationResource;
+import com.ffxi.model.SkeletonMeshMesh;
+import com.ffxi.tables.RaceGenderConfig;
+import com.ffxi.viewer.CharacterAnimator;
+import com.ffxi.viewer.model.CharacterModelLoader;
+import com.ffxi.viewer.model.LoadedCharacter;
+import com.ffxi.viewer.model.LoadedZone;
+import com.ffxi.viewer.model.ZoneModelLoader;
+import com.ffxi.viewer.renderer.CharacterMeshBuffer;
+import com.ffxi.viewer.renderer.CharacterShader;
+import com.ffxi.viewer.renderer.CharacterTextureLoader;
+import com.ffxi.viewer.renderer.ZoneMeshBuffer;
+import com.ffxi.viewer.renderer.ZoneShader;
+import com.ffxi.viewer.renderer.ZoneTextureLoader;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +80,30 @@ public class OfflineWorldState implements ApplicationState {
     private final PolarCamera camera;
     private final ApplicationStateService stateService;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
+
+    // Authentic FFXI Zone rendering
+    private LoadedZone loadedZone;
+    private ZoneShader zoneShader;
+    private ZoneTextureLoader zoneTextureLoader;
+    private final List<ZoneRenderChunk> zoneRenderChunks = new ArrayList<>();
+
+    // Authentic FFXI Character rendering
+    private LoadedCharacter playerCharacter;
+    private CharacterShader authenticCharShader;
+    private CharacterTextureLoader playerTextureLoader;
+    private final List<CharacterMeshBuffer> playerMeshBuffers = new ArrayList<>();
+    private CharacterAnimator playerAnimator;
+    private SkeletonAnimationResource animIdle;
+    private SkeletonAnimationResource animRun;
+    private double playerAnimTime = 0.0;
+    private boolean isMoving = false;
+
+    public record ZoneRenderChunk(
+            ZoneMeshBuffer buffer,
+            org.joml.Matrix4f modelMatrix,
+            boolean invertCull,
+            float discardThreshold
+    ) {}
 
     private CollisionMap collisionMap;
     private CollisionMeshRenderer collisionRenderer;
@@ -127,10 +168,71 @@ public class OfflineWorldState implements ApplicationState {
             log.error("Failed to initialize OpenGL renderers", e);
         }
 
-        loadZone(230); // South San d'Oria
+        // 1. Try loading authentic FFXI zone and character models from retail install
+        Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
+        if (Files.isDirectory(ffxiRoot)) {
+            try {
+                log.info("Loading authentic FFXI zone 230 from retail directory: {}", ffxiRoot);
+                this.loadedZone = ZoneModelLoader.loadZone(ffxiRoot, 230);
+                this.zoneShader = new ZoneShader();
+                this.zoneTextureLoader = new ZoneTextureLoader(loadedZone.textureSources());
+                for (LoadedZone.ZoneChunkInstance chunkInstance : loadedZone.chunkInstances()) {
+                    zoneRenderChunks.add(new ZoneRenderChunk(
+                            new ZoneMeshBuffer(chunkInstance.chunk()),
+                            new org.joml.Matrix4f(chunkInstance.modelMatrix()),
+                            chunkInstance.invertCull(),
+                            chunkInstance.discardThreshold()
+                    ));
+                }
+                log.info("Loaded authentic zone 230: {} chunk instances, {} textures",
+                        zoneRenderChunks.size(), loadedZone.textureSources().size());
+            } catch (Exception e) {
+                log.warn("Could not load authentic ZoneModelLoader zone, falling back: {}", e.getMessage());
+            }
+
+            try {
+                log.info("Loading authentic Hume Male character from retail directory: {}", ffxiRoot);
+                this.playerCharacter = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.HumeM);
+                this.authenticCharShader = new CharacterShader();
+                this.playerTextureLoader = new CharacterTextureLoader(playerCharacter.textures());
+                for (SkeletonMeshMesh mesh : playerCharacter.meshes()) {
+                    playerMeshBuffers.add(new CharacterMeshBuffer(mesh));
+                }
+
+                for (SkeletonAnimationResource anim : playerCharacter.slot0Animations()) {
+                    String id = anim.sectionId().trim().toLowerCase();
+                    if (id.startsWith("idl") || id.startsWith("idle")) {
+                        if (animIdle == null) animIdle = anim;
+                    } else if (id.startsWith("run")) {
+                        if (animRun == null) animRun = anim;
+                    }
+                }
+                if (animIdle == null && !playerCharacter.slot0Animations().isEmpty()) {
+                    animIdle = playerCharacter.slot0Animations().get(0);
+                }
+                if (animRun == null) {
+                    animRun = animIdle;
+                }
+                this.playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle, null);
+                log.info("Loaded authentic Hume Male character: {} meshes, {} textures, animIdle={}, animRun={}",
+                        playerMeshBuffers.size(), playerCharacter.textures().size(),
+                        animIdle != null ? animIdle.sectionId() : "none",
+                        animRun != null ? animRun.sectionId() : "none");
+            } catch (Exception e) {
+                log.warn("Could not load authentic CharacterModelLoader character, falling back: {}", e.getMessage());
+            }
+        }
+
+        loadZone(230); // South San d'Oria (collision & standalone fallback)
 
         // Position player at ground level
-        if (collisionMap != null) {
+        if (loadedZone != null && loadedZone.collisionSystem() != null) {
+            float floorY = loadedZone.collisionSystem().findFloorY(playerX, playerZ, 2000.0f);
+            if (Float.isFinite(floorY)) {
+                playerY = floorY;
+                lastFloorY = playerY;
+            }
+        } else if (collisionMap != null) {
             Optional<RayHit> hit = collisionMap.raycastFloor(new Vector3f(playerX, 15.0f, playerZ), 2.0f, 50.0f, true);
             if (hit.isPresent()) {
                 playerY = hit.get().point().y();
@@ -150,7 +252,7 @@ public class OfflineWorldState implements ApplicationState {
         }
         try {
             // 1. Collision Mesh
-            DatByteReader reader = new DatByteReader(bytes);
+            DatByteReader reader = new DatByteReader(bytes.clone());
             Optional<CollisionMap> mapOpt = ZoneDefParser.parseFromDat(reader);
             if (mapOpt.isPresent()) {
                 this.collisionMap = mapOpt.get();
@@ -161,7 +263,7 @@ public class OfflineWorldState implements ApplicationState {
             }
 
             // 2. Visual Textured Zone Scene
-            this.visualScene = VisualZoneLoader.load(bytes);
+            this.visualScene = VisualZoneLoader.load(bytes.clone());
             visualRenderer.upload(this.visualScene);
             log.info("Loaded zone {} visual meshes: {} meshes, {} textures, {} visual triangles",
                     zoneId, visualScene.totalMeshCount(), visualScene.textures().size(), visualScene.totalTriangleCount());
@@ -251,6 +353,7 @@ public class OfflineWorldState implements ApplicationState {
 
         // 1. Process Input & Camera
         camera.update(handle, dt);
+        playerAnimTime += dt;
 
         handleMovement(handle, dt);
         camera.setTarget(playerX, playerY + 1.0f, playerZ);
@@ -284,8 +387,46 @@ public class OfflineWorldState implements ApplicationState {
                 0f, 1f, 0f
         );
 
-        // Render visual zone if enabled
-        if (visualRenderer != null && showVisualZone) {
+        // Render visual zone: prefer authentic ZoneShader pipeline from reference tools
+        if (zoneShader != null && !zoneRenderChunks.isEmpty() && showVisualZone) {
+            org.joml.Matrix4f pMat = new org.joml.Matrix4f().set(proj);
+            org.joml.Matrix4f vMat = new org.joml.Matrix4f().set(view);
+            zoneShader.bind();
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+
+            for (int pass = 0; pass < 2; pass++) {
+                boolean blendedPass = (pass == 1);
+                GL11.glDepthMask(!blendedPass);
+                if (blendedPass) {
+                    GL11.glEnable(GL11.GL_BLEND);
+                    GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                } else {
+                    GL11.glDisable(GL11.GL_BLEND);
+                }
+                for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                    if (chunk.buffer().renderBlend() != blendedPass) {
+                        continue;
+                    }
+                    zoneShader.setDiscardThreshold(chunk.discardThreshold());
+                    zoneShader.setMatrices(pMat, vMat, chunk.modelMatrix());
+
+                    if (chunk.invertCull()) {
+                        GL11.glDisable(GL11.GL_CULL_FACE);
+                    } else {
+                        GL11.glEnable(GL11.GL_CULL_FACE);
+                        boolean inverted = chunk.modelMatrix().determinant() < 0.0f;
+                        GL11.glFrontFace(inverted ? GL11.GL_CW : GL11.GL_CCW);
+                    }
+
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(chunk.buffer().textureName()));
+                    chunk.buffer().draw();
+                }
+            }
+            GL11.glDisable(GL11.GL_BLEND);
+            GL11.glDepthMask(true);
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glFrontFace(GL11.GL_CCW);
+        } else if (visualRenderer != null && showVisualZone) {
             visualRenderer.render(proj, view, wireframe, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
         }
 
@@ -295,16 +436,41 @@ public class OfflineWorldState implements ApplicationState {
         }
 
         // Render 3D animated character models for player and town NPCs
-        if (characterRenderer != null && showCharacterModels) {
-            CompositeCharacterModel playerModel = characterRenderer.getOrCreateModel(JobId.WARRIOR);
-            if (playerModel != null) {
-                BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
-                characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
-                        playerX, playerY, playerZ, camera.getYaw(),
-                        proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+        if (showCharacterModels) {
+            if (playerCharacter != null && authenticCharShader != null && !playerMeshBuffers.isEmpty()) {
+                org.joml.Matrix4f pMat = new org.joml.Matrix4f().set(proj);
+                org.joml.Matrix4f vMat = new org.joml.Matrix4f().set(view);
+
+                org.joml.Matrix4f[] jointMatrices = playerAnimator.computePoseMatrices(playerAnimTime);
+                authenticCharShader.bind();
+                org.joml.Matrix4f charModelMat = new org.joml.Matrix4f()
+                        .translate(playerX, playerY, playerZ)
+                        .rotateY((float) Math.toRadians(camera.getYaw()))
+                        .scale(1f, -1f, -1f)
+                        .translate(playerCharacter.modelOffset());
+
+                authenticCharShader.setMatrices(pMat, vMat, charModelMat);
+                authenticCharShader.setDiscardThreshold(0.0f);
+                authenticCharShader.uploadJointMatrices(jointMatrices);
+
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                for (CharacterMeshBuffer meshBuffer : playerMeshBuffers) {
+                    GL11.glFrontFace(meshBuffer.mirrored() ? GL11.GL_CCW : GL11.GL_CW);
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, playerTextureLoader.textureId(meshBuffer.textureName()));
+                    meshBuffer.draw();
+                }
+                GL11.glFrontFace(GL11.GL_CCW);
+            } else if (characterRenderer != null) {
+                CompositeCharacterModel playerModel = characterRenderer.getOrCreateModel(JobId.WARRIOR);
+                if (playerModel != null) {
+                    BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
+                    characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
+                            playerX, playerY, playerZ, camera.getYaw(),
+                            proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                }
             }
 
-            if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty()) {
+            if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty() && characterRenderer != null) {
                 CompositeCharacterModel npcModel = characterRenderer.getOrCreateModel(JobId.NPC);
                 if (npcModel != null) {
                     BlendedPose npcPose = npcAnimation.evaluate(npcModel.skeleton());
@@ -389,6 +555,13 @@ public class OfflineWorldState implements ApplicationState {
         npcAnimation.update(dt, 0, 0.0f);
 
         if (len > 1e-4f) {
+            if (!isMoving) {
+                isMoving = true;
+                if (playerCharacter != null && animRun != null) {
+                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animRun, null);
+                }
+            }
+
             moveX = (moveX / len) * moveSpeed * dt;
             moveZ = (moveZ / len) * moveSpeed * dt;
 
@@ -396,7 +569,23 @@ public class OfflineWorldState implements ApplicationState {
             float candidateZ = playerZ + moveZ;
 
             // Test terrain collision & step height
-            if (collisionMap != null) {
+            if (loadedZone != null && loadedZone.collisionSystem() != null) {
+                float floorY = loadedZone.collisionSystem().findFloorY(candidateX, candidateZ, playerY + 5.0f);
+                if (Float.isFinite(floorY)) {
+                    float stepDiff = floorY - playerY;
+                    if (stepDiff <= 1.2f) {
+                        playerX = candidateX;
+                        playerZ = candidateZ;
+                        lastFloorY = floorY;
+                        if (onGround) {
+                            playerY = floorY;
+                        }
+                    }
+                } else {
+                    playerX = candidateX;
+                    playerZ = candidateZ;
+                }
+            } else if (collisionMap != null) {
                 Optional<RayHit> floorHit = collisionMap.raycastFloor(
                         new Vector3f(candidateX, playerY + 2.0f, candidateZ),
                         2.0f,
@@ -426,6 +615,13 @@ public class OfflineWorldState implements ApplicationState {
                 playerX = candidateX;
                 playerZ = candidateZ;
             }
+        } else {
+            if (isMoving) {
+                isMoving = false;
+                if (playerCharacter != null && animIdle != null) {
+                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle, null);
+                }
+            }
         }
 
         // Jump
@@ -446,7 +642,13 @@ public class OfflineWorldState implements ApplicationState {
             }
         } else {
             // Ground clamp check when stationary
-            if (collisionMap != null) {
+            if (loadedZone != null && loadedZone.collisionSystem() != null) {
+                float floorY = loadedZone.collisionSystem().findFloorY(playerX, playerZ, playerY + 3.0f);
+                if (Float.isFinite(floorY)) {
+                    lastFloorY = floorY;
+                    playerY = floorY;
+                }
+            } else if (collisionMap != null) {
                 Optional<RayHit> floorHit = collisionMap.raycastFloor(
                         new Vector3f(playerX, playerY + 2.0f, playerZ),
                         2.0f,
@@ -587,6 +789,32 @@ public class OfflineWorldState implements ApplicationState {
     @Override
     public void onExit() {
         log.info("Exiting OfflineWorldState — cleaning up 3D renderers");
+        if (zoneShader != null) {
+            try { zoneShader.close(); } catch (Exception ignored) {}
+            zoneShader = null;
+        }
+        if (zoneTextureLoader != null) {
+            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
+            zoneTextureLoader = null;
+        }
+        for (ZoneRenderChunk chunk : zoneRenderChunks) {
+            try { chunk.buffer().close(); } catch (Exception ignored) {}
+        }
+        zoneRenderChunks.clear();
+
+        if (authenticCharShader != null) {
+            try { authenticCharShader.close(); } catch (Exception ignored) {}
+            authenticCharShader = null;
+        }
+        if (playerTextureLoader != null) {
+            try { playerTextureLoader.close(); } catch (Exception ignored) {}
+            playerTextureLoader = null;
+        }
+        for (CharacterMeshBuffer buf : playerMeshBuffers) {
+            try { buf.close(); } catch (Exception ignored) {}
+        }
+        playerMeshBuffers.clear();
+
         if (collisionRenderer != null) {
             collisionRenderer.cleanup();
             collisionRenderer = null;

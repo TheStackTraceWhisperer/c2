@@ -109,21 +109,15 @@ public class PolarCamera implements Camera {
             return;
         }
 
-        // 1. Keyboard rotation (Left/Right Arrow, Q/E, Up/Down Arrow, PageUp/PageDown, Home)
+        // 1. Keyboard rotation (Q/E for yaw, PageUp/PageDown for zoom, Home to reset)
         float dYaw = 0.0f;
         float dPitch = 0.0f;
 
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_LEFT) || isKeyDown(windowHandle, GLFW.GLFW_KEY_Q)) {
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_Q)) {
             dYaw -= KEYBOARD_TURN_SPEED * dt;
         }
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_RIGHT) || isKeyDown(windowHandle, GLFW.GLFW_KEY_E)) {
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_E)) {
             dYaw += KEYBOARD_TURN_SPEED * dt;
-        }
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_UP)) {
-            dPitch += KEYBOARD_PITCH_SPEED * dt;
-        }
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_DOWN)) {
-            dPitch -= KEYBOARD_PITCH_SPEED * dt;
         }
         if (isKeyDown(windowHandle, GLFW.GLFW_KEY_PAGE_UP)) {
             zoom(-ZOOM_SPEED * dt);

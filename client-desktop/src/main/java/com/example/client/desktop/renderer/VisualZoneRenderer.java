@@ -79,7 +79,7 @@ public class VisualZoneRenderer {
                 vec4 texColor = (uHasTexture == 1) ? texture(uTexture, vTexCoord) : vec4(0.8, 0.8, 0.8, 1.0);
 
                 // Alpha discard test for foliage, fences, cutouts
-                if (texColor.a < uAlphaThreshold) {
+                if (uAlphaThreshold > 0.0 && texColor.a < uAlphaThreshold) {
                     discard;
                 }
 
@@ -101,7 +101,7 @@ public class VisualZoneRenderer {
             }
             """;
 
-    private record BatchKey(String textureName, boolean blendEnabled, boolean backFaceCulling) {}
+    private record BatchKey(String textureName, boolean blendEnabled, boolean backFaceCulling, boolean cutout) {}
 
     private static class SubMeshBatch {
         final BatchKey key;
@@ -194,9 +194,10 @@ public class VisualZoneRenderer {
                 float[] model = obj.toModelMatrix();
                 boolean mirrored = obj.isMirrored();
 
+                boolean cutout = obj.meshName().startsWith("_");
                 for (VisualSubMesh subMesh : mesh.subMeshes()) {
                     String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
-                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling());
+                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling(), cutout);
                     SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
 
                     int baseVertex = batch.vertices.size();
@@ -242,9 +243,10 @@ public class VisualZoneRenderer {
         } else {
             // Standalone meshes fallback (no zone definition)
             for (VisualZoneMesh mesh : scene.meshes()) {
+                boolean cutout = mesh.name().startsWith("_");
                 for (VisualSubMesh subMesh : mesh.subMeshes()) {
                     String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
-                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling());
+                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling(), cutout);
                     SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
 
                     int baseVertex = batch.vertices.size();
@@ -430,6 +432,9 @@ public class VisualZoneRenderer {
     }
 
     private void renderBatch(SubMeshBatch batch) {
+        float threshold = batch.key.cutout() ? 0.375f : 0.0f;
+        GL20.glUniform1f(uAlphaThresholdLoc, threshold);
+
         if (batch.key.backFaceCulling()) {
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glCullFace(GL11.GL_BACK);

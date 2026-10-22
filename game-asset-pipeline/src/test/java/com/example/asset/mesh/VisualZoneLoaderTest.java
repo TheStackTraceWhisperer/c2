@@ -23,12 +23,23 @@ class VisualZoneLoaderTest {
         assertFalse(scene.textures().isEmpty(), "Expected textures to be parsed");
         assertFalse(scene.meshes().isEmpty(), "Expected meshes to be parsed");
 
-        System.out.printf("VisualZoneScene loaded: %d textures, %d meshes, %d submeshes, %d vertices, %d triangles%n",
+        System.out.printf("VisualZoneScene loaded: %d textures, %d meshes, %d submeshes, %d vertices, %d triangles, %d zoneObjects%n",
                 scene.textures().size(),
                 scene.totalMeshCount(),
                 scene.totalSubMeshCount(),
                 scene.totalVertexCount(),
-                scene.totalTriangleCount());
+                scene.totalTriangleCount(),
+                scene.zoneObjects().size());
+        int matchedCount = 0;
+        int unmatchedCount = 0;
+        for (com.example.asset.mesh.ZoneObject obj : scene.zoneObjects()) {
+            if (scene.getMesh(obj.meshName()).isPresent()) {
+                matchedCount++;
+            } else {
+                unmatchedCount++;
+            }
+        }
+        System.out.printf("ZoneObject matching: %d matched, %d unmatched%n", matchedCount, unmatchedCount);
 
         assertTrue(scene.textures().size() >= 40);
         assertTrue(scene.totalMeshCount() >= 200);

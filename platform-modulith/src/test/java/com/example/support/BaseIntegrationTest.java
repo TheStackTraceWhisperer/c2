@@ -16,11 +16,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInstance;
 
+import org.junit.jupiter.api.extension.ExtendWith;
+
 import java.time.Instant;
 import java.util.Map;
 
 import static java.util.Map.entry;
 
+@ExtendWith(DatabaseAvailableCondition.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @MicronautTest(environments = "test-driver")
 public abstract class BaseIntegrationTest implements TestPropertyProvider {

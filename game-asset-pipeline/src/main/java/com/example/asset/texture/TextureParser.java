@@ -139,11 +139,18 @@ public final class TextureParser {
         int[] paletteB = new int[256];
         int[] paletteA = new int[256];
 
+        boolean anyNonZeroAlpha = false;
         for (int i = 0; i < 256; i++) {
             paletteB[i] = data[i * 4] & 0xFF;
             paletteG[i] = data[i * 4 + 1] & 0xFF;
             paletteR[i] = data[i * 4 + 2] & 0xFF;
             paletteA[i] = data[i * 4 + 3] & 0xFF;
+            if (paletteA[i] > 0) {
+                anyNonZeroAlpha = true;
+            }
+        }
+        if (!anyNonZeroAlpha) {
+            java.util.Arrays.fill(paletteA, 255);
         }
 
         int pixelOffset = 1024;

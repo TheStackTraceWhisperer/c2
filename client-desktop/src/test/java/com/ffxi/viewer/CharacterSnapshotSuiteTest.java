@@ -108,6 +108,9 @@ public class CharacterSnapshotSuiteTest {
         float dist = charHeight * 1.55f;
         float fov = (float) Math.tan(Math.toRadians(20.0));
 
+        System.out.printf("[DEBUG-TEST] Bounds: cx=%.3f cy=%.3f cz=%.3f height=%.3f slots=%d%n",
+                cx, cy, cz, charHeight, model.equipmentSlots().size());
+        int drawnCount = 0;
         int[] pixels = new int[width * height];
         image.getRGB(0, 0, width, height, pixels, 0, width);
 
@@ -151,6 +154,7 @@ public class CharacterSnapshotSuiteTest {
                     float dot = fnx * lx + fny * ly + fnz * lz;
                     float diff = Math.max(0.45f, Math.abs(dot) * 0.55f + 0.45f);
 
+                    drawnCount++;
                     rasterizeTriangle(pixels, zBuffer, width, height,
                             sx0, sy0, c0[2], v0.u(), v0.v(), diff,
                             sx1, sy1, c1[2], v1.u(), v1.v(), diff,
@@ -160,6 +164,7 @@ public class CharacterSnapshotSuiteTest {
             }
         }
 
+        System.out.println("[DEBUG-TEST] Drawn triangles count: " + drawnCount);
         image.setRGB(0, 0, width, height, pixels, 0, width);
         return image;
     }

@@ -408,7 +408,10 @@ public class CharacterRenderer {
         GL20.glUniformMatrix4fv(uProjectionLoc, false, projectionMatrix);
         GL20.glUniformMatrix4fv(uViewLoc, false, viewMatrix);
 
-        float[] modelMat = MatrixMath.modelMatrix(x, y, z, yawDegrees);
+        // Retail FFXI character models face +X in model coordinates.
+        // Subtract 90 degrees so yawDegrees = 0 (North / +Z) points the character model North (+Z)
+        // and aligns the camera directly behind the character's back.
+        float[] modelMat = MatrixMath.modelMatrix(x, y, z, yawDegrees - 90.0f);
         GL20.glUniformMatrix4fv(uModelLoc, false, modelMat);
 
         // Compute skinning matrices: S_i = Pose_i * InvBind_i

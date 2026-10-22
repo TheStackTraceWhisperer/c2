@@ -278,6 +278,7 @@ public class OfflineWorldState implements ApplicationState {
         camera.setTarget(playerX, playerY + 1.0f, playerZ);
         camera.setDistance(10.0f);
         camera.setPitch(25.0f);
+        camera.setYaw(PolarCamera.DEFAULT_YAW);
     }
 
     private void loadZone(int zoneId) {
@@ -510,7 +511,7 @@ public class OfflineWorldState implements ApplicationState {
                 if (playerModel != null) {
                     BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
                     characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
-                            playerX, playerY, playerZ, camera.getYaw(),
+                            playerX, playerY, playerZ, playerYaw,
                             proj, view, lighting, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
                 }
             }
@@ -535,7 +536,7 @@ public class OfflineWorldState implements ApplicationState {
                 collisionRenderer.renderNpcMarkers(proj, view);
             }
             if (!showCharacterModels) {
-                collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, camera.getYaw(), proj, view);
+                collisionRenderer.renderPlayerMarker(playerX, playerY, playerZ, playerYaw, proj, view);
             }
         }
 
@@ -569,30 +570,14 @@ public class OfflineWorldState implements ApplicationState {
             showCharacterModels = !showCharacterModels;
         }
 
-        // Compute input direction from WASD / Arrow keys matching CharacterViewer convention
-        float yawRad = (float) Math.toRadians(camera.getYaw());
-        float sinYaw = (float) Math.sin(yawRad);
-        float cosYaw = (float) Math.cos(yawRad);
+        // Compute input direction from WASD relative to camera orientation
+        float inputForward = (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS ? 1.0f : 0.0f)
+                - (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS ? 1.0f : 0.0f);
+        float inputStrafe = (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS ? 1.0f : 0.0f)
+                - (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS ? 1.0f : 0.0f);
 
-        float moveX = 0.0f;
-        float moveZ = 0.0f;
-
-        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
-            moveX -= sinYaw;
-            moveZ -= cosYaw;
-        }
-        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) {
-            moveX += sinYaw;
-            moveZ += cosYaw;
-        }
-        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) {
-            moveX -= cosYaw;
-            moveZ += sinYaw;
-        }
-        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
-            moveX += cosYaw;
-            moveZ -= sinYaw;
-        }
+        float moveX = camera.getForwardX() * inputForward + camera.getRightX() * inputStrafe;
+        float moveZ = camera.getForwardZ() * inputForward + camera.getRightZ() * inputStrafe;
 
         float len = (float) Math.hypot(moveX, moveZ);
         float horizSpeed = (len > 1e-4f) ? moveSpeed : 0.0f;
@@ -614,8 +599,11 @@ public class OfflineWorldState implements ApplicationState {
 
             float speed = moveSpeed * dt;
             float candidateX = playerX + (moveX / len) * speed;
-            float candidateZ = playerZ - (moveZ / len) * speed;
-            playerYaw = (float) Math.toDegrees(Math.atan2(-moveX, moveZ));
+            float candidateZ = playerZ + (moveZ / len) * speed;
+            playerYaw = (float) Math.toDegrees(Math.atan2(moveX, moveZ));
+            if (playerYaw < 0.0f) {
+                playerYaw += 360.0f;
+            }
 
             // Test terrain collision & step height
             if (loadedZone != null && loadedZone.collisionSystem() != null) {
@@ -813,10 +801,11 @@ public class OfflineWorldState implements ApplicationState {
         ImGui.separator();
         ImGui.textDisabled("Controls:");
         ImGui.textDisabled("• W / A / S / D : Move player avatar");
+        ImGui.textDisabled("• Arrow Keys / Q / E : Free camera orbit");
+        ImGui.textDisabled("• Left / Right-Click Drag : Free camera orbit");
+        ImGui.textDisabled("• PageUp / PageDown : Zoom in / out");
         ImGui.textDisabled("• Space : Jump / test gravity");
-        ImGui.textDisabled("• Right-Click Drag : Orbit camera");
-        ImGui.textDisabled("• Mouse Wheel : Zoom in / out");
-        ImGui.textDisabled("• F1: Wireframe | F2: Visual Zone | F3: Collision Mesh");
+        ImGui.textDisabled("• F1: Wireframe | F2: Visual Zone | F3: Collision Mesh | F5: Toggle Model");
 
         ImGui.separator();
         if (ImGui.button("Reset Spawn Position")) {

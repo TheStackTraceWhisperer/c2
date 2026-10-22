@@ -109,15 +109,21 @@ public class PolarCamera implements Camera {
             return;
         }
 
-        // 1. Keyboard rotation (Q/E for yaw, PageUp/PageDown for zoom, Home to reset)
+        // 1. Keyboard rotation (Q/E or Arrow Left/Right for yaw, Arrow Up/Down for pitch, PageUp/PageDown for zoom, Home to reset)
         float dYaw = 0.0f;
         float dPitch = 0.0f;
 
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_Q)) {
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_Q) || isKeyDown(windowHandle, GLFW.GLFW_KEY_LEFT)) {
             dYaw -= KEYBOARD_TURN_SPEED * dt;
         }
-        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_E)) {
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_E) || isKeyDown(windowHandle, GLFW.GLFW_KEY_RIGHT)) {
             dYaw += KEYBOARD_TURN_SPEED * dt;
+        }
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_UP)) {
+            dPitch += KEYBOARD_PITCH_SPEED * dt;
+        }
+        if (isKeyDown(windowHandle, GLFW.GLFW_KEY_DOWN)) {
+            dPitch -= KEYBOARD_PITCH_SPEED * dt;
         }
         if (isKeyDown(windowHandle, GLFW.GLFW_KEY_PAGE_UP)) {
             zoom(-ZOOM_SPEED * dt);
@@ -133,13 +139,21 @@ public class PolarCamera implements Camera {
             rotate(dYaw, dPitch);
         }
 
-        // 2. Mouse drag rotation (Right Mouse Button)
-        boolean rmbDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
+        // 2. Mouse drag rotation (Left or Right Mouse Button free orbit when not interacting with UI)
+        boolean uiWantsMouse = false;
+        try {
+            uiWantsMouse = imgui.ImGui.getIO().getWantCaptureMouse();
+        } catch (Throwable ignored) {}
+
+        boolean mouseDown = !uiWantsMouse && (
+                GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS
+                || GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS
+        );
         double[] xpos = new double[1];
         double[] ypos = new double[1];
         GLFW.glfwGetCursorPos(windowHandle, xpos, ypos);
 
-        if (rmbDown) {
+        if (mouseDown) {
             if (mouseDragging) {
                 double dx = xpos[0] - lastMouseX;
                 double dy = ypos[0] - lastMouseY;

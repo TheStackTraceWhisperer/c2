@@ -149,6 +149,53 @@ public class CollisionMeshRenderer {
         log.info("Uploaded {} collision triangles ({} vertices) to GPU", triangles.size(), vertexCount);
     }
 
+    public void uploadTransformedTriangles(List<com.ffxi.viewer.collision.ZoneCollisionSystem.TransformedTriangle> triangles) {
+        if (triangles == null || triangles.isEmpty()) {
+            return;
+        }
+
+        this.vertexCount = triangles.size() * 3;
+        FloatBuffer buffer = BufferUtils.createFloatBuffer(this.vertexCount * 9);
+
+        for (com.ffxi.viewer.collision.ZoneCollisionSystem.TransformedTriangle tri : triangles) {
+            float[] color = (tri.ny() > 0.5f) ? new float[]{0.22f, 0.70f, 0.35f} : new float[]{0.70f, 0.30f, 0.22f};
+            buffer.put(tri.x0()).put(tri.y0()).put(tri.z0());
+            buffer.put(tri.nx()).put(tri.ny()).put(tri.nz());
+            buffer.put(color[0]).put(color[1]).put(color[2]);
+
+            buffer.put(tri.x1()).put(tri.y1()).put(tri.z1());
+            buffer.put(tri.nx()).put(tri.ny()).put(tri.nz());
+            buffer.put(color[0]).put(color[1]).put(color[2]);
+
+            buffer.put(tri.x2()).put(tri.y2()).put(tri.z2());
+            buffer.put(tri.nx()).put(tri.ny()).put(tri.nz());
+            buffer.put(color[0]).put(color[1]).put(color[2]);
+        }
+        buffer.flip();
+
+        if (vaoId == 0) {
+            vaoId = GL30.glGenVertexArrays();
+        }
+        if (vboId == 0) {
+            vboId = GL15.glGenBuffers();
+        }
+
+        GL30.glBindVertexArray(vaoId);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buffer, GL15.GL_STATIC_DRAW);
+
+        int stride = 9 * Float.BYTES;
+        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, stride, 0);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(1, 3, GL11.GL_FLOAT, false, stride, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glVertexAttribPointer(2, 3, GL11.GL_FLOAT, false, stride, 6 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(2);
+
+        GL30.glBindVertexArray(0);
+        log.info("Uploaded {} authentic zone collision triangles ({} vertices) to GPU", triangles.size(), vertexCount);
+    }
+
     public void render(float[] projectionMatrix, float[] viewMatrix, boolean wireframe) {
         if (vaoId == 0 || vertexCount == 0) {
             return;

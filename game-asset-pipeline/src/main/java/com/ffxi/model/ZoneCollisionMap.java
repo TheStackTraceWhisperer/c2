@@ -86,4 +86,18 @@ public final class ZoneCollisionMap {
     public int getNumBlocksZ() {
         return numBlocksZ;
     }
+
+    /** Returns all unique collision objects placed in this zone collision map. */
+    public List<ZoneCollisionObject> allObjects() {
+        Set<ZoneCollisionObject> unique = new LinkedHashSet<>();
+        for (int z = 0; z < numBlocksZ; z++) {
+            for (int x = 0; x < numBlocksX; x++) {
+                ZoneCollisionObjectGroup g = grid[z][x];
+                if (g != null) {
+                    unique.addAll(g.objects());
+                }
+            }
+        }
+        return new ArrayList<>(unique);
+    }
 }

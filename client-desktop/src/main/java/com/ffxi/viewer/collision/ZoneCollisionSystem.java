@@ -5,6 +5,7 @@ import com.ffxi.model.ZoneCollisionObject;
 import com.ffxi.model.ZoneCollisionObjectGroup;
 import com.ffxi.model.ZoneCollisionTriangle;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class ZoneCollisionSystem {
@@ -94,6 +95,55 @@ public final class ZoneCollisionSystem {
             }
         }
         return null;
+    }
+
+    public record TransformedTriangle(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float x2, float y2, float z2,
+            float nx, float ny, float nz
+    ) {}
+
+    /**
+     * Extracts and transforms all collision triangles in this zone into world space
+     * using the exact same vertex transform as raycast collision.
+     */
+    public List<TransformedTriangle> getAllWorldTriangles() {
+        if (collisionMap == null) {
+            return List.of();
+        }
+        List<TransformedTriangle> result = new ArrayList<>();
+        for (ZoneCollisionObject obj : collisionMap.allObjects()) {
+            float[] m = obj.toWorldSpace();
+            for (ZoneCollisionTriangle tri : obj.triangles()) {
+                float[] v0 = transformVertex(m, tri.x0(), tri.y0(), tri.z0());
+                float[] v1 = transformVertex(m, tri.x1(), tri.y1(), tri.z1());
+                float[] v2 = transformVertex(m, tri.x2(), tri.y2(), tri.z2());
+
+                float e0x = v1[0] - v0[0];
+                float e0y = v1[1] - v0[1];
+                float e0z = v1[2] - v0[2];
+                float e1x = v2[0] - v0[0];
+                float e1y = v2[1] - v0[1];
+                float e1z = v2[2] - v0[2];
+                float nx = e0y * e1z - e0z * e1y;
+                float ny = e0z * e1x - e0x * e1z;
+                float nz = e0x * e1y - e0y * e1x;
+                float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+                if (len > 1e-6f) {
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
+                }
+                result.add(new TransformedTriangle(
+                        v0[0], v0[1], v0[2],
+                        v1[0], v1[1], v1[2],
+                        v2[0], v2[1], v2[2],
+                        nx, ny, nz
+                ));
+            }
+        }
+        return result;
     }
 
     private float raycastDownward(ZoneCollisionObject object, float worldX, float startY, float worldZ) {

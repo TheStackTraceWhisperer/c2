@@ -93,10 +93,13 @@ public class OfflineWorldState implements ApplicationState {
     private CharacterTextureLoader playerTextureLoader;
     private final List<CharacterMeshBuffer> playerMeshBuffers = new ArrayList<>();
     private CharacterAnimator playerAnimator;
-    private SkeletonAnimationResource animIdle;
-    private SkeletonAnimationResource animRun;
+    private SkeletonAnimationResource animIdle0;
+    private SkeletonAnimationResource animIdle1;
+    private SkeletonAnimationResource animRun0;
+    private SkeletonAnimationResource animRun1;
     private double playerAnimTime = 0.0;
     private boolean isMoving = false;
+    private float playerYaw = 0.0f;
 
     public record ZoneRenderChunk(
             ZoneMeshBuffer buffer,
@@ -184,6 +187,12 @@ public class OfflineWorldState implements ApplicationState {
                             chunkInstance.discardThreshold()
                     ));
                 }
+                if (loadedZone.collisionSystem() != null && collisionRenderer != null) {
+                    var collisionTris = loadedZone.collisionSystem().getAllWorldTriangles();
+                    this.collisionTriangleCount = collisionTris.size();
+                    collisionRenderer.uploadTransformedTriangles(collisionTris);
+                    log.info("Uploaded {} authentic zone collision triangles from loadedZone", collisionTris.size());
+                }
                 log.info("Loaded authentic zone 230: {} chunk instances, {} textures",
                         zoneRenderChunks.size(), loadedZone.textureSources().size());
             } catch (Exception e) {
@@ -202,28 +211,55 @@ public class OfflineWorldState implements ApplicationState {
                 for (SkeletonAnimationResource anim : playerCharacter.slot0Animations()) {
                     String id = anim.sectionId().trim().toLowerCase();
                     if (id.startsWith("idl") || id.startsWith("idle")) {
-                        if (animIdle == null) animIdle = anim;
+                        if (animIdle0 == null) animIdle0 = anim;
                     } else if (id.startsWith("run")) {
-                        if (animRun == null) animRun = anim;
+                        if (animRun0 == null) animRun0 = anim;
                     }
                 }
-                if (animIdle == null && !playerCharacter.slot0Animations().isEmpty()) {
-                    animIdle = playerCharacter.slot0Animations().get(0);
+                for (SkeletonAnimationResource anim : playerCharacter.slot1Animations()) {
+                    String id = anim.sectionId().trim().toLowerCase();
+                    if (id.startsWith("idl") || id.startsWith("idle")) {
+                        if (animIdle1 == null) animIdle1 = anim;
+                    } else if (id.startsWith("run")) {
+                        if (animRun1 == null) animRun1 = anim;
+                    }
                 }
-                if (animRun == null) {
-                    animRun = animIdle;
+                if (animIdle0 == null && !playerCharacter.slot0Animations().isEmpty()) {
+                    animIdle0 = playerCharacter.slot0Animations().get(0);
                 }
-                this.playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle, null);
-                log.info("Loaded authentic Hume Male character: {} meshes, {} textures, animIdle={}, animRun={}",
+                if (animRun0 == null) {
+                    animRun0 = animIdle0;
+                }
+                this.playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle0, animIdle1);
+                log.info("Loaded authentic Hume Male character: {} meshes, {} textures, animIdle0={}, animIdle1={}, animRun0={}, animRun1={}",
                         playerMeshBuffers.size(), playerCharacter.textures().size(),
-                        animIdle != null ? animIdle.sectionId() : "none",
-                        animRun != null ? animRun.sectionId() : "none");
+                        animIdle0 != null ? animIdle0.sectionId() : "none",
+                        animIdle1 != null ? animIdle1.sectionId() : "none",
+                        animRun0 != null ? animRun0.sectionId() : "none",
+                        animRun1 != null ? animRun1.sectionId() : "none");
             } catch (Exception e) {
                 log.warn("Could not load authentic CharacterModelLoader character, falling back: {}", e.getMessage());
             }
         }
 
-        loadZone(230); // South San d'Oria (collision & standalone fallback)
+        if (loadedZone == null) {
+            loadZone(230); // South San d'Oria (collision & standalone fallback)
+        } else {
+            // Load Town NPCs
+            byte[] npcBytes = loadNpcBytes();
+            if (npcBytes != null) {
+                try {
+                    this.npcTable = NpcTable.load(npcBytes);
+                    this.townNpcs = npcTable.getByZone(230);
+                    if (collisionRenderer != null) {
+                        collisionRenderer.uploadNpcMarkers(this.townNpcs);
+                    }
+                    log.info("Loaded {} town NPCs for zone 230", townNpcs.size());
+                } catch (Exception e) {
+                    log.warn("Failed to load town NPCs: {}", e.getMessage());
+                }
+            }
+        }
 
         // Position player at ground level
         if (loadedZone != null && loadedZone.collisionSystem() != null) {
@@ -378,19 +414,26 @@ public class OfflineWorldState implements ApplicationState {
 
         GL11.glClearColor(sky[0], sky[1], sky[2], 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(true);
+        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glCullFace(GL11.GL_BACK);
 
         float aspect = (float) fbWidth / (float) fbHeight;
-        float[] proj = MatrixMath.perspective(60.0f, aspect, 0.2f, 2000.0f);
-        float[] view = MatrixMath.lookAt(
-                camera.getEyeX(), camera.getEyeY(), camera.getEyeZ(),
-                camera.getTargetX(), camera.getTargetY(), camera.getTargetZ(),
-                0f, 1f, 0f
+        org.joml.Matrix4f pMat = new org.joml.Matrix4f().perspective((float) Math.toRadians(50.0), aspect, 0.1f, 100000.0f);
+        org.joml.Matrix4f vMat = new org.joml.Matrix4f().lookAt(
+                new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()),
+                new org.joml.Vector3f(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ()),
+                new org.joml.Vector3f(0f, 1f, 0f)
         );
+        float[] proj = new float[16];
+        float[] view = new float[16];
+        pMat.get(proj);
+        vMat.get(view);
 
         // Render visual zone: prefer authentic ZoneShader pipeline from reference tools
         if (zoneShader != null && !zoneRenderChunks.isEmpty() && showVisualZone) {
-            org.joml.Matrix4f pMat = new org.joml.Matrix4f().set(proj);
-            org.joml.Matrix4f vMat = new org.joml.Matrix4f().set(view);
             zoneShader.bind();
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
@@ -438,24 +481,26 @@ public class OfflineWorldState implements ApplicationState {
         // Render 3D animated character models for player and town NPCs
         if (showCharacterModels) {
             if (playerCharacter != null && authenticCharShader != null && !playerMeshBuffers.isEmpty()) {
-                org.joml.Matrix4f pMat = new org.joml.Matrix4f().set(proj);
-                org.joml.Matrix4f vMat = new org.joml.Matrix4f().set(view);
-
                 org.joml.Matrix4f[] jointMatrices = playerAnimator.computePoseMatrices(playerAnimTime);
                 authenticCharShader.bind();
                 org.joml.Matrix4f charModelMat = new org.joml.Matrix4f()
-                        .translate(playerX, playerY, playerZ)
-                        .rotateY((float) Math.toRadians(camera.getYaw()))
                         .scale(1f, -1f, -1f)
-                        .translate(playerCharacter.modelOffset());
+                        .translate(playerCharacter.modelOffset())
+                        .translate(playerX, -playerCharacter.feetOffsetY() - playerY, -playerZ)
+                        .rotateY((float) Math.toRadians(playerYaw));
 
                 authenticCharShader.setMatrices(pMat, vMat, charModelMat);
                 authenticCharShader.setDiscardThreshold(0.0f);
                 authenticCharShader.uploadJointMatrices(jointMatrices);
 
+                GL11.glEnable(GL11.GL_DEPTH_TEST);
+                GL11.glDepthFunc(GL11.GL_LEQUAL);
+                GL11.glDepthMask(true);
+                GL11.glEnable(GL11.GL_CULL_FACE);
+                GL11.glCullFace(GL11.GL_BACK);
                 GL13.glActiveTexture(GL13.GL_TEXTURE0);
                 for (CharacterMeshBuffer meshBuffer : playerMeshBuffers) {
-                    GL11.glFrontFace(meshBuffer.mirrored() ? GL11.GL_CCW : GL11.GL_CW);
+                    GL11.glFrontFace(meshBuffer.mirrored() ? GL11.GL_CW : GL11.GL_CCW);
                     GL11.glBindTexture(GL11.GL_TEXTURE_2D, playerTextureLoader.textureId(meshBuffer.textureName()));
                     meshBuffer.draw();
                 }
@@ -524,25 +569,29 @@ public class OfflineWorldState implements ApplicationState {
             showCharacterModels = !showCharacterModels;
         }
 
-        // Compute input direction from WASD / Arrow keys
+        // Compute input direction from WASD / Arrow keys matching CharacterViewer convention
+        float yawRad = (float) Math.toRadians(camera.getYaw());
+        float sinYaw = (float) Math.sin(yawRad);
+        float cosYaw = (float) Math.cos(yawRad);
+
         float moveX = 0.0f;
         float moveZ = 0.0f;
 
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
-            moveX += camera.getForwardX();
-            moveZ += camera.getForwardZ();
+            moveX -= sinYaw;
+            moveZ -= cosYaw;
         }
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) {
-            moveX -= camera.getForwardX();
-            moveZ -= camera.getForwardZ();
-        }
-        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
-            moveX += camera.getRightX();
-            moveZ += camera.getRightZ();
+            moveX += sinYaw;
+            moveZ += cosYaw;
         }
         if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) {
-            moveX -= camera.getRightX();
-            moveZ -= camera.getRightZ();
+            moveX -= cosYaw;
+            moveZ += sinYaw;
+        }
+        if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
+            moveX += cosYaw;
+            moveZ -= sinYaw;
         }
 
         float len = (float) Math.hypot(moveX, moveZ);
@@ -557,16 +606,16 @@ public class OfflineWorldState implements ApplicationState {
         if (len > 1e-4f) {
             if (!isMoving) {
                 isMoving = true;
-                if (playerCharacter != null && animRun != null) {
-                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animRun, null);
+                playerAnimTime = 0.0;
+                if (playerCharacter != null && animRun0 != null) {
+                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animRun0, animRun1);
                 }
             }
 
-            moveX = (moveX / len) * moveSpeed * dt;
-            moveZ = (moveZ / len) * moveSpeed * dt;
-
-            float candidateX = playerX + moveX;
-            float candidateZ = playerZ + moveZ;
+            float speed = moveSpeed * dt;
+            float candidateX = playerX + (moveX / len) * speed;
+            float candidateZ = playerZ - (moveZ / len) * speed;
+            playerYaw = (float) Math.toDegrees(Math.atan2(-moveX, moveZ));
 
             // Test terrain collision & step height
             if (loadedZone != null && loadedZone.collisionSystem() != null) {
@@ -618,8 +667,9 @@ public class OfflineWorldState implements ApplicationState {
         } else {
             if (isMoving) {
                 isMoving = false;
-                if (playerCharacter != null && animIdle != null) {
-                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle, null);
+                playerAnimTime = 0.0;
+                if (playerCharacter != null && animIdle0 != null) {
+                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle0, animIdle1);
                 }
             }
         }

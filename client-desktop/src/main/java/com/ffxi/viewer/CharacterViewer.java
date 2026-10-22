@@ -101,6 +101,7 @@ import static org.lwjgl.opengl.GL11C.glDisable;
 import static org.lwjgl.opengl.GL11C.GL_CCW;
 import static org.lwjgl.opengl.GL11C.GL_DEPTH_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11C.GL_DEPTH_TEST;
+import static org.lwjgl.opengl.GL11C.GL_LEQUAL;
 import static org.lwjgl.opengl.GL11C.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11C.GL_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11C.GL_TEXTURE_2D;
@@ -109,6 +110,7 @@ import static org.lwjgl.opengl.GL11C.glBlendFunc;
 import static org.lwjgl.opengl.GL11C.glClear;
 import static org.lwjgl.opengl.GL11C.glClearColor;
 import static org.lwjgl.opengl.GL11C.glCullFace;
+import static org.lwjgl.opengl.GL11C.glDepthFunc;
 import static org.lwjgl.opengl.GL11C.glEnable;
 import static org.lwjgl.opengl.GL11C.glFrontFace;
 import static org.lwjgl.opengl.GL11C.glDepthMask;
@@ -886,6 +888,11 @@ public final class CharacterViewer {
             ZoneTextureLoader zoneTextureLoader,
             List<ZoneRenderChunk> zoneRenderChunks
     ) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(true);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Matrix4f projectionMatrix = createProjectionMatrix();
@@ -901,10 +908,11 @@ public final class CharacterViewer {
 
         glActiveTexture(GL_TEXTURE0);
         for (CharacterMeshBuffer meshBuffer : meshBuffers) {
-            glFrontFace(meshBuffer.mirrored() ? GL_CCW : GL_CW);
+            glFrontFace(meshBuffer.mirrored() ? GL_CW : GL_CCW);
             glBindTexture(GL_TEXTURE_2D, textureLoader.textureId(meshBuffer.textureName()));
             meshBuffer.draw();
         }
+        glFrontFace(GL_CCW);
     }
 
     private void renderZoneFrame(

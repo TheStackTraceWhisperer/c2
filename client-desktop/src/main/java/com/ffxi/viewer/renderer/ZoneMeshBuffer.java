@@ -81,6 +81,10 @@ public final class ZoneMeshBuffer implements AutoCloseable {
         return renderBlend;
     }
 
+    public int indexCount() {
+        return indexCount;
+    }
+
     public void draw() {
         if (indexCount == 0) return;
         glBindVertexArray(vaoId);

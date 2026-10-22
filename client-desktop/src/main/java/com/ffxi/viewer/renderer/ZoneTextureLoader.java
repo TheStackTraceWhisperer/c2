@@ -33,6 +33,7 @@ import static org.lwjgl.opengl.GL30C.glGenerateMipmap;
 
 public final class ZoneTextureLoader implements AutoCloseable {
     private final Map<String, Integer> texturesByName = new HashMap<>();
+    private final Map<String, CharacterTextureLoader.TextureSource> textureSources = new HashMap<>();
     private final int defaultTextureId;
 
     public ZoneTextureLoader(Map<String, CharacterTextureLoader.TextureSource> textureSources) {
@@ -47,6 +48,7 @@ public final class ZoneTextureLoader implements AutoCloseable {
             }
 
             CharacterTextureLoader.TextureSource source = entry.getValue();
+            this.textureSources.put(normalized, source);
             byte[] rgba = TextureDecoder.decode(source.rawData(), source.resource());
             if (rgba == null) {
                 texturesByName.put(normalized, defaultTextureId);
@@ -65,6 +67,13 @@ public final class ZoneTextureLoader implements AutoCloseable {
             return defaultTextureId;
         }
         return texturesByName.getOrDefault(normalizeName(textureName), defaultTextureId);
+    }
+
+    public CharacterTextureLoader.TextureSource getTextureSource(String textureName) {
+        if (textureName == null || textureName.isBlank()) {
+            return null;
+        }
+        return textureSources.get(normalizeName(textureName));
     }
 
     @Override

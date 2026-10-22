@@ -13,6 +13,10 @@ while [[ $# -gt 0 ]]; do
       MAIN_CLASS="com.ffxi.viewer.ZoneViewer"
       shift
       ;;
+    sandbox|shader|--sandbox|--shader)
+      MAIN_CLASS="com.ffxi.viewer.MapShaderSandbox"
+      shift
+      ;;
     char|character|--char|--character)
       MAIN_CLASS="com.ffxi.viewer.CharacterViewer"
       shift

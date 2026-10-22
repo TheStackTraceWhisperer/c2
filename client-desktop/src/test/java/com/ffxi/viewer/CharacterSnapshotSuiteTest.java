@@ -114,9 +114,6 @@ public class CharacterSnapshotSuiteTest {
         int[] pixels = new int[width * height];
         image.getRGB(0, 0, width, height, pixels, 0, width);
 
-        // Directional key light from camera upper-front-right
-        float lx = 0.40f, ly = 0.70f, lz = 0.59f;
-
         for (SkinnedMesh mesh : model.equipmentSlots().values()) {
             for (SkinnedSubMesh sub : mesh.subMeshes()) {
                 DecodedTexture tex = model.textures().get(sub.textureName());
@@ -143,22 +140,11 @@ public class CharacterSnapshotSuiteTest {
                     float sx2 = (c2[0] / (c2[2] * fov) * 0.5f + 0.5f) * width;
                     float sy2 = (0.5f - c2[1] / (c2[2] * fov) * 0.5f) * height;
 
-                    float ax = c1[0] - c0[0], ay = c1[1] - c0[1], az = c1[2] - c0[2];
-                    float bx = c2[0] - c0[0], by = c2[1] - c0[1], bz = c2[2] - c0[2];
-                    float fnx = ay * bz - az * by;
-                    float fny = az * bx - ax * bz;
-                    float fnz = ax * by - ay * bx;
-                    float fnlen = (float) Math.sqrt(fnx * fnx + fny * fny + fnz * fnz);
-                    if (fnlen > 1e-4f) { fnx /= fnlen; fny /= fnlen; fnz /= fnlen; }
-
-                    float dot = fnx * lx + fny * ly + fnz * lz;
-                    float diff = Math.max(0.45f, Math.abs(dot) * 0.55f + 0.45f);
-
                     drawnCount++;
                     rasterizeTriangle(pixels, zBuffer, width, height,
-                            sx0, sy0, c0[2], v0.u(), v0.v(), diff,
-                            sx1, sy1, c1[2], v1.u(), v1.v(), diff,
-                            sx2, sy2, c2[2], v2.u(), v2.v(), diff,
+                            sx0, sy0, c0[2], v0.u(), v0.v(),
+                            sx1, sy1, c1[2], v1.u(), v1.v(),
+                            sx2, sy2, c2[2], v2.u(), v2.v(),
                             tex);
                 }
             }
@@ -177,9 +163,9 @@ public class CharacterSnapshotSuiteTest {
     }
 
     private static void rasterizeTriangle(int[] pixels, float[] zBuffer, int width, int height,
-                                          float x0, float y0, float z0, float u0, float v0, float l0,
-                                          float x1, float y1, float z1, float u1, float v1, float l1,
-                                          float x2, float y2, float z2, float u2, float v2, float l2,
+                                          float x0, float y0, float z0, float u0, float v0,
+                                          float x1, float y1, float z1, float u1, float v1,
+                                          float x2, float y2, float z2, float u2, float v2,
                                           DecodedTexture texture) {
         int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
         int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
@@ -204,17 +190,15 @@ public class CharacterSnapshotSuiteTest {
                     if (z < zBuffer[idx]) {
                         float u = w0 * u0 + w1 * u1 + w2 * u2;
                         float v = w0 * v0 + w1 * v1 + w2 * v2;
-                        float diff = w0 * l0 + w1 * l1 + w2 * l2;
 
                         if (texture != null && texture.rgbaPixels() != null && texture.rgbaPixels().length > 0) {
-                            int texColor = sampleOpaque(texture, u, v, diff);
+                            int texColor = sampleOpaque(texture, u, v);
                             if (texColor == 0) continue; // transparent / alpha discard
                             zBuffer[idx] = z;
                             pixels[idx] = texColor;
                         } else {
                             zBuffer[idx] = z;
-                            int gray = (int) (180 * Math.min(1f, diff));
-                            pixels[idx] = (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
+                            pixels[idx] = 0xFFCCCCCC; // light neutral gray
                         }
                     }
                 }
@@ -222,7 +206,7 @@ public class CharacterSnapshotSuiteTest {
         }
     }
 
-    private static int sampleOpaque(DecodedTexture tex, float u, float v, float light) {
+    private static int sampleOpaque(DecodedTexture tex, float u, float v) {
         int width = tex.width();
         int height = tex.height();
         float fu = u - (float) Math.floor(u);
@@ -239,10 +223,6 @@ public class CharacterSnapshotSuiteTest {
         int r = rgba[offset] & 0xFF;
         int g = rgba[offset + 1] & 0xFF;
         int b = rgba[offset + 2] & 0xFF;
-
-        r = Math.min(255, (int) (r * light));
-        g = Math.min(255, (int) (g * light));
-        b = Math.min(255, (int) (b * light));
 
         return (0xFF << 24) | (r << 16) | (g << 8) | b;
     }

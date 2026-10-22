@@ -8,7 +8,7 @@ import com.example.asset.reader.DatByteReader;
 import com.example.asset.skeleton.Skeleton;
 import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.SkeletonAnimationParser;
-import com.example.asset.skeleton.SkeletonMeshParser;
+import com.example.asset.skeleton.AuthenticCharacterModelDecoder;
 import com.example.asset.skeleton.SkeletonParser;
 import com.example.asset.skeleton.SkinnedMesh;
 import com.example.asset.texture.DecodedTexture;
@@ -268,15 +268,9 @@ public class RomAssetLoader {
      */
     public Optional<SkinnedMesh> loadSkinnedMesh(String relativePath) {
         try {
-            DatByteReader reader = loadRomDat(relativePath);
-            List<DatSectionHeader> headers = DatSectionScanner.scanSections(reader);
-            for (DatSectionHeader header : headers) {
-                if (header.sectionType() == SectionType.S2A_SKELETON_MESH
-                        || header.sectionType() == SectionType.S25_WEIGHTED_MESH) {
-                    DatByteReader payload = DatSectionScanner.extractPayload(reader, header);
-                    return SkeletonMeshParser.parse(header, payload);
-                }
-            }
+            byte[] bytes = loadRomBytes(relativePath);
+            SkinnedMesh mesh = AuthenticCharacterModelDecoder.decodeModelChunk(bytes, null, relativePath);
+            return mesh.subMeshes().isEmpty() ? Optional.empty() : Optional.of(mesh);
         } catch (Exception e) {
             log.warn("Failed to load skinned mesh from {}: {}", relativePath, e.getMessage());
         }

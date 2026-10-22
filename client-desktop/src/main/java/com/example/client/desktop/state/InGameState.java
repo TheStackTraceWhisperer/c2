@@ -17,7 +17,6 @@ import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;

@@ -908,7 +908,7 @@ public final class CharacterViewer {
 
         glActiveTexture(GL_TEXTURE0);
         for (CharacterMeshBuffer meshBuffer : meshBuffers) {
-            glFrontFace(meshBuffer.mirrored() ? GL_CW : GL_CCW);
+            glFrontFace(meshBuffer.mirrored() ? GL_CCW : GL_CW);
             glBindTexture(GL_TEXTURE_2D, textureLoader.textureId(meshBuffer.textureName()));
             meshBuffer.draw();
         }

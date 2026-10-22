@@ -1,5 +1,6 @@
 package com.example.asset.loader;
 
+import com.example.asset.skeleton.AuthenticCharacterModelDecoder;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.Skeleton;
 import com.example.asset.skeleton.SkeletonAnimation;
@@ -9,6 +10,7 @@ import com.example.asset.texture.DecodedTexture;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -93,18 +95,25 @@ public class RaceModelLoader {
 
         log.info("Loading authentic character model for race: {}", race.displayName());
 
-        // 1. Skeleton
+        // 1. Skeleton and world bone matrices
         Skeleton skeleton = romLoader.loadSkeleton(race.baseDatPath()).orElse(null);
+        List<float[]> skelMatrices = null;
+        try {
+            byte[] baseBytes = romLoader.loadRomBytes(race.baseDatPath());
+            skelMatrices = AuthenticCharacterModelDecoder.decodeSkeletonMatrices(baseBytes);
+        } catch (Exception e) {
+            log.warn("Could not load skeleton matrices for race {}: {}", race.displayName(), e.getMessage());
+        }
 
-        // 2. Equipment slots & textures
+        // 2. Equipment slots & textures decoded with authentic bone skinning & mirroring
         Map<Integer, SkinnedMesh> slots = new HashMap<>();
         Map<String, DecodedTexture> textures = new HashMap<>();
 
-        loadSlot(race.headDatPath(), CompositeCharacterModel.SLOT_HEAD, slots, textures);
-        loadSlot(race.bodyDatPath(), CompositeCharacterModel.SLOT_BODY, slots, textures);
-        loadSlot(race.handsDatPath(), CompositeCharacterModel.SLOT_HANDS, slots, textures);
-        loadSlot(race.legsDatPath(), CompositeCharacterModel.SLOT_LEGS, slots, textures);
-        loadSlot(race.feetDatPath(), CompositeCharacterModel.SLOT_FEET, slots, textures);
+        loadSlot(race.headDatPath(), CompositeCharacterModel.SLOT_HEAD, skelMatrices, slots, textures);
+        loadSlot(race.bodyDatPath(), CompositeCharacterModel.SLOT_BODY, skelMatrices, slots, textures);
+        loadSlot(race.handsDatPath(), CompositeCharacterModel.SLOT_HANDS, skelMatrices, slots, textures);
+        loadSlot(race.legsDatPath(), CompositeCharacterModel.SLOT_LEGS, skelMatrices, slots, textures);
+        loadSlot(race.feetDatPath(), CompositeCharacterModel.SLOT_FEET, skelMatrices, slots, textures);
 
         CompositeCharacterModel composite = new CompositeCharacterModel(skeleton, slots, textures);
         modelCache.put(race, composite);
@@ -145,28 +154,49 @@ public class RaceModelLoader {
         }
 
         log.info("Loading authentic NPC model (id={}, dat={})", modelId, npcDat);
-        Optional<SkinnedMesh> meshOpt = romLoader.loadSkinnedMesh(npcDat);
-        Map<String, DecodedTexture> textures = romLoader.loadTextures(npcDat);
 
-        // Town guard / NPC models use the Elvaan Male or Hume Male rig
-        Skeleton rig = loadRaceModel(CharacterRace.ELVAAN_MALE).skeleton();
+        // Town guard / NPC models use the Elvaan Male rig
+        CompositeCharacterModel elvaanBase = loadRaceModel(CharacterRace.ELVAAN_MALE);
+        Skeleton rig = elvaanBase.skeleton();
+        List<float[]> skelMatrices = null;
+        try {
+            byte[] baseBytes = romLoader.loadRomBytes(CharacterRace.ELVAAN_MALE.baseDatPath());
+            skelMatrices = AuthenticCharacterModelDecoder.decodeSkeletonMatrices(baseBytes);
+        } catch (Exception e) {
+            log.warn("Could not load skeleton matrices for NPC: {}", e.getMessage());
+        }
 
         Map<Integer, SkinnedMesh> slots = new HashMap<>();
-        meshOpt.ifPresent(skinnedMesh -> slots.put(CompositeCharacterModel.SLOT_BODY, skinnedMesh));
+        Map<String, DecodedTexture> mergedTextures = new HashMap<>(elvaanBase.textures());
 
-        // Also merge base race textures
-        Map<String, DecodedTexture> mergedTextures = new HashMap<>(loadRaceModel(CharacterRace.ELVAAN_MALE).textures());
-        mergedTextures.putAll(textures);
+        try {
+            byte[] npcBytes = romLoader.loadRomBytes(npcDat);
+            SkinnedMesh mesh = AuthenticCharacterModelDecoder.decodeModelChunk(npcBytes, skelMatrices, "npc_body");
+            if (!mesh.subMeshes().isEmpty()) {
+                slots.put(CompositeCharacterModel.SLOT_BODY, mesh);
+            }
+            mergedTextures.putAll(AuthenticCharacterModelDecoder.decodeTextures(npcBytes));
+        } catch (Exception e) {
+            log.warn("Failed loading NPC mesh from {}: {}", npcDat, e.getMessage());
+        }
 
         return new CompositeCharacterModel(rig, slots, mergedTextures);
     }
 
-    private void loadSlot(String datPath, int slotId, Map<Integer, SkinnedMesh> slots, Map<String, DecodedTexture> textures) {
+    private void loadSlot(String datPath, int slotId, List<float[]> skelMatrices,
+                          Map<Integer, SkinnedMesh> slots, Map<String, DecodedTexture> textures) {
         if (datPath == null || datPath.isBlank()) {
             return;
         }
-        Optional<SkinnedMesh> mesh = romLoader.loadSkinnedMesh(datPath);
-        mesh.ifPresent(m -> slots.put(slotId, m));
-        textures.putAll(romLoader.loadTextures(datPath));
+        try {
+            byte[] bytes = romLoader.loadRomBytes(datPath);
+            SkinnedMesh mesh = AuthenticCharacterModelDecoder.decodeModelChunk(bytes, skelMatrices, "slot_" + slotId);
+            if (!mesh.subMeshes().isEmpty()) {
+                slots.put(slotId, mesh);
+            }
+            textures.putAll(AuthenticCharacterModelDecoder.decodeTextures(bytes));
+        } catch (Exception e) {
+            log.warn("Failed loading slot {} from {}: {}", slotId, datPath, e.getMessage());
+        }
     }
 }

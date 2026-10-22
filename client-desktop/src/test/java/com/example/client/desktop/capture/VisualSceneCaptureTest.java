@@ -6,7 +6,7 @@ import com.example.asset.mesh.VisualZoneLoader;
 import com.example.asset.mesh.VisualZoneScene;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CharacterMeshGenerator;
+import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.StandardAnimations;
 import com.example.common.protocol.JobId;
@@ -89,7 +89,7 @@ public class VisualSceneCaptureTest {
     @Test
     @DisplayName("Visual Test: Capture animated character skeletal pose with RenderDoc trigger")
     void testCaptureCharacterLocomotionVisual() {
-        CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(JobId.WARRIOR);
+        CompositeCharacterModel model = new RaceModelLoader().loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
         AnimationStateMachine asm = StandardAnimations.createLocomotionStateMachine();
 
         // Advance into running stride

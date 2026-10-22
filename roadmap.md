@@ -66,13 +66,14 @@ This roadmap outlines the milestones for harvesting and porting the FFXI game as
   - `createWalkAnimation()`: 30-frame loop (1.0s) with counter-arm swing, leg strides, and pelvic bounce.
   - `createRunAnimation()`: 20-frame athletic loop (~0.66s) with forward torso lean, bent-arm pumping, and wide strides.
   - `createLocomotionStateMachine()`: configured `AnimationStateMachine` managing locomotion transitions, normalized cross-fades, and FK pose evaluation.
-- **Multi-Slot Composite Character Mesh Generator (`CharacterMeshGenerator`)**:
-  - Procedural authentic 3D humanoid character mesh generator assembling 7 composite equipment pieces:
-    - Head & Cranium / Helmet (`SLOT_HEAD`)
-    - Torso Cuirass / Doublet / Tunic (`SLOT_BODY`)
-    - Arms & Gauntlets (`SLOT_HANDS`)
-    - Breeches & Greaves (`SLOT_LEGS`)
-    - Boots & Sabatons (`SLOT_FEET`)
+- **Authentic Retail Character Model & Equipment Decoder (`AuthenticCharacterModelDecoder`)**:
+  - Full authentic binary decoding of retail Section 0x2A (Model) and Section 0x29 (Skeleton) chunks.
+  - Ported directly from ffxi-extractor and XIM reference implementations:
+    - Decodes hierarchical forward-kinematics bone matrices.
+    - Decodes MV1 (single-jointed) and MV2 (dual-jointed weighted) vertices.
+    - Expands TriStrips (`0x5453`) and TriMeshes (`0x0054`) with mirroring (`flip != 0`) and proper face winding.
+    - Extracts textures directly from 0x20 chunks with palette decoding.
+    - Assembles all playable races and NPC models across all equipment slots (`SLOT_HEAD`, `SLOT_BODY`, `SLOT_HANDS`, `SLOT_LEGS`, `SLOT_FEET`).
     - Steel Broadsword / Arcane Staff (`SLOT_MAIN`)
     - Knight's Heater Shield for Paladins (`SLOT_SUB`)
   - Linear blend skinning weights on all vertices (dual-bone influence $w_0 + w_1 = 1.0$).

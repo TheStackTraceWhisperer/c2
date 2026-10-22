@@ -4,7 +4,7 @@ import com.example.asset.geometry.Matrix4f;
 import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CharacterMeshGenerator;
+import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.HumanoidRig;
 import com.example.asset.skeleton.KeyFrameTransform;
@@ -97,32 +97,23 @@ class CharacterLocomotionAnimationTest {
     }
 
     @Test
-    @DisplayName("Composite character models are generated with valid equipment slots for player jobs and NPCs")
+    @DisplayName("Authentic character models are loaded with valid equipment slots for player races and NPCs")
     void testCompositeModelsForJobs() {
-        short[] testJobs = new short[]{
-                JobId.WARRIOR,
-                JobId.PALADIN,
-                JobId.WHITE_MAGE,
-                JobId.BLACK_MAGE,
-                JobId.RED_MAGE,
-                JobId.THIEF,
-                JobId.NPC
-        };
-
-        for (short jobId : testJobs) {
-            CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(jobId);
-            assertNotNull(model, "Model should be generated for job " + jobId);
+        RaceModelLoader loader = new RaceModelLoader();
+        for (RaceModelLoader.CharacterRace race : RaceModelLoader.CharacterRace.values()) {
+            CompositeCharacterModel model = loader.loadRaceModel(race);
+            assertNotNull(model, "Model should be loaded for race " + race.displayName());
+            assertNotNull(model.skeleton(), "Skeleton must exist for " + race.displayName());
             assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_HEAD));
             assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_BODY));
             assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_HANDS));
             assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_LEGS));
             assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_FEET));
-
-            if (jobId == JobId.PALADIN) {
-                assertTrue(model.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_SUB),
-                        "Paladin should have shield sub-slot equipped");
-            }
         }
+
+        CompositeCharacterModel npc = loader.loadNpcModel(0, null);
+        assertNotNull(npc, "NPC model should load");
+        assertTrue(npc.equipmentSlots().containsKey(CompositeCharacterModel.SLOT_BODY));
     }
 
     @Test

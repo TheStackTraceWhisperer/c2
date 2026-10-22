@@ -8,7 +8,7 @@ import com.example.asset.mesh.VisualZoneLoader;
 import com.example.asset.mesh.VisualZoneScene;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CharacterMeshGenerator;
+import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkeletonAnimation;
 import com.example.asset.skeleton.StandardAnimations;
@@ -110,7 +110,7 @@ public class ClientAssetPipelineE2ETest {
     @Test
     @DisplayName("E2E: Composite character model with skeletal animation state machine runs and loops continuously")
     void testCharacterLocomotionAndContinuousLoopingE2E() {
-        CompositeCharacterModel model = CharacterMeshGenerator.createCharacterModel(JobId.WARRIOR);
+        CompositeCharacterModel model = new RaceModelLoader().loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
         assertThat(model).isNotNull();
         assertThat(model.skeleton()).isNotNull();
 

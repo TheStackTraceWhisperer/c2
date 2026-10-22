@@ -3,7 +3,6 @@ package com.example.client.desktop.renderer;
 import com.example.asset.environment.DiurnalLighting;
 import com.example.asset.geometry.Matrix4f;
 import com.example.asset.loader.RaceModelLoader;
-import com.example.asset.skeleton.CharacterMeshGenerator;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkinnedMesh;
 import com.example.asset.skeleton.SkinnedSubMesh;
@@ -360,7 +359,8 @@ public class CharacterRenderer {
             }
 
             if (model == null || model.equipmentSlots().isEmpty()) {
-                model = CharacterMeshGenerator.createCharacterModel(id);
+                log.warn("No authentic model found for job {}", id);
+                return null;
             }
             return uploadModel(model);
         });
@@ -378,10 +378,11 @@ public class CharacterRenderer {
             return;
         }
 
-        GpuCharacterMesh mesh = jobModelCache.computeIfAbsent(jobId, id -> {
-            CompositeCharacterModel model = getOrCreateModel(id);
-            return uploadModel(model);
-        });
+        GpuCharacterMesh mesh = jobModelCache.get(jobId);
+        if (mesh == null) {
+            getOrCreateModel(jobId);
+            mesh = jobModelCache.get(jobId);
+        }
 
         if (mesh == null) {
             return;
@@ -402,6 +403,7 @@ public class CharacterRenderer {
         }
 
         GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glFrontFace(GL11.GL_CW); // Retail FFXI character meshes are wound clockwise
 
         GL20.glUseProgram(shaderProgram);
 
@@ -479,6 +481,8 @@ public class CharacterRenderer {
             GL11.glDrawElements(GL11.GL_TRIANGLES, mesh.indexCount(), GL11.GL_UNSIGNED_INT, 0);
         }
 
+        GL11.glFrontFace(GL11.GL_CCW);
+        GL11.glDisable(GL11.GL_CULL_FACE);
         GL30.glBindVertexArray(0);
         GL20.glUseProgram(0);
     }

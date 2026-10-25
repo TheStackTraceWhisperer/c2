@@ -9,7 +9,7 @@ import sys
 import glob
 import mimetypes
 import argparse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import unquote, urlparse
 from datetime import datetime
 
@@ -321,14 +321,17 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=60")
         self.end_headers()
 
-        with open(safe_path, "rb") as f:
-            while chunk := f.read(65536):
-                self.wfile.write(chunk)
+        try:
+            with open(safe_path, "rb") as f:
+                while chunk := f.read(65536):
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
 def run_server(port, directory):
     SnapshotHandler.snapshots_dir = os.path.abspath(directory)
     server_address = ("0.0.0.0", port)
-    httpd = HTTPServer(server_address, SnapshotHandler)
+    httpd = ThreadingHTTPServer(server_address, SnapshotHandler)
     print(f"[SNAPSHOT-SERVER] Serving '{SnapshotHandler.snapshots_dir}' on http://0.0.0.0:{port} ...", flush=True)
     try:
         httpd.serve_forever()

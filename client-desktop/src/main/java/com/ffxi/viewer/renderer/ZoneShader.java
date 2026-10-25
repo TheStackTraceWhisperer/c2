@@ -23,15 +23,7 @@ public final class ZoneShader implements AutoCloseable {
 
             void main() {
                 frag_textureCoords = textureCoords;
-                
-                // Diffuse lighting
-                vec3 lightDir = normalize(vec3(0.3, 0.9, 0.25));
-                mat3 invTransModel = transpose(inverse(mat3(uModelMatrix)));
-                vec3 worldSpaceNormal = normalize(invTransModel * normal);
-                float diffuse = max(dot(worldSpaceNormal, lightDir), 0.0);
-                vec3 litColor = vertexColor.rgb * (0.40 + (0.60 * diffuse));
-
-                frag_color = vec4(litColor, vertexColor.a);
+                frag_color = vertexColor;
                 gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
             }
             """;
@@ -49,7 +41,8 @@ public final class ZoneShader implements AutoCloseable {
 
             void main() {
                 vec4 basePixel = texture(diffuseTexture, frag_textureCoords);
-                vec4 coloredPixel = vec4(2.0 * frag_color.rgb * basePixel.rgb, 4.0 * frag_color.a * basePixel.a);
+                vec3 vCol = (frag_color.r < 0.01 && frag_color.g < 0.01 && frag_color.b < 0.01) ? vec3(0.5) : frag_color.rgb;
+                vec4 coloredPixel = vec4(2.0 * vCol * basePixel.rgb, frag_color.a * basePixel.a);
                 if (coloredPixel.a < discardThreshold) {
                     discard;
                 }

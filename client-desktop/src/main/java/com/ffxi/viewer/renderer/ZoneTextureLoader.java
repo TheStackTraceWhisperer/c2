@@ -66,7 +66,17 @@ public final class ZoneTextureLoader implements AutoCloseable {
         if (textureName == null || textureName.isBlank()) {
             return defaultTextureId;
         }
-        return texturesByName.getOrDefault(normalizeName(textureName), defaultTextureId);
+        String norm = normalizeName(textureName);
+        Integer id = texturesByName.get(norm);
+        if (id != null) {
+            return id;
+        }
+        for (Map.Entry<String, Integer> e : texturesByName.entrySet()) {
+            if (e.getKey().endsWith(" " + norm) || e.getKey().startsWith(norm + " ") || e.getKey().contains(norm)) {
+                return e.getValue();
+            }
+        }
+        return defaultTextureId;
     }
 
     public CharacterTextureLoader.TextureSource getTextureSource(String textureName) {

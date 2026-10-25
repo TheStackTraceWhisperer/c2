@@ -84,11 +84,7 @@ public final class CharacterShader implements AutoCloseable {
                 vec4 worldSpacePos = uModelMatrix * modelSpacePos;
                 vec4 camSpacePos = uViewMatrix * worldSpacePos;
 
-                vec3 lightDir = normalize(vec3(0.3, 0.9, 0.25));
-                float diffuse = max(dot(worldSpaceNormal, lightDir), 0.0);
-                vec3 litColor = vertexColor.rgb * (0.40 + (0.60 * diffuse));
-
-                frag_color = vec4(litColor, vertexColor.a);
+                frag_color = vertexColor;
                 frag_cameraSpacePos = camSpacePos;
                 gl_Position = uProjMatrix * camSpacePos;
             }
@@ -107,11 +103,10 @@ public final class CharacterShader implements AutoCloseable {
 
             void main() {
                 vec4 basePixel = texture(diffuseTexture, frag_textureCoords);
-                vec4 coloredPixel = vec4(2.0 * frag_color.rgb * basePixel.rgb, 4.0 * frag_color.a * basePixel.a);
-                if (coloredPixel.a < discardThreshold) {
+                if (basePixel.a < discardThreshold) {
                     discard;
                 }
-                outColor = coloredPixel;
+                outColor = basePixel;
             }
             """;
 

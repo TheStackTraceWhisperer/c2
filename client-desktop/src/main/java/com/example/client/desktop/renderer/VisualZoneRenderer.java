@@ -18,8 +18,10 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * High-performance textured 3D OpenGL renderer for FFXI visual zone meshes.
@@ -184,6 +186,7 @@ public class VisualZoneRenderer {
         // 2. Group submeshes by BatchKey
         Map<BatchKey, SubMeshBatch> batchMap = new HashMap<>();
 
+        Set<String> placedMeshNames = new HashSet<>();
         if (scene.zoneObjects() != null && !scene.zoneObjects().isEmpty()) {
             // Authentic FFXI Zone Object instancing: place objects across the world
             for (com.example.asset.mesh.ZoneObject obj : scene.zoneObjects()) {
@@ -191,16 +194,27 @@ public class VisualZoneRenderer {
                 if (mesh == null) {
                     continue;
                 }
+                placedMeshNames.add(mesh.name().trim().toLowerCase());
                 float[] model = obj.toModelMatrix();
                 boolean mirrored = obj.isMirrored();
 
                 boolean cutout = obj.meshName().startsWith("_");
+                boolean isWaterObj = isWaterMesh(obj.meshName());
                 for (VisualSubMesh subMesh : mesh.subMeshes()) {
                     String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
-                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling(), cutout);
+                    if (isCollisionSubMesh(obj.meshName(), subMesh, texName)) {
+                        continue;
+                    }
+                    boolean chunkWater = isWaterObj || isWaterSubMesh(texName, subMesh);
+                    if (chunkWater && (texName.isBlank() || texName.equals("none"))) {
+                        texName = "umi02";
+                    }
+                    boolean blend = subMesh.blendEnabled() || chunkWater;
+                    BatchKey key = new BatchKey(texName, blend, subMesh.backFaceCulling(), cutout);
                     SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
 
                     int baseVertex = batch.vertices.size();
+                    boolean degenUv = isDegenerateUv(subMesh.vertices());
                     for (ZoneMeshVertex v : subMesh.vertices()) {
                         // Transform vertex position by object model matrix
                         float vx = model[0] * v.position().x() + model[4] * v.position().y() + model[8] * v.position().z() + model[12];
@@ -218,10 +232,32 @@ public class VisualZoneRenderer {
                             nz /= len;
                         }
 
+                        float u = v.u();
+                        float vCoord = v.v();
+                        int r = v.r();
+                        int g = v.g();
+                        int b = v.b();
+                        int a = v.a();
+
+                        if (chunkWater) {
+                            if (degenUv) {
+                                u = (-vx) * 0.125f;
+                                vCoord = vz * 0.125f;
+                            }
+                            if (r == 0 && g == 0 && b == 0) {
+                                r = 128;
+                                g = 128;
+                                b = 128;
+                            }
+                            if (a == 0) {
+                                a = 128;
+                            }
+                        }
+
                         batch.vertices.add(new ZoneMeshVertex(
                                 new com.example.asset.geometry.Vector3f(vx, vy, vz),
                                 new com.example.asset.geometry.Vector3f(nx, ny, nz),
-                                v.u(), v.v(), v.r(), v.g(), v.b(), v.a()
+                                u, vCoord, r, g, b, a
                         ));
                     }
 
@@ -240,20 +276,68 @@ public class VisualZoneRenderer {
                     }
                 }
             }
-        } else {
-            // Standalone meshes fallback (no zone definition)
-            for (VisualZoneMesh mesh : scene.meshes()) {
-                boolean cutout = mesh.name().startsWith("_");
-                for (VisualSubMesh subMesh : mesh.subMeshes()) {
-                    String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
-                    BatchKey key = new BatchKey(texName, subMesh.blendEnabled(), subMesh.backFaceCulling(), cutout);
-                    SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
+        }
 
-                    int baseVertex = batch.vertices.size();
-                    batch.vertices.addAll(subMesh.vertices());
-                    for (int idx : subMesh.indices()) {
-                        batch.indices.add(baseVertex + idx);
+        // Standalone unplaced meshes (world architecture, walls, pillars, ramps, water)
+        for (VisualZoneMesh mesh : scene.meshes()) {
+            String mName = mesh.name().trim().toLowerCase();
+            if (placedMeshNames.contains(mName)) {
+                continue;
+            }
+            if (isSkyMesh(mName)) {
+                continue;
+            }
+            boolean isWater = isWaterMesh(mName);
+            boolean cutout = mName.startsWith("_");
+            for (VisualSubMesh subMesh : mesh.subMeshes()) {
+                String texName = subMesh.textureName() != null ? subMesh.textureName().trim().toLowerCase() : "";
+                if (isCollisionSubMesh(mName, subMesh, texName)) {
+                    continue;
+                }
+                boolean chunkWater = isWater || isWaterSubMesh(texName, subMesh);
+                if (chunkWater && (texName.isBlank() || texName.equals("none"))) {
+                    texName = "umi02";
+                }
+                boolean blend = subMesh.blendEnabled() || chunkWater;
+                BatchKey key = new BatchKey(texName, blend, subMesh.backFaceCulling(), cutout);
+                SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
+
+                int baseVertex = batch.vertices.size();
+                boolean degenUv = isDegenerateUv(subMesh.vertices());
+                for (ZoneMeshVertex v : subMesh.vertices()) {
+                    float vx = v.position().x();
+                    float vy = v.position().y();
+                    float vz = v.position().z();
+                    float u = v.u();
+                    float vCoord = v.v();
+                    int r = v.r();
+                    int g = v.g();
+                    int b = v.b();
+                    int a = v.a();
+
+                    if (chunkWater) {
+                        if (degenUv) {
+                            u = (-vx) * 0.125f;
+                            vCoord = vz * 0.125f;
+                        }
+                        if (r == 0 && g == 0 && b == 0) {
+                            r = 128;
+                            g = 128;
+                            b = 128;
+                        }
+                        if (a == 0) {
+                            a = 128;
+                        }
                     }
+
+                    batch.vertices.add(new ZoneMeshVertex(
+                            new com.example.asset.geometry.Vector3f(vx, vy, vz),
+                            v.normal(),
+                            u, vCoord, r, g, b, a
+                    ));
+                }
+                for (int idx : subMesh.indices()) {
+                    batch.indices.add(baseVertex + idx);
                 }
             }
         }
@@ -525,6 +609,81 @@ public class VisualZoneRenderer {
             GL15.glDeleteBuffers(batch.eboId);
             batch.eboId = 0;
         }
+    }
+
+    private static boolean isSkyMesh(String name) {
+        if (name == null) return false;
+        String n = name.trim().toLowerCase();
+        return n.startsWith("sunsphere") || n.startsWith("moonsphere") || n.startsWith("star")
+                || n.startsWith("clod_") || n.startsWith("cld_") || n.startsWith("suny_")
+                || n.startsWith("mist_") || n.equals("awan");
+    }
+
+    private static boolean isWaterMesh(String meshName) {
+        if (meshName == null) return false;
+        String n = meshName.trim().toLowerCase();
+        return n.startsWith("wt")
+                || n.contains("mizu")
+                || n.contains("taki")
+                || n.contains("funsui")
+                || n.contains("hunsui")
+                || n.contains("wave")
+                || n.contains("river")
+                || n.contains("water")
+                || n.contains("dam")
+                || n.endsWith("wtmsr")
+                || n.equals("wthand");
+    }
+
+    private static boolean isCollisionSubMesh(String meshName, VisualSubMesh subMesh, String texName) {
+        boolean noTex = texName == null || texName.isBlank() || texName.equals("none");
+        if (!noTex) return false;
+        String n = meshName != null ? meshName.trim().toLowerCase() : "";
+        if (n.contains("col")
+                || n.contains("cube")
+                || n.contains("cut")
+                || n.contains("warp")
+                || n.contains("shadow")
+                || (n.contains("light") && subMesh.vertices().size() <= 8)) {
+            return true;
+        }
+        if (subMesh.blendEnabled() && subMesh.vertices().size() <= 8 && isDegenerateUv(subMesh.vertices())) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isWaterSubMesh(String texName, VisualSubMesh subMesh) {
+        if (texName.isBlank() || texName.equals("none")) {
+            List<ZoneMeshVertex> verts = subMesh.vertices();
+            if (verts.size() >= 3 && isPlanarHorizontal(verts) && isDegenerateUv(verts)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isPlanarHorizontal(List<ZoneMeshVertex> verts) {
+        if (verts.size() < 3) return false;
+        float minY = Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (ZoneMeshVertex v : verts) {
+            minY = Math.min(minY, v.position().y());
+            maxY = Math.max(maxY, v.position().y());
+        }
+        return (maxY - minY) <= 0.25f;
+    }
+
+    private static boolean isDegenerateUv(List<ZoneMeshVertex> verts) {
+        if (verts.isEmpty()) return false;
+        float u0 = verts.get(0).u();
+        float v0 = verts.get(0).v();
+        for (int i = 1; i < verts.size(); i++) {
+            if (Math.abs(verts.get(i).u() - u0) > 1e-4f || Math.abs(verts.get(i).v() - v0) > 1e-4f) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public void cleanup() {

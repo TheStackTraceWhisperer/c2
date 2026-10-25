@@ -275,16 +275,47 @@ public class VisualZoneRenderer {
                         }
                     }
                 }
+
+                if (obj.meshName().contains("funsui")) {
+                    String[] fountainParts = {"funmizu", "mizutw", "mizutw2"};
+                    for (String partName : fountainParts) {
+                        VisualZoneMesh partMesh = scene.getMesh(partName).orElse(null);
+                        if (partMesh != null) {
+                            for (VisualSubMesh partSubMesh : partMesh.subMeshes()) {
+                                String partTex = "umi02";
+                                BatchKey key = new BatchKey(partTex, true, false, false);
+                                SubMeshBatch batch = batchMap.computeIfAbsent(key, SubMeshBatch::new);
+                                int baseVertex = batch.vertices.size();
+                                for (ZoneMeshVertex v : partSubMesh.vertices()) {
+                                    float vx = model[0] * v.position().x() + model[4] * v.position().y() + model[8] * v.position().z() + model[12];
+                                    float vy = model[1] * v.position().x() + model[5] * v.position().y() + model[9] * v.position().z() + model[13];
+                                    float vz = model[2] * v.position().x() + model[6] * v.position().y() + model[10] * v.position().z() + model[14];
+                                    batch.vertices.add(new ZoneMeshVertex(
+                                            new com.example.asset.geometry.Vector3f(vx, vy, vz),
+                                            v.normal(),
+                                            v.u(), v.v(), 128, 128, 128, 160
+                                    ));
+                                }
+                                for (int idx : partSubMesh.indices()) {
+                                    batch.indices.add(baseVertex + idx);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // Standalone unplaced meshes (world architecture, walls, pillars, ramps, water)
+        // Standalone unplaced meshes (in retail FFXI, only world-space water sheets wt00..wt99)
         for (VisualZoneMesh mesh : scene.meshes()) {
             String mName = mesh.name().trim().toLowerCase();
             if (placedMeshNames.contains(mName)) {
                 continue;
             }
             if (isSkyMesh(mName)) {
+                continue;
+            }
+            if (!isStandaloneWorldWaterMesh(mName)) {
                 continue;
             }
             boolean isWater = isWaterMesh(mName);
@@ -619,10 +650,32 @@ public class VisualZoneRenderer {
                 || n.startsWith("mist_") || n.equals("awan");
     }
 
+    private static boolean isStandaloneWorldWaterMesh(String meshName) {
+        if (meshName == null) return false;
+        String n = meshName.trim().toLowerCase();
+        if (n.contains("col") || n.contains("cube") || n.contains("cut") || n.contains("warp") || n.contains("lanp")) {
+            return false;
+        }
+        if (n.equals("funmizu") || n.equals("mizutw") || n.equals("mizutw2")) {
+            return false;
+        }
+        if (n.startsWith("wt") && n.length() >= 3 && Character.isDigit(n.charAt(n.length() - 1))) {
+            return true;
+        }
+        if (n.contains("sea")) {
+            return true;
+        }
+        if (n.contains("mizu") || n.contains("wave") || n.equals("wthand")) {
+            return true;
+        }
+        return false;
+    }
+
     private static boolean isWaterMesh(String meshName) {
         if (meshName == null) return false;
         String n = meshName.trim().toLowerCase();
         return n.startsWith("wt")
+                || n.contains("sea")
                 || n.contains("mizu")
                 || n.contains("taki")
                 || n.contains("funsui")

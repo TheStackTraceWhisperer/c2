@@ -93,6 +93,14 @@ public final class ZoneModelLoader {
         int totalChunkInstances = 0;
         Set<String> processedMeshNames = new HashSet<>();
 
+        Map<String, ZoneMeshResource> meshesByName = new LinkedHashMap<>();
+        for (ZoneMeshResource m : allMeshes) {
+            String name = sanitizeId(m.meshName()).toLowerCase(Locale.ROOT);
+            if (!name.isBlank()) {
+                meshesByName.putIfAbsent(name, m);
+            }
+        }
+
         for (ZoneMeshResource mesh : allMeshes) {
             String rawMeshName = sanitizeId(mesh.meshName());
             String meshName = rawMeshName.toLowerCase(Locale.ROOT);
@@ -133,19 +141,44 @@ public final class ZoneModelLoader {
                         ));
                         totalChunkInstances++;
                     }
+
+                    // Attach associated dynamic fountain water / spout meshes to fountain basin objects
+                    if (meshName.contains("funsui")) {
+                        String[] fountainParts = {"funmizu", "mizutw", "mizutw2"};
+                        for (String partName : fountainParts) {
+                            ZoneMeshResource partMesh = meshesByName.get(partName);
+                            if (partMesh != null) {
+                                for (ZoneMeshChunk partChunk : partMesh.meshChunks()) {
+                                    ZoneMeshChunk prep = prepareWaterChunk(partChunk, modelMatrix, textureSources);
+                                    chunkInstances.add(new LoadedZone.ZoneChunkInstance(
+                                            prep,
+                                            modelMatrix,
+                                            partChunk.invertCull(),
+                                            0.0f
+                                    ));
+                                    totalChunkInstances++;
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                // Standalone world geometry (unplaced architecture, walls, pillars, gateways, canal beds, water surfaces)
-                // Positioned directly at world origin [I]4x4
+                // Standalone unplaced geometry: In retail FFXI, only world-space water sheets (wt00..wt99 in suim)
+                // are modeled directly in world coordinates without ZoneObject instances.
+                // Dynamic effect routines, light cones (ltlanp, ltbfg), cutter volumes (lcut, ltcube),
+                // and proxy volumes must NOT be dumped at origin (0, 0, 0).
+                if (!isStandaloneWorldWaterMesh(meshName)) {
+                    continue;
+                }
                 meshesWithoutObjects++;
                 Matrix4f identity = new Matrix4f();
                 for (ZoneMeshChunk chunk : mesh.meshChunks()) {
                     if (isCollisionMesh(meshName, chunk)) {
                         continue;
                     }
-                    boolean chunkWater = isWater || isWaterChunk(meshName, chunk);
+                    boolean chunkWater = true;
                     boolean blend = chunk.renderBlend() || chunkWater;
-                    ZoneMeshChunk preparedChunk = chunkWater ? prepareWaterChunk(chunk, identity, textureSources) : chunk;
+                    ZoneMeshChunk preparedChunk = prepareWaterChunk(chunk, identity, textureSources);
                     chunkInstances.add(new LoadedZone.ZoneChunkInstance(
                             preparedChunk,
                             identity,
@@ -345,10 +378,32 @@ public final class ZoneModelLoader {
         return false;
     }
 
+    public static boolean isStandaloneWorldWaterMesh(String meshName) {
+        if (meshName == null) return false;
+        String n = meshName.trim().toLowerCase(Locale.ROOT);
+        if (n.contains("col") || n.contains("cube") || n.contains("cut") || n.contains("warp") || n.contains("lanp")) {
+            return false;
+        }
+        if (n.equals("funmizu") || n.equals("mizutw") || n.equals("mizutw2")) {
+            return false;
+        }
+        if (n.startsWith("wt") && n.length() >= 3 && Character.isDigit(n.charAt(n.length() - 1))) {
+            return true;
+        }
+        if (n.contains("sea")) {
+            return true;
+        }
+        if (n.contains("mizu") || n.contains("wave") || n.equals("wthand")) {
+            return true;
+        }
+        return false;
+    }
+
     public static boolean isWaterMesh(String meshName) {
         if (meshName == null) return false;
         String n = meshName.trim().toLowerCase(Locale.ROOT);
         return n.startsWith("wt")
+                || n.contains("sea")
                 || n.contains("mizu")
                 || n.contains("taki")
                 || n.contains("funsui")
@@ -473,7 +528,7 @@ public final class ZoneModelLoader {
         }
         for (String key : textureSources.keySet()) {
             String k = key.toLowerCase(Locale.ROOT);
-            if (k.contains("riv") || k.contains("mz01") || k.contains("mz02") || k.contains("mz03")) return key;
+            if (k.contains("riv") || k.contains("mz01") || k.contains("mz02") || k.contains("mz03") || k.contains("sea")) return key;
         }
         return "umi02";
     }

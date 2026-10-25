@@ -1,9 +1,8 @@
 package com.example.client.desktop.state;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
-import com.example.asset.mesh.VisualZoneLoader;
-import com.example.asset.mesh.VisualZoneScene;
 import com.example.client.desktop.camera.Camera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
@@ -11,17 +10,7 @@ import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
-import com.example.asset.config.FfxiPathConfig;
-import com.example.asset.loader.RaceModelLoader;
-import com.example.asset.skeleton.AnimationState;
-import com.example.asset.skeleton.AnimationStateMachine;
-import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CompositeCharacterModel;
-import com.example.asset.skeleton.SkeletonAnimation;
-import com.example.asset.skeleton.StandardAnimations;
-import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
-import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.InGamePanel;
 import com.example.client.desktop.ui.ScreenFader;
@@ -37,6 +26,17 @@ import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
 import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementResponse;
+import com.ffxi.tables.RaceGenderConfig;
+import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.model.CharacterModelLoader;
+import com.ffxi.viewer.model.LoadedCharacter;
+import com.ffxi.viewer.model.LoadedZone;
+import com.ffxi.viewer.model.ZoneModelLoader;
+import com.ffxi.viewer.renderer.CharacterShader;
+import com.ffxi.viewer.renderer.ZoneMeshBuffer;
+import com.ffxi.viewer.renderer.ZoneRenderChunk;
+import com.ffxi.viewer.renderer.ZoneShader;
+import com.ffxi.viewer.renderer.ZoneTextureLoader;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.type.ImInt;
@@ -45,12 +45,16 @@ import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -87,14 +91,18 @@ public class InGameState implements ApplicationState {
     @Getter
     private final ScreenFader screenFader = new ScreenFader();
 
-    private VisualZoneRenderer visualRenderer;
+    // Authentic Zone rendering
+    private LoadedZone loadedZone;
+    private ZoneShader zoneShader;
+    private ZoneTextureLoader zoneTextureLoader;
+    private final List<ZoneRenderChunk> zoneRenderChunks = new ArrayList<>();
+
+    // Authentic Character rendering
+    private CharacterShader characterShader;
+    private AuthenticCharacterInstance localPlayerVisual;
+    private final Map<Long, AuthenticCharacterInstance> remoteEntityVisuals = new HashMap<>();
+
     private CollisionMeshRenderer collisionRenderer;
-    private CharacterRenderer characterRenderer;
-
-    private final AnimationStateMachine localPlayerAnimation = StandardAnimations.createLocomotionStateMachine();
-    private final Map<Long, AnimationStateMachine> remoteEntityAnimations = new HashMap<>();
-
-    private VisualZoneScene visualScene;
     private List<ZoneInteraction> zoneInteractions = List.of();
     @Getter
     private WeatherType currentWeather = WeatherType.CLEAR;
@@ -145,24 +153,20 @@ public class InGameState implements ApplicationState {
     }
 
     private void initRenderers() {
-        if (visualRenderer == null) {
-            visualRenderer = new VisualZoneRenderer();
-            collisionRenderer = new CollisionMeshRenderer();
-            characterRenderer = new CharacterRenderer();
+        if (zoneShader == null) {
             try {
-                visualRenderer.init();
-                collisionRenderer.init();
-                characterRenderer.init();
+                this.zoneShader = new ZoneShader();
+                this.characterShader = new CharacterShader();
+                this.collisionRenderer = new CollisionMeshRenderer();
+                this.collisionRenderer.init();
 
-                // Wire authentic FFXI locomotion animations from game ROMs
+                Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
                 try {
-                    RaceModelLoader raceLoader = characterRenderer.getRaceModelLoader();
-                    Map<String, SkeletonAnimation> humeAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
-                    if (humeAnims.containsKey("idl0")) localPlayerAnimation.registerAnimation(AnimationState.IDLE, humeAnims.get("idl0"));
-                    if (humeAnims.containsKey("wlk0")) localPlayerAnimation.registerAnimation(AnimationState.WALK, humeAnims.get("wlk0"));
-                    if (humeAnims.containsKey("run0")) localPlayerAnimation.registerAnimation(AnimationState.RUN, humeAnims.get("run0"));
-                } catch (Exception ex) {
-                    log.warn("Could not load authentic ROM animations for local player: {}", ex.getMessage());
+                    LoadedCharacter charData = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.HumeM);
+                    this.localPlayerVisual = new AuthenticCharacterInstance(charData);
+                    log.info("Initialized authentic local player visual instance");
+                } catch (Exception e) {
+                    log.error("Failed to load authentic character model for local player", e);
                 }
             } catch (Exception e) {
                 log.error("Failed to initialize 3D OpenGL renderers in InGameState", e);
@@ -172,26 +176,49 @@ public class InGameState implements ApplicationState {
     }
 
     private void loadZone(int zoneId) {
-        byte[] bytes = loadZoneBytes(zoneId);
-        if (bytes == null || bytes.length == 0) {
-            log.warn("InGameState: DAT asset for zone {} could not be loaded", zoneId);
-            return;
+        this.currentZoneId = zoneId;
+        Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
+
+        // 1. Clear previous zone render chunks
+        for (ZoneRenderChunk chunk : zoneRenderChunks) {
+            try { chunk.close(); } catch (Exception ignored) {}
+        }
+        zoneRenderChunks.clear();
+        if (zoneTextureLoader != null) {
+            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
+            zoneTextureLoader = null;
         }
 
-        try {
-            // 1. Visual Textured Meshes
-            this.visualScene = VisualZoneLoader.load(bytes);
-            if (visualRenderer != null) {
-                visualRenderer.upload(this.visualScene);
+        long handle = windowService.getHandle();
+        if (handle != 0L) {
+            try {
+                this.loadedZone = ZoneModelLoader.loadZone(ffxiRoot, zoneId);
+                this.zoneTextureLoader = new ZoneTextureLoader(loadedZone.textureSources());
+                for (LoadedZone.ZoneChunkInstance inst : loadedZone.chunkInstances()) {
+                    zoneRenderChunks.add(new ZoneRenderChunk(
+                            new ZoneMeshBuffer(inst.chunk()),
+                            new Matrix4f(inst.modelMatrix()),
+                            inst.invertCull(),
+                            inst.discardThreshold()
+                    ));
+                }
+                if (loadedZone.collisionSystem() != null && collisionRenderer != null) {
+                    var collisionTris = loadedZone.collisionSystem().getAllWorldTriangles();
+                    collisionRenderer.uploadTransformedTriangles(collisionTris);
+                }
+                log.info("InGameState: Loaded authentic zone {}: {} chunk instances, {} textures",
+                        zoneId, zoneRenderChunks.size(), loadedZone.textureSources().size());
+            } catch (Exception e) {
+                log.error("Failed loading authentic zone {}", zoneId, e);
             }
+        }
 
-            // 2. Zoneline Interactions
-            this.zoneInteractions = ZoneInteractionParser.parseInteractions(bytes);
-            long zonelineCount = zoneInteractions.stream().filter(ZoneInteraction::isZoneLine).count();
-            log.info("InGameState: Loaded zone {} visual meshes ({} meshes, {} textures) and {} zonelines",
-                    zoneId, visualScene.totalMeshCount(), visualScene.textures().size(), zonelineCount);
-        } catch (Exception e) {
-            log.error("Error loading visual zone DAT for InGameState", e);
+        // 2. Zoneline Interactions
+        byte[] bytes = loadZoneBytes(zoneId);
+        if (bytes != null && bytes.length > 0) {
+            try {
+                this.zoneInteractions = ZoneInteractionParser.parseInteractions(bytes);
+            } catch (Exception ignored) {}
         }
     }
 
@@ -297,7 +324,9 @@ public class InGameState implements ApplicationState {
                     clientState.getYaw(), clientState.getPitch(),
                     clientState.getLastServerTick()
             );
-            localPlayerAnimation.update(dt, MovementFlags.IDLE, 0.0f);
+            if (localPlayerVisual != null) {
+                localPlayerVisual.update(dt, MovementFlags.IDLE, 0.0f);
+            }
         } else {
             var moveResult = movementHandler.pollAndCompute(
                     handle,
@@ -319,7 +348,9 @@ public class InGameState implements ApplicationState {
             camera.setTarget(moveResult.x(), moveResult.y(), moveResult.z());
 
             float localSpeed = (float) Math.hypot(moveResult.vx(), moveResult.vz());
-            localPlayerAnimation.update(dt, moveResult.moveFlags(), localSpeed);
+            if (localPlayerVisual != null) {
+                localPlayerVisual.update(dt, moveResult.moveFlags(), localSpeed);
+            }
 
             if (moveResult.shouldSendPacket()) {
                 networkAdapter.sendMovement(
@@ -333,14 +364,25 @@ public class InGameState implements ApplicationState {
         }
 
         // Update remote entity animation state machines
+        Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
         for (var entity : clientState.getRemoteEntities().values()) {
             InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
             float speed = (float) Math.hypot(interp.vx(), interp.vz());
-            AnimationStateMachine anim = remoteEntityAnimations.computeIfAbsent(
+            AuthenticCharacterInstance visual = remoteEntityVisuals.computeIfAbsent(
                     entity.characterId(),
-                    id -> StandardAnimations.createLocomotionStateMachine()
+                    id -> {
+                        try {
+                            RaceGenderConfig race = resolveRaceForEntity(entity.mainJobId());
+                            LoadedCharacter cd = CharacterModelLoader.loadCharacter(ffxiRoot, race);
+                            return new AuthenticCharacterInstance(cd);
+                        } catch (Exception e) {
+                            return null;
+                        }
+                    }
             );
-            anim.update(dt, 0, speed);
+            if (visual != null) {
+                visual.update(dt, 0, speed);
+            }
         }
 
         // 2. Check Zoneline Intersections
@@ -365,44 +407,72 @@ public class InGameState implements ApplicationState {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             float aspect = (float) fbWidth / (float) fbHeight;
-            float[] proj = MatrixMath.perspective(60.0f, aspect, 0.2f, 2000.0f);
-            float[] view = MatrixMath.lookAt(
-                    camera.getEyeX(), camera.getEyeY(), camera.getEyeZ(),
-                    camera.getTargetX(), camera.getTargetY(), camera.getTargetZ(),
-                    0f, 1f, 0f
+            org.joml.Matrix4f pMat = new org.joml.Matrix4f().perspective((float) Math.toRadians(50.0), aspect, 0.1f, 100000.0f);
+            org.joml.Matrix4f vMat = new org.joml.Matrix4f().lookAt(
+                    new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()),
+                    new org.joml.Vector3f(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ()),
+                    new org.joml.Vector3f(0f, 1f, 0f)
             );
+            float[] proj = new float[16];
+            float[] view = new float[16];
+            pMat.get(proj);
+            vMat.get(view);
 
-            // Render 3D textured visual zone
-            if (visualRenderer != null && showVisualZone) {
-                visualRenderer.render(proj, view, wireframe, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+            // Render 3D textured visual zone using authentic ZoneShader pipeline
+            if (zoneShader != null && !zoneRenderChunks.isEmpty() && showVisualZone) {
+                zoneShader.bind();
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+
+                for (int pass = 0; pass < 2; pass++) {
+                    boolean blendedPass = (pass == 1);
+                    GL11.glDepthMask(!blendedPass);
+                    if (blendedPass) {
+                        GL11.glEnable(GL11.GL_BLEND);
+                        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                    } else {
+                        GL11.glDisable(GL11.GL_BLEND);
+                    }
+                    for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                        if (chunk.buffer().renderBlend() != blendedPass) {
+                            continue;
+                        }
+                        zoneShader.setDiscardThreshold(chunk.discardThreshold());
+                        zoneShader.setMatrices(pMat, vMat, chunk.modelMatrix());
+
+                        if (chunk.invertCull()) {
+                            GL11.glDisable(GL11.GL_CULL_FACE);
+                        } else {
+                            GL11.glEnable(GL11.GL_CULL_FACE);
+                            boolean inverted = chunk.modelMatrix().determinant() < 0.0f;
+                            GL11.glFrontFace(inverted ? GL11.GL_CW : GL11.GL_CCW);
+                        }
+
+                        GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(chunk.buffer().textureName()));
+                        chunk.buffer().draw();
+                    }
+                }
+                GL11.glDisable(GL11.GL_BLEND);
+                GL11.glDepthMask(true);
+                GL11.glEnable(GL11.GL_CULL_FACE);
+                GL11.glFrontFace(GL11.GL_CCW);
             }
 
             // Render 3D animated character models for local player and remote actors / NPCs
-            short localJob = resolveLocalJobId();
-            if (characterRenderer != null && showCharacterModels) {
-                CompositeCharacterModel localModel = characterRenderer.getOrCreateModel(localJob);
-                if (localModel != null) {
-                    BlendedPose localPose = localPlayerAnimation.evaluate(localModel.skeleton());
-                    characterRenderer.render(
-                            localJob, localPose.jointPoseMatrices(),
-                            clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
-                            proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+            if (characterShader != null && showCharacterModels) {
+                if (localPlayerVisual != null) {
+                    localPlayerVisual.render(
+                            characterShader, pMat, vMat,
+                            clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw()
                     );
                 }
 
                 for (var entity : clientState.getRemoteEntities().values()) {
                     InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
-                    AnimationStateMachine anim = remoteEntityAnimations.computeIfAbsent(
-                            entity.characterId(),
-                            id -> StandardAnimations.createLocomotionStateMachine()
-                    );
-                    CompositeCharacterModel model = characterRenderer.getOrCreateModel(entity.mainJobId());
-                    if (model != null) {
-                        BlendedPose pose = anim.evaluate(model.skeleton());
-                        characterRenderer.render(
-                                entity.mainJobId(), pose.jointPoseMatrices(),
-                                interp.x(), interp.y(), interp.z(), interp.yaw(),
-                                proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()
+                    AuthenticCharacterInstance visual = remoteEntityVisuals.get(entity.characterId());
+                    if (visual != null) {
+                        visual.render(
+                                characterShader, pMat, vMat,
+                                interp.x(), interp.y(), interp.z(), interp.yaw()
                         );
                     }
                 }
@@ -555,19 +625,48 @@ public class InGameState implements ApplicationState {
         movementHandler.reset();
         clientState.resetZoneSession();
 
-        if (visualRenderer != null) {
-            visualRenderer.cleanup();
-            visualRenderer = null;
+        for (ZoneRenderChunk chunk : zoneRenderChunks) {
+            try { chunk.close(); } catch (Exception ignored) {}
         }
+        zoneRenderChunks.clear();
+        if (zoneTextureLoader != null) {
+            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
+            zoneTextureLoader = null;
+        }
+        if (zoneShader != null) {
+            try { zoneShader.close(); } catch (Exception ignored) {}
+            zoneShader = null;
+        }
+        if (characterShader != null) {
+            try { characterShader.close(); } catch (Exception ignored) {}
+            characterShader = null;
+        }
+        if (localPlayerVisual != null) {
+            try { localPlayerVisual.close(); } catch (Exception ignored) {}
+            localPlayerVisual = null;
+        }
+        for (AuthenticCharacterInstance visual : remoteEntityVisuals.values()) {
+            if (visual != null) {
+                try { visual.close(); } catch (Exception ignored) {}
+            }
+        }
+        remoteEntityVisuals.clear();
+
         if (collisionRenderer != null) {
             collisionRenderer.cleanup();
             collisionRenderer = null;
         }
-        if (characterRenderer != null) {
-            characterRenderer.cleanup();
-            characterRenderer = null;
-        }
-        remoteEntityAnimations.clear();
+    }
+
+    private static RaceGenderConfig resolveRaceForEntity(short jobId) {
+        if (jobId == JobId.NPC) return RaceGenderConfig.ElvaanM;
+        if (jobId == JobId.THIEF) return RaceGenderConfig.Mithra;
+        if (jobId == JobId.WHITE_MAGE) return RaceGenderConfig.TaruM;
+        if (jobId == JobId.BLACK_MAGE) return RaceGenderConfig.TaruF;
+        if (jobId == JobId.PALADIN) return RaceGenderConfig.ElvaanM;
+        if (jobId == JobId.RED_MAGE) return RaceGenderConfig.HumeF;
+        if (jobId == JobId.MONK) return RaceGenderConfig.Galka;
+        return RaceGenderConfig.HumeM;
     }
 
     private short resolveLocalJobId() {

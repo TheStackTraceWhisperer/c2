@@ -5,11 +5,11 @@ import com.example.asset.loader.RomAssetLoader;
 import com.example.asset.mesh.VisualSubMesh;
 import com.example.asset.mesh.VisualZoneLoader;
 import com.example.asset.mesh.VisualZoneScene;
+import com.example.asset.skeleton.AnimationState;
 import com.example.asset.skeleton.AnimationStateMachine;
 import com.example.asset.skeleton.BlendedPose;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkeletonAnimation;
-import com.example.asset.skeleton.StandardAnimations;
 import com.example.client.desktop.ui.ScreenFader;
 import com.example.client.interp.EntityInterpolationBuffer;
 import com.example.client.interp.InterpolatedEntityState;
@@ -102,11 +102,16 @@ public class ClientAssetPipelineE2ETest {
     @Test
     @DisplayName("E2E: Composite character model with skeletal animation state machine runs and loops continuously")
     void testCharacterLocomotionAndContinuousLoopingE2E() {
-        CompositeCharacterModel model = new RaceModelLoader().loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
+        RaceModelLoader raceLoader = new RaceModelLoader();
+        CompositeCharacterModel model = raceLoader.loadRaceModel(RaceModelLoader.CharacterRace.HUME_MALE);
         assertThat(model).isNotNull();
         assertThat(model.skeleton()).isNotNull();
 
-        AnimationStateMachine asm = StandardAnimations.createLocomotionStateMachine();
+        AnimationStateMachine asm = new AnimationStateMachine();
+        var anims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
+        if (anims.containsKey("idl0")) asm.registerAnimation(AnimationState.IDLE, anims.get("idl0"));
+        if (anims.containsKey("wlk0")) asm.registerAnimation(AnimationState.WALK, anims.get("wlk0"));
+        if (anims.containsKey("run0")) asm.registerAnimation(AnimationState.RUN, anims.get("run0"));
 
         // Advance animation by 0.1s steps for 120 seconds (over 100 complete animation cycles)
         for (int i = 0; i < 1200; i++) {

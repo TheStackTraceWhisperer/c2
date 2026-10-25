@@ -15,20 +15,13 @@ import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.asset.config.FfxiPathConfig;
-import com.example.asset.loader.RaceModelLoader;
-import com.example.asset.skeleton.AnimationState;
-import com.example.asset.skeleton.AnimationStateMachine;
-import com.example.asset.skeleton.BlendedPose;
-import com.example.asset.skeleton.CompositeCharacterModel;
-import com.example.asset.skeleton.SkeletonAnimation;
-import com.example.asset.skeleton.StandardAnimations;
-import com.example.client.desktop.renderer.CharacterRenderer;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.renderer.VisualZoneRenderer;
 import com.example.client.desktop.util.MatrixMath;
-import com.example.common.protocol.JobId;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
+import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.type.ImInt;
@@ -89,34 +82,16 @@ public class OfflineWorldState implements ApplicationState {
     // Authentic FFXI Character rendering
     private LoadedCharacter playerCharacter;
     private CharacterShader authenticCharShader;
-    private CharacterTextureLoader playerTextureLoader;
-    private final List<CharacterMeshBuffer> playerMeshBuffers = new ArrayList<>();
-    private CharacterAnimator playerAnimator;
-    private SkeletonAnimationResource animIdle0;
-    private SkeletonAnimationResource animIdle1;
-    private SkeletonAnimationResource animRun0;
-    private SkeletonAnimationResource animRun1;
-    private double playerAnimTime = 0.0;
-    private boolean isMoving = false;
+    private AuthenticCharacterInstance playerVisual;
+    private AuthenticCharacterInstance npcVisual;
     private float playerYaw = 0.0f;
-
-    public record ZoneRenderChunk(
-            ZoneMeshBuffer buffer,
-            org.joml.Matrix4f modelMatrix,
-            boolean invertCull,
-            float discardThreshold
-    ) {}
 
     private CollisionMap collisionMap;
     private CollisionMeshRenderer collisionRenderer;
     private VisualZoneRenderer visualRenderer;
-    private CharacterRenderer characterRenderer;
     private VisualZoneScene visualScene;
     private NpcTable npcTable;
     private List<NpcInfo> townNpcs = List.of();
-
-    private final AnimationStateMachine playerAnimation = StandardAnimations.createLocomotionStateMachine();
-    private final AnimationStateMachine npcAnimation = StandardAnimations.createLocomotionStateMachine();
 
     private float playerX = -50.0f;
     private float playerY = 2.0f;
@@ -145,27 +120,9 @@ public class OfflineWorldState implements ApplicationState {
         log.info("Entering OfflineWorldState — initializing 3D visual, collision, and character renderers");
         collisionRenderer = new CollisionMeshRenderer();
         visualRenderer = new VisualZoneRenderer();
-        characterRenderer = new CharacterRenderer();
         try {
             collisionRenderer.init();
             visualRenderer.init();
-            characterRenderer.init();
-
-            // Wire authentic FFXI locomotion animations from game ROMs
-            try {
-                RaceModelLoader raceLoader = characterRenderer.getRaceModelLoader();
-                Map<String, SkeletonAnimation> humeAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.HUME_MALE);
-                if (humeAnims.containsKey("idl0")) playerAnimation.registerAnimation(AnimationState.IDLE, humeAnims.get("idl0"));
-                if (humeAnims.containsKey("wlk0")) playerAnimation.registerAnimation(AnimationState.WALK, humeAnims.get("wlk0"));
-                if (humeAnims.containsKey("run0")) playerAnimation.registerAnimation(AnimationState.RUN, humeAnims.get("run0"));
-
-                Map<String, SkeletonAnimation> npcAnims = raceLoader.loadRaceAnimations(RaceModelLoader.CharacterRace.ELVAAN_MALE);
-                if (npcAnims.containsKey("idl0")) npcAnimation.registerAnimation(AnimationState.IDLE, npcAnims.get("idl0"));
-                if (npcAnims.containsKey("wlk0")) npcAnimation.registerAnimation(AnimationState.WALK, npcAnims.get("wlk0"));
-                if (npcAnims.containsKey("run0")) npcAnimation.registerAnimation(AnimationState.RUN, npcAnims.get("run0"));
-            } catch (Exception e) {
-                log.warn("Could not load authentic ROM animations, using procedural fallback: {}", e.getMessage());
-            }
         } catch (Exception e) {
             log.error("Failed to initialize OpenGL renderers", e);
         }
@@ -202,42 +159,20 @@ public class OfflineWorldState implements ApplicationState {
                 log.info("Loading authentic Hume Male character from retail directory: {}", ffxiRoot);
                 this.playerCharacter = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.HumeM);
                 this.authenticCharShader = new CharacterShader();
-                this.playerTextureLoader = new CharacterTextureLoader(playerCharacter.textures());
-                for (SkeletonMeshMesh mesh : playerCharacter.meshes()) {
-                    playerMeshBuffers.add(new CharacterMeshBuffer(mesh));
-                }
-
-                for (SkeletonAnimationResource anim : playerCharacter.slot0Animations()) {
-                    String id = anim.sectionId().trim().toLowerCase();
-                    if (id.startsWith("idl") || id.startsWith("idle")) {
-                        if (animIdle0 == null) animIdle0 = anim;
-                    } else if (id.startsWith("run")) {
-                        if (animRun0 == null) animRun0 = anim;
-                    }
-                }
-                for (SkeletonAnimationResource anim : playerCharacter.slot1Animations()) {
-                    String id = anim.sectionId().trim().toLowerCase();
-                    if (id.startsWith("idl") || id.startsWith("idle")) {
-                        if (animIdle1 == null) animIdle1 = anim;
-                    } else if (id.startsWith("run")) {
-                        if (animRun1 == null) animRun1 = anim;
-                    }
-                }
-                if (animIdle0 == null && !playerCharacter.slot0Animations().isEmpty()) {
-                    animIdle0 = playerCharacter.slot0Animations().get(0);
-                }
-                if (animRun0 == null) {
-                    animRun0 = animIdle0;
-                }
-                this.playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle0, animIdle1);
-                log.info("Loaded authentic Hume Male character: {} meshes, {} textures, animIdle0={}, animIdle1={}, animRun0={}, animRun1={}",
-                        playerMeshBuffers.size(), playerCharacter.textures().size(),
-                        animIdle0 != null ? animIdle0.sectionId() : "none",
-                        animIdle1 != null ? animIdle1.sectionId() : "none",
-                        animRun0 != null ? animRun0.sectionId() : "none",
-                        animRun1 != null ? animRun1.sectionId() : "none");
+                this.playerVisual = new AuthenticCharacterInstance(playerCharacter);
+                log.info("Loaded authentic Hume Male character instance: {} meshes, {} textures",
+                        playerCharacter.meshes().size(), playerCharacter.textures().size());
             } catch (Exception e) {
-                log.warn("Could not load authentic CharacterModelLoader character, falling back: {}", e.getMessage());
+                log.warn("Could not load authentic CharacterModelLoader character: {}", e.getMessage());
+            }
+
+            try {
+                log.info("Loading authentic Elvaan Male guard model for town NPCs from retail directory: {}", ffxiRoot);
+                LoadedCharacter npcChar = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.ElvaanM);
+                this.npcVisual = new AuthenticCharacterInstance(npcChar);
+                log.info("Loaded authentic Elvaan Male NPC instance");
+            } catch (Exception e) {
+                log.warn("Could not load authentic NPC character model: {}", e.getMessage());
             }
         }
 
@@ -389,7 +324,6 @@ public class OfflineWorldState implements ApplicationState {
 
         // 1. Process Input & Camera
         camera.update(handle, dt);
-        playerAnimTime += dt;
 
         handleMovement(handle, dt);
         camera.setTarget(playerX, playerY + 1.0f, playerZ);
@@ -474,58 +408,22 @@ public class OfflineWorldState implements ApplicationState {
 
         // Render 3D animated character models for player and town NPCs
         if (showCharacterModels) {
-            if (playerCharacter != null && authenticCharShader != null && !playerMeshBuffers.isEmpty()) {
-                org.joml.Matrix4f[] jointMatrices = playerAnimator.computePoseMatrices(playerAnimTime);
-                authenticCharShader.bind();
-                org.joml.Matrix4f charModelMat = new org.joml.Matrix4f()
-                        .scale(1f, -1f, -1f)
-                        .translate(playerCharacter.modelOffset())
-                        .translate(playerX, -playerCharacter.feetOffsetY() - playerY, -playerZ)
-                        .rotateY((float) Math.toRadians(playerYaw));
-
-                authenticCharShader.setMatrices(pMat, vMat, charModelMat);
-                authenticCharShader.setDiscardThreshold(0.0f);
-                authenticCharShader.uploadJointMatrices(jointMatrices);
-
-                GL11.glEnable(GL11.GL_DEPTH_TEST);
-                GL11.glDepthFunc(GL11.GL_LEQUAL);
-                GL11.glDepthMask(true);
-                GL11.glEnable(GL11.GL_CULL_FACE);
-                GL11.glCullFace(GL11.GL_BACK);
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                for (CharacterMeshBuffer meshBuffer : playerMeshBuffers) {
-                    GL11.glFrontFace(meshBuffer.mirrored() ? GL11.GL_CW : GL11.GL_CCW);
-                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, playerTextureLoader.textureId(meshBuffer.textureName()));
-                    meshBuffer.draw();
-                }
-                GL11.glFrontFace(GL11.GL_CCW);
-            } else if (characterRenderer != null) {
-                CompositeCharacterModel playerModel = characterRenderer.getOrCreateModel(JobId.WARRIOR);
-                if (playerModel != null) {
-                    BlendedPose playerPose = playerAnimation.evaluate(playerModel.skeleton());
-                    characterRenderer.render(JobId.WARRIOR, playerPose.jointPoseMatrices(),
-                            playerX, playerY, playerZ, playerYaw,
-                            proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
-                }
+            if (playerVisual != null && authenticCharShader != null) {
+                playerVisual.render(authenticCharShader, pMat, vMat, playerX, playerY, playerZ, playerYaw);
             }
 
-            if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty() && characterRenderer != null) {
-                CompositeCharacterModel npcModel = characterRenderer.getOrCreateModel(JobId.NPC);
-                if (npcModel != null) {
-                    BlendedPose npcPose = npcAnimation.evaluate(npcModel.skeleton());
-                    for (NpcInfo npc : townNpcs) {
-                        float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
-                        characterRenderer.render(JobId.NPC, npcPose.jointPoseMatrices(),
-                                npc.position().x(), npc.position().y(), npc.position().z(), npcYaw,
-                                proj, view, camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
-                    }
+            if (showTownNpcs && townNpcs != null && !townNpcs.isEmpty() && npcVisual != null && authenticCharShader != null) {
+                for (NpcInfo npc : townNpcs) {
+                    float npcYaw = (float) Math.toDegrees(npc.rotationRadians());
+                    npcVisual.render(authenticCharShader, pMat, vMat,
+                            npc.position().x(), npc.position().y(), npc.position().z(), npcYaw);
                 }
             }
         }
 
         // Render fallback/debug collision markers
         if (collisionRenderer != null) {
-            if (showTownNpcs && (!showCharacterModels || characterRenderer == null)) {
+            if (showTownNpcs && !showCharacterModels) {
                 collisionRenderer.renderNpcMarkers(proj, view);
             }
             if (!showCharacterModels) {
@@ -578,18 +476,14 @@ public class OfflineWorldState implements ApplicationState {
         if (!onGround) {
             moveFlags |= 16;
         }
-        playerAnimation.update(dt, moveFlags, horizSpeed);
-        npcAnimation.update(dt, 0, 0.0f);
+        if (playerVisual != null) {
+            playerVisual.update(dt, moveFlags, horizSpeed);
+        }
+        if (npcVisual != null) {
+            npcVisual.update(dt, 0, 0.0f);
+        }
 
         if (len > 1e-4f) {
-            if (!isMoving) {
-                isMoving = true;
-                playerAnimTime = 0.0;
-                if (playerCharacter != null && animRun0 != null) {
-                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animRun0, animRun1);
-                }
-            }
-
             float speed = moveSpeed * dt;
             float candidateX = playerX + (moveX / len) * speed;
             float candidateZ = playerZ + (moveZ / len) * speed;
@@ -644,14 +538,6 @@ public class OfflineWorldState implements ApplicationState {
             } else {
                 playerX = candidateX;
                 playerZ = candidateZ;
-            }
-        } else {
-            if (isMoving) {
-                isMoving = false;
-                playerAnimTime = 0.0;
-                if (playerCharacter != null && animIdle0 != null) {
-                    playerAnimator = new CharacterAnimator(playerCharacter.skeleton(), animIdle0, animIdle1);
-                }
             }
         }
 
@@ -838,14 +724,14 @@ public class OfflineWorldState implements ApplicationState {
             try { authenticCharShader.close(); } catch (Exception ignored) {}
             authenticCharShader = null;
         }
-        if (playerTextureLoader != null) {
-            try { playerTextureLoader.close(); } catch (Exception ignored) {}
-            playerTextureLoader = null;
+        if (playerVisual != null) {
+            try { playerVisual.close(); } catch (Exception ignored) {}
+            playerVisual = null;
         }
-        for (CharacterMeshBuffer buf : playerMeshBuffers) {
-            try { buf.close(); } catch (Exception ignored) {}
+        if (npcVisual != null) {
+            try { npcVisual.close(); } catch (Exception ignored) {}
+            npcVisual = null;
         }
-        playerMeshBuffers.clear();
 
         if (collisionRenderer != null) {
             collisionRenderer.cleanup();
@@ -854,10 +740,6 @@ public class OfflineWorldState implements ApplicationState {
         if (visualRenderer != null) {
             visualRenderer.cleanup();
             visualRenderer = null;
-        }
-        if (characterRenderer != null) {
-            characterRenderer.cleanup();
-            characterRenderer = null;
         }
     }
 }

@@ -24,6 +24,30 @@ SNAPSHOT_DIRS = [
 ]
 
 CATEGORIES = {
+    "walkthrough": {
+        "title": "City Walkthrough & Player Controller",
+        "icon": "🚶‍♂️",
+        "desc": "Composite live walkthrough: player character spawned into San d'Oria city maps, striding along cobblestone thoroughfares with real-time PolarCamera controller tracking, proving 3D rendering accuracy, collision floor contact, and architectural occlusion.",
+        "pattern": "walkthrough_*.png",
+        "subsections": [
+            ("Northern San d'Oria (Zone 231) - South Gate to Cathedral Walk", [
+                "walkthrough_231_01_spawn_south_gate.png",
+                "walkthrough_231_02_walk_rue_du_bois.png",
+                "walkthrough_231_03_crossroads_shoulder_orbit.png",
+                "walkthrough_231_04_victory_square_pause.png",
+                "walkthrough_231_05_turn_cathedral_avenue.png",
+                "walkthrough_231_06_cathedral_promenade_close.png",
+                "walkthrough_231_07_cathedral_steps_hero.png",
+                "walkthrough_231_08_cathedral_court_tactical.png"
+            ]),
+            ("Southern San d'Oria (Zone 230) - Outer Gate to Grand Fountain", [
+                "walkthrough_230_01_spawn_ronfaure_gate.png",
+                "walkthrough_230_02_walk_commercial_avenue.png",
+                "walkthrough_230_03_fountain_square_approach.png",
+                "walkthrough_230_04_grand_fountain_pause.png"
+            ])
+        ]
+    },
     "camera": {
         "title": "Third-Person Camera Behaviors",
         "icon": "🎥",

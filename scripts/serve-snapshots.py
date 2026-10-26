@@ -111,6 +111,40 @@ CATEGORIES = {
             ])
         ]
     },
+    "ingame_maps": {
+        "title": "In-Game Maps & Cartography",
+        "icon": "🗺️",
+        "desc": "Authentic retail in-game 2D maps decoded directly from ROM DATs (MENUMAP DXT3 & 256-color palette textures) featuring authentic 8x8 cartography coordinate grids (A-H, 1-8), key landmark POI reticles, world-space extents, origin offsets, and true North=-Z orientation.",
+        "pattern": "map_zone_*.png",
+        "subsections": [
+            ("Kingdom of San d'Oria (Zones 230 - 233)", [
+                "map_zone_230_south_san_doria.png",
+                "map_zone_231_north_san_doria.png",
+                "map_zone_232_port_san_doria.png",
+                "map_zone_233_chateau_d_oraguille.png"
+            ]),
+            ("Republic of Bastok (Zones 234 - 236)", [
+                "map_zone_234_bastok_mines.png",
+                "map_zone_235_bastok_markets.png",
+                "map_zone_236_port_bastok.png"
+            ]),
+            ("Federation of Windurst (Zones 238, 241)", [
+                "map_zone_238_windurst_waters_north.png",
+                "map_zone_238_windurst_waters_south.png",
+                "map_zone_241_windurst_woods.png"
+            ]),
+            ("Grand Duchy of Jeuno (Zones 244, 245)", [
+                "map_zone_244_upper_jeuno.png",
+                "map_zone_245_lower_jeuno.png"
+            ]),
+            ("Outposts, Coastal Ports & Open Fields (Zones 100, 102, 248, 249)", [
+                "map_zone_248_selbina.png",
+                "map_zone_249_mhaura.png",
+                "map_zone_100_west_ronfaure.png",
+                "map_zone_102_la_theine_plateau.png"
+            ])
+        ]
+    },
     "animations": {
         "title": "Character Animations & Blending",
         "icon": "🏃",
@@ -675,6 +709,16 @@ BASE_PAGE_TEMPLATE = """<!DOCTYPE html>
                     <span>📖</span>
                     <span>Table of Contents</span>
                 </a>
+                <a class="chip {active_walkthrough}" href="/?cat=walkthrough">
+                    <span>🚶‍♂️</span>
+                    <span>Walkthrough</span>
+                    <span class="chip-badge">{count_walkthrough}</span>
+                </a>
+                <a class="chip {active_ingame_maps}" href="/?cat=ingame_maps">
+                    <span>🗺️</span>
+                    <span>In-Game Maps</span>
+                    <span class="chip-badge">{count_ingame_maps}</span>
+                </a>
                 <a class="chip {active_camera}" href="/?cat=camera">
                     <span>🎥</span>
                     <span>Camera</span>
@@ -846,12 +890,16 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title="Table of Contents",
             active_toc="active",
+            active_walkthrough="",
+            active_ingame_maps="",
             active_camera="",
             active_zones="",
             active_animations="",
             active_monsters_npcs="",
             active_ui="",
             active_all="",
+            count_walkthrough=counts.get("walkthrough", 0),
+            count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],
             count_zones=counts["zones"],
             count_animations=counts["animations"],
@@ -894,12 +942,16 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title=cat['title'],
             active_toc="",
+            active_walkthrough="active" if cat_key == "walkthrough" else "",
+            active_ingame_maps="active" if cat_key == "ingame_maps" else "",
             active_camera="active" if cat_key == "camera" else "",
             active_zones="active" if cat_key == "zones" else "",
             active_animations="active" if cat_key == "animations" else "",
             active_monsters_npcs="active" if cat_key == "monsters_npcs" else "",
             active_ui="active" if cat_key == "ui" else "",
             active_all="",
+            count_walkthrough=counts.get("walkthrough", 0),
+            count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],
             count_zones=counts["zones"],
             count_animations=counts["animations"],
@@ -934,12 +986,16 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title="All Snapshots",
             active_toc="",
+            active_walkthrough="",
+            active_ingame_maps="",
             active_camera="",
             active_zones="",
             active_animations="",
             active_monsters_npcs="",
             active_ui="",
             active_all="active",
+            count_walkthrough=counts.get("walkthrough", 0),
+            count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],
             count_zones=counts["zones"],
             count_animations=counts["animations"],

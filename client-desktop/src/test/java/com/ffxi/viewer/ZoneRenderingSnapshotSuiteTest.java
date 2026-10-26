@@ -70,7 +70,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                     id, label, zoneId,
                     new Vector3f(0.0f, 0.0f, 0.0f),
                     new Vector3f(0.0f, -100.0f, 0.0f),
-                    new Vector3f(0.0f, 0.0f, -1.0f), // North is UP (-Z)
+                    new Vector3f(0.0f, 0.0f, 1.0f), // North is UP (+Z)
                     0.0f,
                     new Color(22, 26, 32), new Color(22, 26, 32),
                     ProjectionMode.ORTHOGRAPHIC,
@@ -83,7 +83,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                     id, label, zoneId,
                     new Vector3f(centerX, altitude, centerZ),
                     new Vector3f(centerX, -100.0f, centerZ),
-                    new Vector3f(0.0f, 0.0f, -1.0f),
+                    new Vector3f(0.0f, 0.0f, 1.0f),
                     0.0f,
                     new Color(22, 26, 32), new Color(22, 26, 32),
                     ProjectionMode.ORTHOGRAPHIC,
@@ -483,7 +483,7 @@ public class ZoneRenderingSnapshotSuiteTest {
 
                     if (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) {
                         sx[i] = (p.x * 0.5f + 0.5f) * width;
-                        sy[i] = (p.y * 0.5f + 0.5f) * height;
+                        sy[i] = (0.5f - p.y * 0.5f) * height;
                         valid[i] = true;
                     } else {
                         if (p.w > 0.1f) {
@@ -513,9 +513,6 @@ public class ZoneRenderingSnapshotSuiteTest {
                     // Backface has cross >= 0. For mirrored meshes (modelMatrix determinant < 0),
                     // winding order is reversed, so front face has cross > 0, backface has cross <= 0.
                     float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-                    if (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) {
-                        cross = -cross;
-                    }
                     if (!invertCull) {
                         if (!mirrored && cross >= 0.0f) continue;
                         if (mirrored && cross <= 0.0f) continue;

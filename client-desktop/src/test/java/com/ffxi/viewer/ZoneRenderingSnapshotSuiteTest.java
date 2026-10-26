@@ -126,9 +126,9 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_231_north_san_doria_cathedral",
                         "Northern San d'Oria - Cathedral Spire & Chateau Approach",
                         231,
-                        new Vector3f(80.0f, 45.0f, 110.0f),
-                        new Vector3f(0.0f, 0.0f, 0.0f),
-                        50.0f,
+                        new Vector3f(65.0f, 36.0f, 105.0f),
+                        new Vector3f(-110.0f, 14.0f, 120.0f),
+                        52.0f,
                         new Color(35, 70, 135),
                         new Color(165, 195, 225)
                 ),

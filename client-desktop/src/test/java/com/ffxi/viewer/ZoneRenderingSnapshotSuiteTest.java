@@ -341,8 +341,8 @@ public class ZoneRenderingSnapshotSuiteTest {
     }
 
     private static BufferedImage renderZoneSnapshot(LoadedZone zone, ZoneCamera cam) {
-        int width = 1920;
-        int height = 1080;
+        int width = (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) ? 3840 : 1920;
+        int height = (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) ? 2160 : 1080;
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         float[] zBuffer = new float[width * height];
         Arrays.fill(zBuffer, Float.POSITIVE_INFINITY);
@@ -483,7 +483,7 @@ public class ZoneRenderingSnapshotSuiteTest {
 
                     if (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) {
                         sx[i] = (p.x * 0.5f + 0.5f) * width;
-                        sy[i] = (0.5f - p.y * 0.5f) * height;
+                        sy[i] = (p.y * 0.5f + 0.5f) * height;
                         valid[i] = true;
                     } else {
                         if (p.w > 0.1f) {
@@ -513,6 +513,9 @@ public class ZoneRenderingSnapshotSuiteTest {
                     // Backface has cross >= 0. For mirrored meshes (modelMatrix determinant < 0),
                     // winding order is reversed, so front face has cross > 0, backface has cross <= 0.
                     float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+                    if (cam.projectionMode() == ProjectionMode.ORTHOGRAPHIC) {
+                        cross = -cross;
+                    }
                     if (!invertCull) {
                         if (!mirrored && cross >= 0.0f) continue;
                         if (mirrored && cross <= 0.0f) continue;

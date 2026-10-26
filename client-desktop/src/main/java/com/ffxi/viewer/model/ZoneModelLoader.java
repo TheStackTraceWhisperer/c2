@@ -97,7 +97,10 @@ public final class ZoneModelLoader {
         for (ZoneMeshResource m : allMeshes) {
             String name = sanitizeId(m.meshName()).toLowerCase(Locale.ROOT);
             if (!name.isBlank()) {
-                meshesByName.putIfAbsent(name, m);
+                ZoneMeshResource existing = meshesByName.get(name);
+                if (existing == null || (existing.meshChunks().isEmpty() && !m.meshChunks().isEmpty())) {
+                    meshesByName.put(name, m);
+                }
             }
         }
 
@@ -106,6 +109,9 @@ public final class ZoneModelLoader {
             String meshName = rawMeshName.toLowerCase(Locale.ROOT);
             if (meshName.isBlank() || processedMeshNames.contains(meshName)) {
                 continue;
+            }
+            if (mesh.meshChunks().isEmpty() && meshesByName.get(meshName) != null && !meshesByName.get(meshName).meshChunks().isEmpty()) {
+                continue; // Defer until the non-empty duplicate mesh is reached
             }
             processedMeshNames.add(meshName);
 
@@ -124,6 +130,23 @@ public final class ZoneModelLoader {
 
             if (objects != null && !objects.isEmpty()) {
                 meshesWithObjects++;
+
+                // Procedural water volume: If mesh is empty, generate planar water tile instances
+                if (mesh.meshChunks().isEmpty() && isWater) {
+                    for (ZoneObject object : objects) {
+                        Matrix4f modelMatrix = buildObjectTransform(object);
+                        ZoneMeshChunk quadChunk = createProceduralWaterQuadChunk(modelMatrix, textureSources);
+                        chunkInstances.add(new LoadedZone.ZoneChunkInstance(
+                                quadChunk,
+                                modelMatrix,
+                                false,
+                                0.0f
+                        ));
+                        totalChunkInstances++;
+                    }
+                    continue;
+                }
+
                 for (ZoneObject object : objects) {
                     Matrix4f modelMatrix = buildObjectTransform(object);
                     for (ZoneMeshChunk chunk : mesh.meshChunks()) {
@@ -184,6 +207,26 @@ public final class ZoneModelLoader {
                             identity,
                             chunk.invertCull(),
                             blend ? 0.0f : discardThreshold
+                    ));
+                    totalChunkInstances++;
+                }
+            }
+        }
+
+        // Procedural water volume fallback: instantiate any water objects not covered by meshes
+        for (Map.Entry<String, List<ZoneObject>> entry : objectsByExactName.entrySet()) {
+            String objName = entry.getKey();
+            if (isWaterMesh(objName) && !processedMeshNames.contains(objName)) {
+                processedMeshNames.add(objName);
+                meshesWithObjects++;
+                for (ZoneObject object : entry.getValue()) {
+                    Matrix4f modelMatrix = buildObjectTransform(object);
+                    ZoneMeshChunk quadChunk = createProceduralWaterQuadChunk(modelMatrix, textureSources);
+                    chunkInstances.add(new LoadedZone.ZoneChunkInstance(
+                            quadChunk,
+                            modelMatrix,
+                            false,
+                            0.0f
                     ));
                     totalChunkInstances++;
                 }
@@ -270,7 +313,7 @@ public final class ZoneModelLoader {
         return null;
     }
 
-    private static void collectZoneMeshes(ResourceNode node, List<ZoneMeshResource> meshes) {
+    public static void collectZoneMeshes(ResourceNode node, List<ZoneMeshResource> meshes) {
         if (node instanceof ZoneMeshResource mesh) {
             meshes.add(mesh);
             return;
@@ -282,7 +325,7 @@ public final class ZoneModelLoader {
         }
     }
 
-    private static void collectZoneObjects(ResourceNode node, Map<String, List<ZoneObject>> objectsByMeshName) {
+    public static void collectZoneObjects(ResourceNode node, Map<String, List<ZoneObject>> objectsByMeshName) {
         if (node instanceof ZoneDefResource zoneDef) {
             for (ZoneObject object : zoneDef.zoneObjects()) {
                 objectsByMeshName.computeIfAbsent(sanitizeId(object.id()), ignored -> new ArrayList<>()).add(object);
@@ -381,19 +424,19 @@ public final class ZoneModelLoader {
     public static boolean isStandaloneWorldWaterMesh(String meshName) {
         if (meshName == null) return false;
         String n = meshName.trim().toLowerCase(Locale.ROOT);
-        if (n.contains("col") || n.contains("cube") || n.contains("cut") || n.contains("warp") || n.contains("lanp")) {
+        if (n.contains("col") || n.contains("cube") || n.contains("cut") || n.contains("warp") || n.contains("lanp")
+                || n.contains("saku") || n.contains("kigumi") || n.contains("takibi") || n.contains("mon_")
+                || n.contains("gesui") || n.contains("haisui")) {
             return false;
         }
-        if (n.equals("funmizu") || n.equals("mizutw") || n.equals("mizutw2")) {
+        if (n.equals("funmizu") || n.equals("mizutw") || n.equals("mizutw2") || n.equals("funsui")) {
             return false;
         }
-        if (n.startsWith("wt") && n.length() >= 3 && Character.isDigit(n.charAt(n.length() - 1))) {
+        if (n.contains("sea") || n.contains("umi") || n.contains("mizu") || n.contains("taki")
+                || n.contains("suimen") || n.contains("suimwn") || n.contains("wave") || n.equals("wthand")) {
             return true;
         }
-        if (n.contains("sea")) {
-            return true;
-        }
-        if (n.contains("mizu") || n.contains("wave") || n.equals("wthand")) {
+        if (n.contains("wt") || n.contains("hunsui")) {
             return true;
         }
         return false;
@@ -402,7 +445,7 @@ public final class ZoneModelLoader {
     public static boolean isWaterMesh(String meshName) {
         if (meshName == null) return false;
         String n = meshName.trim().toLowerCase(Locale.ROOT);
-        return n.startsWith("wt")
+        return n.contains("wt")
                 || n.contains("sea")
                 || n.contains("mizu")
                 || n.contains("taki")
@@ -412,8 +455,60 @@ public final class ZoneModelLoader {
                 || n.contains("river")
                 || n.contains("water")
                 || n.contains("dam")
-                || n.endsWith("wtmsr")
+                || n.contains("suimen")
+                || n.contains("suimwn")
+                || n.contains("umi")
                 || n.equals("wthand");
+    }
+
+    public static ZoneMeshChunk createProceduralWaterQuadChunk(
+            Matrix4f modelMatrix,
+            Map<String, CharacterTextureLoader.TextureSource> textureSources
+    ) {
+        String texName = resolveWaterTexture(textureSources);
+
+        // Planar water tile centered at (0, 0, 0) with extents [-20, 20] x [-20, 20]
+        float[][] localCoords = {
+                {-20.0f, 0.0f, -20.0f},
+                { 20.0f, 0.0f, -20.0f},
+                { 20.0f, 0.0f,  20.0f},
+                {-20.0f, 0.0f,  20.0f}
+        };
+
+        List<ZoneMeshVertex> verts = new ArrayList<>(4);
+        for (float[] pt : localCoords) {
+            float lx = pt[0];
+            float ly = pt[1];
+            float lz = pt[2];
+
+            // Transform local point to world space to calculate continuous planar UVs
+            float wx = modelMatrix != null ? (modelMatrix.m00() * lx + modelMatrix.m10() * ly + modelMatrix.m20() * lz + modelMatrix.m30()) : lx;
+            float wz = modelMatrix != null ? (modelMatrix.m02() * lx + modelMatrix.m12() * ly + modelMatrix.m22() * lz + modelMatrix.m32()) : lz;
+
+            // Map continuous world coordinates to repeating water texture
+            float u = (-wx) * 0.125f;
+            float v = wz * 0.125f;
+
+            verts.add(new ZoneMeshVertex(
+                    lx, ly, lz,
+                    lx, ly, lz,
+                    0.0f, 1.0f, 0.0f,
+                    128, 128, 128, 160,
+                    u, v
+            ));
+        }
+
+        // Two triangles forming horizontal quad with normal (0, 1, 0) pointing UP
+        List<Integer> indices = List.of(0, 1, 2, 0, 2, 3);
+
+        return new ZoneMeshChunk(
+                texName,
+                true,  // renderBlend = true
+                false, // invertCull = false
+                false, // isTriStrip = false
+                verts,
+                indices
+        );
     }
 
     public static boolean isWaterChunk(String meshName, ZoneMeshChunk chunk) {
@@ -452,7 +547,7 @@ public final class ZoneModelLoader {
         return true;
     }
 
-    private static String stripLodSuffix(String id) {
+    public static String stripLodSuffix(String id) {
         if (id == null) return "";
         String s = id.trim().toLowerCase(Locale.ROOT);
         if (s.endsWith("_h") || s.endsWith("_m") || s.endsWith("_l")) {
@@ -533,7 +628,7 @@ public final class ZoneModelLoader {
         return "umi02";
     }
 
-    private static ParsedDat loadDat(Path path) throws IOException {
+    public static ParsedDat loadDat(Path path) throws IOException {
         byte[] rawData = Files.readAllBytes(path);
         DatResourceGraph graph = DatParser.parseResourceGraph(
                 new ByteReader(rawData, path.getFileName() != null ? path.getFileName().toString() : path.toString())
@@ -557,17 +652,16 @@ public final class ZoneModelLoader {
         return "Zone " + zoneId;
     }
 
-    private static String sanitizeId(String rawId) {
+    public static String sanitizeId(String rawId) {
         if (rawId == null) {
             return "";
         }
         return rawId.trim().replaceAll("[\\x00-\\x1F]", "");
     }
 
-    
     public record ZoneSelectionOption(int zoneId, String label) {
     }
 
-    private record ParsedDat(Path path, DatResourceGraph graph, byte[] rawData) {
+    public record ParsedDat(Path path, DatResourceGraph graph, byte[] rawData) {
     }
 }

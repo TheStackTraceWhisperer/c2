@@ -30,7 +30,7 @@ class MovementInputHandlerTest {
     }
 
     @Test
-    @DisplayName("Forward movement with North-facing camera moves North (+Z) and character faces North")
+    @DisplayName("Forward movement with North-facing camera moves North (-Z) and character faces North")
     void testForwardMovementFacingNorth() {
         MovementInputHandler handler = new MovementInputHandler();
         PolarCamera camera = new PolarCamera(); // Default yaw = 0 deg (North)
@@ -45,8 +45,8 @@ class MovementInputHandlerTest {
         assertTrue(result.shouldSendPacket());
         assertEquals(MovementFlags.FORWARD, result.moveFlags() & MovementFlags.FORWARD);
         assertEquals(0.0f, result.vx(), 0.001f);
-        assertEquals(MovementInputHandler.MOVE_SPEED, result.vz(), 0.001f); // Moving North (+Z)
-        assertEquals(0.6f, result.z(), 0.001f); // 6 m/s * 0.1s
+        assertEquals(-MovementInputHandler.MOVE_SPEED, result.vz(), 0.001f); // Moving North (-Z)
+        assertEquals(-0.6f, result.z(), 0.001f); // 6 m/s * 0.1s toward -Z
         assertEquals(0.0f, result.yaw(), 0.001f); // Rotates from initial 180 deg to face North (0 deg)
     }
 
@@ -70,7 +70,7 @@ class MovementInputHandlerTest {
     }
 
     @Test
-    @DisplayName("Camera rotated East (90 deg): W moves East (+X), A moves North (+Z), S moves West (-X), D moves South (-Z)")
+    @DisplayName("Camera rotated East (90 deg): W moves East (+X), A moves North (-Z), S moves West (-X), D moves South (+Z)")
     void testMovementWithRotatedCamera() {
         MovementInputHandler handler = new MovementInputHandler();
         PolarCamera camera = new PolarCamera();
@@ -82,10 +82,10 @@ class MovementInputHandlerTest {
         assertEquals(0.0f, resW.vz(), 0.001f);
         assertEquals(90.0f, resW.yaw(), 0.001f); // Faces East
 
-        // 2. A (left relative to camera) -> North (+Z)
+        // 2. A (left relative to camera) -> North (-Z)
         var resA = handler.compute(false, false, true, false, false, camera, 0, 0, 0, 0, 0, 0.1f, 100L);
         assertEquals(0.0f, resA.vx(), 0.001f);
-        assertEquals(MovementInputHandler.MOVE_SPEED, resA.vz(), 0.001f);
+        assertEquals(-MovementInputHandler.MOVE_SPEED, resA.vz(), 0.001f);
         assertEquals(0.0f, resA.yaw(), 0.001f); // Faces North
 
         // 3. S (backward relative to camera) -> West (-X)
@@ -94,10 +94,10 @@ class MovementInputHandlerTest {
         assertEquals(0.0f, resS.vz(), 0.001f);
         assertEquals(270.0f, resS.yaw(), 0.001f); // Faces West
 
-        // 4. D (right relative to camera) -> South (-Z)
+        // 4. D (right relative to camera) -> South (+Z)
         var resD = handler.compute(false, false, false, true, false, camera, 0, 0, 0, 0, 0, 0.1f, 100L);
         assertEquals(0.0f, resD.vx(), 0.001f);
-        assertEquals(-MovementInputHandler.MOVE_SPEED, resD.vz(), 0.001f);
+        assertEquals(MovementInputHandler.MOVE_SPEED, resD.vz(), 0.001f);
         assertEquals(180.0f, resD.yaw(), 0.001f); // Faces South
     }
 
@@ -107,7 +107,7 @@ class MovementInputHandlerTest {
         MovementInputHandler handler = new MovementInputHandler();
         PolarCamera camera = new PolarCamera(); // North
 
-        // W + D: North-East
+        // W + D: North-East (+X, -Z)
         var result = handler.compute(
                 true, false, false, true, false, camera,
                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -116,7 +116,7 @@ class MovementInputHandlerTest {
 
         float expectedVel = (float) (MovementInputHandler.MOVE_SPEED / Math.sqrt(2.0));
         assertEquals(expectedVel, result.vx(), 0.001f);
-        assertEquals(expectedVel, result.vz(), 0.001f);
+        assertEquals(-expectedVel, result.vz(), 0.001f);
         assertEquals(45.0f, result.yaw(), 0.001f);
     }
 
@@ -127,7 +127,7 @@ class MovementInputHandlerTest {
         PolarCamera camera = new PolarCamera();
         camera.setYaw(45.0f); // Looking North-East
 
-        // Moving S (backward) while strafing: moves South-West (-X, -Z) but facing remains camera yaw (45 deg)
+        // Moving S (backward) while strafing: moves South-West (-X, +Z) but facing remains camera yaw (45 deg)
         var result = handler.compute(
                 false, true, false, false, true, camera,
                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
@@ -135,7 +135,7 @@ class MovementInputHandlerTest {
         );
 
         assertTrue(result.vx() < 0.0f);
-        assertTrue(result.vz() < 0.0f);
+        assertTrue(result.vz() > 0.0f);
         assertEquals(45.0f, result.yaw(), 0.001f); // Locked to camera yaw
     }
 

@@ -487,7 +487,7 @@ public class OfflineWorldState implements ApplicationState {
             float speed = moveSpeed * dt;
             float candidateX = playerX + (moveX / len) * speed;
             float candidateZ = playerZ + (moveZ / len) * speed;
-            playerYaw = (float) Math.toDegrees(Math.atan2(moveX, moveZ));
+            playerYaw = (float) Math.toDegrees(Math.atan2(moveX, -moveZ));
             if (playerYaw < 0.0f) {
                 playerYaw += 360.0f;
             }

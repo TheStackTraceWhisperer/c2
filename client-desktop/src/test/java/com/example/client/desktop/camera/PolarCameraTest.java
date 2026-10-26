@@ -17,9 +17,9 @@ class PolarCameraTest {
         assertEquals(25.0f, camera.getPitch(), 0.001f);
         assertEquals(8.0f, camera.getDistance(), 0.001f);
 
-        // Forward is North (+Z), Right is East (+X)
+        // Forward is North (-Z), Right is East (+X)
         assertEquals(0.0f, camera.getForwardX(), 0.001f);
-        assertEquals(1.0f, camera.getForwardZ(), 0.001f);
+        assertEquals(-1.0f, camera.getForwardZ(), 0.001f);
         assertEquals(1.0f, camera.getRightX(), 0.001f);
         assertEquals(0.0f, camera.getRightZ(), 0.001f);
     }
@@ -32,11 +32,11 @@ class PolarCameraTest {
 
         assertEquals(90.0f, camera.getYaw(), 0.001f);
 
-        // Forward is East (+X), Right is South (-Z)
+        // Forward is East (+X), Right is South (+Z)
         assertEquals(1.0f, camera.getForwardX(), 0.001f);
         assertEquals(0.0f, camera.getForwardZ(), 0.001f);
         assertEquals(0.0f, camera.getRightX(), 0.001f);
-        assertEquals(-1.0f, camera.getRightZ(), 0.001f);
+        assertEquals(1.0f, camera.getRightZ(), 0.001f);
     }
 
     @Test
@@ -82,17 +82,17 @@ class PolarCameraTest {
         camera.setTarget(10.0f, 0.0f, 20.0f);
         camera.setPitch(0.0f); // Level pitch
         camera.setDistance(10.0f);
-        camera.setYaw(0.0f); // Looking North
+        camera.setYaw(0.0f); // Looking North (-Z)
 
-        // Eye should be at targetX=10, eyeY=targetY+offset=1, eyeZ = targetZ - 10 = 10 (South of target)
+        // Eye should be at targetX=10, eyeY=targetY+offset=1, eyeZ = targetZ - (-1)*10 = 30 (South of target)
         assertEquals(10.0f, camera.getEyeX(), 0.001f);
         assertEquals(1.0f, camera.getEyeY(), 0.001f);
-        assertEquals(10.0f, camera.getEyeZ(), 0.001f);
+        assertEquals(30.0f, camera.getEyeZ(), 0.001f);
 
-        // View vector points North (0, 0, 1)
+        // View vector points North (0, 0, -1)
         assertEquals(0.0f, camera.getViewX(), 0.001f);
         assertEquals(0.0f, camera.getViewY(), 0.001f);
-        assertEquals(1.0f, camera.getViewZ(), 0.001f);
+        assertEquals(-1.0f, camera.getViewZ(), 0.001f);
     }
 
     @Test
@@ -114,25 +114,25 @@ class PolarCameraTest {
     void testDefaultThirdPersonCameraBehindCharacter() {
         PolarCamera camera = new PolarCamera();
         float charX = 0.0f, charY = 0.0f, charZ = 0.0f;
-        float charYaw = 0.0f; // Character facing North (+Z)
+        float charYaw = 0.0f; // Character facing North (-Z)
 
         camera.setTarget(charX, charY, charZ);
         camera.setTargetOffsetY(1.0f);
-        camera.setYaw(0.0f); // Default camera looking North (+Z)
+        camera.setYaw(0.0f); // Default camera looking North (-Z)
         camera.setPitch(25.0f); // Default elevated pitch
         camera.setDistance(6.0f);
 
-        // 1. Camera forward vector is aligned with character facing direction (North, +Z)
+        // 1. Camera forward vector is aligned with character facing direction (North, -Z)
         float charFacingX = (float) Math.sin(Math.toRadians(charYaw));
-        float charFacingZ = (float) Math.cos(Math.toRadians(charYaw));
+        float charFacingZ = (float) -Math.cos(Math.toRadians(charYaw));
         assertEquals(charFacingX, camera.getForwardX(), 0.001f);
         assertEquals(charFacingZ, camera.getForwardZ(), 0.001f);
 
-        // 2. Camera eye is positioned South of target (behind character's back)
+        // 2. Camera eye is positioned South (+Z) of target (behind character's back)
         float horizDist = 6.0f * (float) Math.cos(Math.toRadians(25.0));
         float vertDist = 6.0f * (float) Math.sin(Math.toRadians(25.0));
         assertEquals(charX, camera.getEyeX(), 0.001f, "Camera should be centered horizontally on character");
-        assertEquals(charZ - horizDist, camera.getEyeZ(), 0.001f, "Camera eye must be behind character (-Z)");
+        assertEquals(charZ + horizDist, camera.getEyeZ(), 0.001f, "Camera eye must be behind character (+Z)");
         assertEquals(charY + 1.0f + vertDist, camera.getEyeY(), 0.001f, "Camera eye must be elevated above character");
 
         // 3. Euclidean distance from eye to target center of mass equals distance
@@ -187,11 +187,11 @@ class PolarCameraTest {
         camera.setPitch(20.0f);
         camera.setDistance(7.0f);
 
-        // Cardinal directions: North (0 deg), East (90 deg), South (180 deg), West (270 deg)
+        // Cardinal directions in FFXI: North (0 deg, -Z), East (90 deg, +X), South (180 deg, +Z), West (270 deg, -X)
         float[][] cardinals = new float[][] {
-                {0.0f,   0.0f,  1.0f}, // North: char faces +Z
+                {0.0f,   0.0f, -1.0f}, // North: char faces -Z
                 {90.0f,  1.0f,  0.0f}, // East:  char faces +X
-                {180.0f, 0.0f, -1.0f}, // South: char faces -Z
+                {180.0f, 0.0f,  1.0f}, // South: char faces +Z
                 {270.0f,-1.0f,  0.0f}  // West:  char faces -X
         };
 

@@ -119,7 +119,7 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         modelCx = (minX + maxX) * 0.5f;
         modelMinY = minY;
         modelCz = (minZ + maxZ) * 0.5f;
-        modelHeight = Math.max(1.6f, maxY - minY);
+        modelHeight = Math.max(1.6f, Math.abs(maxY - minY));
     }
 
     @Test
@@ -128,28 +128,28 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         if (cachedSlots == null) return;
 
         float charX = 0.0f, charY = 0.0f, charZ = 0.0f;
-        float charYaw = 0.0f; // Player facing away (North, +Z)
-        float camYaw = 0.0f;  // Camera looking North (+Z) from behind
+        float charYaw = 0.0f; // Player facing away (North, -Z)
+        float camYaw = 0.0f;  // Camera looking North (-Z) from behind (+Z)
         float camPitch = 25.0f; // Default elevated third-person chase angle
         float camDist = 6.0f;
 
         // Verify camera mathematical invariants
         PolarCamera cam = new PolarCamera();
         cam.setTarget(charX, charY, charZ);
-        cam.setTargetOffsetY(1.0f);
+        cam.setTargetOffsetY(0.90f); // Center on character torso/chest
         cam.setYaw(camYaw);
         cam.setPitch(camPitch);
         cam.setDistance(camDist);
 
         assertEquals(0.0f, cam.getEyeX(), 0.001f, "Camera should be centered horizontally behind player");
-        assertTrue(cam.getEyeZ() < charZ, "Camera eye must be South of player (-Z, behind player's back)");
-        assertTrue(cam.getEyeY() > charY + 1.0f, "Camera eye must be elevated above player");
+        assertTrue(cam.getEyeZ() > charZ, "Camera eye must be South of player (+Z, behind player's back)");
+        assertTrue(cam.getEyeY() > charY + 0.90f, "Camera eye must be elevated above player");
 
         File snapshot = renderAndSaveSnapshot(
                 charX, charY, charZ, charYaw,
                 camYaw, camPitch, camDist,
                 "XIM Third-Person Default State | Behind Player Facing Away",
-                "Default FFXI Chase Camera: Player Facing North (+Z) | Camera Positioned Behind",
+                "Default FFXI Chase Camera: Player Facing North (-Z) | Camera Positioned Behind (+Z)",
                 "camera_default_behind_facing_away.png"
         );
 
@@ -276,9 +276,9 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         record CardinalChase(float facingDeg, String filename, String title, String description) {}
 
         List<CardinalChase> cardinals = List.of(
-                new CardinalChase(0.0f,   "camera_chase_facing_north.png", "Chase North (+Z) | Camera Directly Behind", "Player Facing North (0°): Camera Behind at -Z looking +Z"),
-                new CardinalChase(90.0f,  "camera_chase_facing_east.png",  "Chase East (+X) | Camera Directly Behind",  "Player Facing East (90°): Camera Behind at -X looking +X"),
-                new CardinalChase(180.0f, "camera_chase_facing_south.png", "Chase South (-Z) | Camera Directly Behind", "Player Facing South (180°): Camera Behind at +Z looking -Z"),
+                new CardinalChase(0.0f,   "camera_chase_facing_north.png", "Chase North (-Z) | Camera Directly Behind", "Player Facing North (000°): Camera Behind at +Z looking -Z"),
+                new CardinalChase(90.0f,  "camera_chase_facing_east.png",  "Chase East (+X) | Camera Directly Behind",  "Player Facing East (090°): Camera Behind at -X looking +X"),
+                new CardinalChase(180.0f, "camera_chase_facing_south.png", "Chase South (+Z) | Camera Directly Behind", "Player Facing South (180°): Camera Behind at -Z looking +Z"),
                 new CardinalChase(270.0f, "camera_chase_facing_west.png",  "Chase West (-X) | Camera Directly Behind",  "Player Facing West (270°): Camera Behind at +X looking -X")
         );
 
@@ -339,7 +339,7 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     ) throws Exception {
         PolarCamera camera = new PolarCamera();
         camera.setTarget(charX, charY, charZ);
-        camera.setTargetOffsetY(1.0f);
+        camera.setTargetOffsetY(0.90f); // Center focus on character torso/chest
         camera.setYaw(camYaw);
         camera.setPitch(camPitch);
         camera.setDistance(camDist);
@@ -430,12 +430,12 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         float groundOrbitRadius = camDist * (float) Math.cos(Math.toRadians(20.0));
         drawCircle3D(g2, viewProj, charX, charZ, groundOrbitRadius, 64);
 
-        // Cardinal Axes
-        // North (+Z) Axis: Bright Gold
+        // Cardinal Axes (FFXI: North is -Z, East is +X, South is +Z, West is -X)
+        // North (-Z) Axis: Bright Gold
         g2.setColor(new Color(255, 200, 50, 240));
         g2.setStroke(new BasicStroke(2.5f));
-        drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX, 0.01f, charZ + 6.0f);
-        drawArrowhead3D(g2, viewProj, charX, 0.01f, charZ + 6.0f, 0.0f, 1.0f, 0.4f);
+        drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX, 0.01f, charZ - 6.0f);
+        drawArrowhead3D(g2, viewProj, charX, 0.01f, charZ - 6.0f, 0.0f, -1.0f, 0.4f);
 
         // East (+X) Axis: Emerald Green
         g2.setColor(new Color(60, 220, 120, 220));
@@ -443,15 +443,17 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX + 5.0f, 0.01f, charZ);
         drawArrowhead3D(g2, viewProj, charX + 5.0f, 0.01f, charZ, 1.0f, 0.0f, 0.4f);
 
-        // South (-Z) and West (-X) Axes: Muted Blue
+        // South (+Z) and West (-X) Axes: Muted Blue
         g2.setColor(new Color(70, 100, 140, 180));
         g2.setStroke(new BasicStroke(1.5f));
-        drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX, 0.01f, charZ - 5.0f);
+        drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX, 0.01f, charZ + 5.0f);
+        drawArrowhead3D(g2, viewProj, charX, 0.01f, charZ + 5.0f, 0.0f, 1.0f, 0.4f);
         drawLine3D(g2, viewProj, charX, 0.01f, charZ, charX - 5.0f, 0.01f, charZ);
+        drawArrowhead3D(g2, viewProj, charX - 5.0f, 0.01f, charZ, -1.0f, 0.0f, 0.4f);
 
         // Character Facing Direction Chevron (at player's feet pointing in charYaw)
         float charFwdX = (float) Math.sin(Math.toRadians(charYaw));
-        float charFwdZ = (float) Math.cos(Math.toRadians(charYaw));
+        float charFwdZ = (float) -Math.cos(Math.toRadians(charYaw));
         g2.setColor(new Color(255, 80, 80, 250)); // Bright Coral
         g2.setStroke(new BasicStroke(3.0f));
         drawLine3D(g2, viewProj, charX, 0.02f, charZ, charX + charFwdX * 1.5f, 0.02f, charZ + charFwdZ * 1.5f);
@@ -503,15 +505,22 @@ public class ThirdPersonCameraSnapshotSuiteTest {
             float charX, float charY, float charZ,
             Matrix4f viewProj
     ) {
-        // Local character space (feet at 0, head at height ~1.8m, facing North +Z)
-        float lx = v.position().x() - modelCx;
-        float ly = -(v.position().y() - modelMinY);
-        float lz = -(v.position().z() - modelCz);
+        // Raw FFXI character mesh coordinates:
+        // Y goes negative upward (feet at Y ~ 0, head at Y ~ -1.78m)
+        // X is depth/facing axis (+X = front/toes, -X = back/heels)
+        // Z is lateral axis (+Z = right shoulder, -Z = left shoulder)
+        float dx = v.position().x() - modelCx;
+        float dz = v.position().z() - modelCz;
+        float dy = -v.position().y(); // Feet on ground plane (Y=0), head at height ~1.78m
 
-        // Rotate by character yaw around Y
-        float rx = cosC * lx + sinC * lz;
-        float ry = ly;
-        float rz = -sinC * lx + cosC * lz;
+        // Base unrotated orientation: Character faces North (-Z), right shoulder East (+X)
+        float baseX = dz;
+        float baseZ = -dx;
+
+        // Rotate by character yaw around Y (0 deg = North/-Z, 90 deg = East/+X, etc.)
+        float rx = cosC * baseX - sinC * baseZ;
+        float ry = dy;
+        float rz = sinC * baseX + cosC * baseZ;
 
         float wx = charX + rx;
         float wy = charY + ry;
@@ -645,9 +654,9 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     }
 
     private static void drawGroundLabels(BufferedImage dest, Graphics2D g, Matrix4f viewProj, float charX, float charZ) {
-        draw3DText(dest, g, viewProj, charX, 0.05f, charZ + 6.3f, "NORTH (+Z)", new Color(255, 215, 60));
+        draw3DText(dest, g, viewProj, charX, 0.05f, charZ - 6.3f, "NORTH (-Z)", new Color(255, 215, 60));
         draw3DText(dest, g, viewProj, charX + 5.3f, 0.05f, charZ, "EAST (+X)", new Color(70, 230, 130));
-        draw3DText(dest, g, viewProj, charX, 0.05f, charZ - 5.3f, "SOUTH (-Z)", new Color(130, 160, 200));
+        draw3DText(dest, g, viewProj, charX, 0.05f, charZ + 5.3f, "SOUTH (+Z)", new Color(130, 160, 200));
         draw3DText(dest, g, viewProj, charX - 5.3f, 0.05f, charZ, "WEST (-X)", new Color(130, 160, 200));
     }
 

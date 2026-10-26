@@ -7,13 +7,13 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * Spherical polar orbit camera implementing XIM-style polar camera kinematics.
- * Maps 0 deg yaw to North (+Z) and 90 deg yaw to East (+X), matching FFXI world coordinates.
+ * Maps 0 deg yaw to North (-Z) and 90 deg yaw to East (+X), matching FFXI world coordinates.
  */
 @Getter
 @Singleton
 public class PolarCamera implements Camera {
 
-    public static final float DEFAULT_YAW = 0.0f; // 0 deg = North (+Z)
+    public static final float DEFAULT_YAW = 0.0f; // 0 deg = North (-Z)
     public static final float DEFAULT_PITCH = 25.0f; // 25 deg elevation above target
     public static final float DEFAULT_DISTANCE = 8.0f;
     public static final float MIN_DISTANCE = 2.0f;
@@ -174,13 +174,13 @@ public class PolarCamera implements Camera {
         double yawRad = Math.toRadians(yaw);
         double pitchRad = Math.toRadians(pitch);
 
-        // Horizontal forward vector (FFXI: 0 deg = North/+Z, 90 deg = East/+X)
+        // Horizontal forward vector (FFXI: 0 deg = North/-Z, 90 deg = East/+X)
         forwardX = (float) Math.sin(yawRad);
-        forwardZ = (float) Math.cos(yawRad);
+        forwardZ = (float) -Math.cos(yawRad);
 
         // Horizontal right vector (perpendicular, 90 deg clockwise in XZ plane)
         rightX = (float) Math.cos(yawRad);
-        rightZ = (float) -Math.sin(yawRad);
+        rightZ = (float) Math.sin(yawRad);
 
         // Eye position in spherical coordinates relative to target
         float horizDist = distance * (float) Math.cos(pitchRad);

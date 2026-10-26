@@ -140,12 +140,12 @@ public class MovementInputHandler {
             camRightX = camera.getRightX();
             camRightZ = camera.getRightZ();
         } else {
-            // Fallback to character facing orientation if camera not provided
+            // Fallback to character facing orientation if camera not provided (0 deg = North/-Z)
             double yawRad = Math.toRadians(currentYaw);
             camFwdX = (float) Math.sin(yawRad);
-            camFwdZ = (float) Math.cos(yawRad);
+            camFwdZ = (float) -Math.cos(yawRad);
             camRightX = (float) Math.cos(yawRad);
-            camRightZ = (float) -Math.sin(yawRad);
+            camRightZ = (float) Math.sin(yawRad);
         }
 
         // 3. World space direction vector
@@ -172,7 +172,7 @@ public class MovementInputHandler {
             if (strafing && camera != null) {
                 newYaw = camera.getYaw();
             } else {
-                double targetRad = Math.atan2(normX, normZ);
+                double targetRad = Math.atan2(normX, -normZ);
                 newYaw = (float) Math.toDegrees(targetRad);
                 if (newYaw < 0.0f) newYaw += 360.0f;
                 if (newYaw >= 360.0f) newYaw -= 360.0f;

@@ -97,9 +97,10 @@ public final class TextureDecoder {
 
         byte[] rgba = new byte[width * height * 4];
         for (int y = 0; y < height; y++) {
+            int destY = height - 1 - y;
             for (int x = 0; x < width; x++) {
                 int[] color = palette[reader.next8()];
-                writePixel(rgba, width, x, y, color[0], color[1], color[2], color[3]);
+                writePixel(rgba, width, x, destY, color[0], color[1], color[2], color[3]);
             }
         }
         return rgba;
@@ -108,13 +109,14 @@ public final class TextureDecoder {
     private static byte[] decodeDirectBgra(ByteReader reader, int width, int height) {
         byte[] rgba = new byte[width * height * 4];
         for (int y = 0; y < height; y++) {
+            int destY = height - 1 - y;
             for (int x = 0; x < width; x++) {
                 int bgra = reader.next32();
                 writePixel(
                         rgba,
                         width,
                         x,
-                        y,
+                        destY,
                         (bgra >>> 16) & 0xFF,
                         (bgra >>> 8) & 0xFF,
                         bgra & 0xFF,

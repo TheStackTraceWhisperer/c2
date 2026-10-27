@@ -120,44 +120,48 @@ public class ZoneIngameMapSnapshotSuiteTest {
                         230, 0, "map_zone_230_south_san_doria",
                         "Southern San d'Oria", "Kingdom of San d'Oria - Capital Metropolis",
                         List.of(
-                                new Landmark("West Gate (West Ronfaure)", "D-8", -140.0f, 20.0f, "GATE"),
-                                new Landmark("East Gate (King Ranperre)", "I-8", 140.0f, 20.0f, "GATE"),
-                                new Landmark("North San d'Oria Archway", "E-5", 0.0f, 120.0f, "GATE"),
-                                new Landmark("Lion Springs Tavern", "K-6", 90.0f, 80.0f, "TAVERN"),
-                                new Landmark("Auction House Plaza", "F-7", -60.0f, 40.0f, "LANDMARK"),
-                                new Landmark("Mog House Residential", "M-9", 160.0f, -40.0f, "MOG_HOUSE")
+                                new Landmark("West Gate (West Ronfaure)", "F-10", -113.4f, -57.4f, "GATE"),
+                                new Landmark("East Gate (East Ronfaure)", "L-10", 113.5f, -57.4f, "GATE"),
+                                new Landmark("North San d'Oria Archway", "I-7", 0.0f, 58.0f, "GATE"),
+                                new Landmark("Lion Springs Tavern", "K-6", 99.4f, 117.3f, "TAVERN"),
+                                new Landmark("Tanners' Guild", "E-8", -187.7f, 19.4f, "GUILD"),
+                                new Landmark("Mog House Residential", "M-5", 164.9f, 164.8f, "MOG_HOUSE"),
+                                new Landmark("Count's Manor", "B-6", -294.1f, 93.0f, "LANDMARK")
                         )
                 ),
                 new ZoneMapScenario(
                         231, 0, "map_zone_231_north_san_doria",
                         "Northern San d'Oria", "Kingdom of San d'Oria - Cathedral & Royal District",
                         List.of(
-                                new Landmark("Grand San d'Oria Cathedral", "D-6", -115.0f, 95.0f, "LANDMARK"),
-                                new Landmark("Victory Square Plaza", "E-7", -5.0f, 36.0f, "LANDMARK"),
-                                new Landmark("South Gate (Rue du Bois)", "E-8", 0.0f, -26.0f, "GATE"),
-                                new Landmark("Chateau d'Oraguille Gate", "H-4", 120.0f, 140.0f, "GATE"),
-                                new Landmark("East Gate / Phoenix Fly", "G-7", 80.0f, 20.0f, "GATE"),
-                                new Landmark("Mog House Residential", "H-7", 140.0f, 0.0f, "MOG_HOUSE")
+                                new Landmark("Grand San d'Oria Cathedral", "M-6", 149.9f, 141.9f, "LANDMARK"),
+                                new Landmark("Chateau d'Oraguille Gate", "I-7", 0.0f, 99.0f, "GATE"),
+                                new Landmark("South Gate (Rue du Bois)", "I-10", -0.1f, -36.1f, "GATE"),
+                                new Landmark("West Ronfaure Gate", "D-8", -252.2f, 43.9f, "GATE"),
+                                new Landmark("Port San d'Oria Gate", "G-3", -123.5f, 270.5f, "GATE"),
+                                new Landmark("Carpenters' Guild", "E-3", -170.1f, 266.7f, "GUILD"),
+                                new Landmark("Mog House Residential", "M-10", 135.0f, -8.4f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         232, 0, "map_zone_232_port_san_doria",
                         "Port San d'Oria", "Kingdom of San d'Oria - Flyway Terminal & Harbor",
                         List.of(
-                                new Landmark("Airship Dock Departure", "H-6", 20.0f, 80.0f, "PORT"),
-                                new Landmark("Cargo Room & Warehouses", "G-7", -40.0f, 20.0f, "LANDMARK"),
-                                new Landmark("North San d'Oria Gate", "F-5", -80.0f, 120.0f, "GATE"),
-                                new Landmark("Mog House Residential", "J-10", 120.0f, -120.0f, "MOG_HOUSE")
+                                new Landmark("North San d'Oria Gate", "F-10", -111.8f, -136.5f, "GATE"),
+                                new Landmark("Airship Terminal / Departures", "H-6", -25.0f, 28.0f, "PORT"),
+                                new Landmark("Cargo Room & Warehouses", "H-10", -16.0f, -126.1f, "LANDMARK"),
+                                new Landmark("Rusty Anchor Tavern", "G-7", -56.7f, -36.0f, "TAVERN"),
+                                new Landmark("Mog House Residential", "J-10", 83.3f, -139.3f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         233, 0, "map_zone_233_chateau_d_oraguille",
                         "Chateau d'Oraguille", "Kingdom of San d'Oria - Royal Palace & Seat of Power",
                         List.of(
-                                new Landmark("Royal Throne Room", "H-6", 0.0f, 100.0f, "LANDMARK"),
-                                new Landmark("Royal Pavilion Gardens", "F-7", -60.0f, 40.0f, "LANDMARK"),
-                                new Landmark("Great Hall of Knights", "H-8", 0.0f, 0.0f, "LANDMARK"),
-                                new Landmark("Courtyard Archway Gate", "H-9", 0.0f, -80.0f, "GATE")
+                                new Landmark("Royal Throne Room (King Destin)", "H-8", 0.0f, 42.4f, "LANDMARK"),
+                                new Landmark("Prince Royal's Room (Trion)", "H-7", -38.0f, 88.3f, "LANDMARK"),
+                                new Landmark("Great Hall of Knights (Halver)", "I-9", 2.4f, 2.0f, "LANDMARK"),
+                                new Landmark("Bostaunieux Oubliette", "I-8", 12.5f, 24.0f, "GATE"),
+                                new Landmark("Temple Knight Quarters", "I-9", 19.4f, -4.0f, "LANDMARK")
                         )
                 ),
 
@@ -166,31 +170,37 @@ public class ZoneIngameMapSnapshotSuiteTest {
                         234, 0, "map_zone_234_bastok_mines",
                         "Bastok Mines", "Republic of Bastok - Industrial District & Mining Guild",
                         List.of(
-                                new Landmark("Ore Exchange & Miner Guild", "H-7", 0.0f, 40.0f, "GUILD"),
-                                new Landmark("Zeruhn Mines Entrance", "I-9", 60.0f, -80.0f, "GATE"),
-                                new Landmark("Markets Archway", "E-7", -120.0f, 20.0f, "GATE"),
-                                new Landmark("Mog House Residential", "K-8", 140.0f, -20.0f, "MOG_HOUSE")
+                                new Landmark("South Gustaberg Gate", "H-10", -16.0f, -136.0f, "GATE"),
+                                new Landmark("Zeruhn Mines Entrance", "D-7", -196.0f, -21.9f, "GATE"),
+                                new Landmark("Bastok Markets Archway", "F-5", -104.1f, 84.6f, "GATE"),
+                                new Landmark("Alchemists' Guild", "K-7", 94.0f, -4.0f, "GUILD"),
+                                new Landmark("Bat's Lair Tavern", "H-6", -26.0f, 41.7f, "TAVERN"),
+                                new Landmark("Mog House Residential", "K-8", 121.8f, -72.0f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         235, 0, "map_zone_235_bastok_markets",
                         "Bastok Markets", "Republic of Bastok - Commercial Center & Steaming Sheep",
                         List.of(
-                                new Landmark("Auction House / Fountain", "E-8", -60.0f, 0.0f, "LANDMARK"),
-                                new Landmark("Steaming Sheep Restaurant", "E-8", -80.0f, -20.0f, "TAVERN"),
-                                new Landmark("South Gate (N. Gustaberg)", "D-10", -120.0f, -140.0f, "GATE"),
-                                new Landmark("Port Bastok Archway", "F-5", 0.0f, 120.0f, "GATE"),
-                                new Landmark("Mog House Residential", "H-9", 40.0f, -80.0f, "MOG_HOUSE")
+                                new Landmark("South Gustaberg Gate", "D-11", -365.7f, -185.6f, "GATE"),
+                                new Landmark("Bastok Mines Archway", "H-11", -202.2f, -197.8f, "GATE"),
+                                new Landmark("Port Bastok Archway", "G-4", -234.0f, 92.3f, "GATE"),
+                                new Landmark("Metalworks Archway", "H-7", -212.0f, 0.0f, "GATE"),
+                                new Landmark("Goldsmiths' Guild", "H-8", -202.9f, -65.6f, "GUILD"),
+                                new Landmark("Steaming Sheep Restaurant", "E-6", -152.9f, 4.8f, "TAVERN"),
+                                new Landmark("Mog House Residential", "J-6", -146.2f, 29.9f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         236, 0, "map_zone_236_port_bastok",
                         "Port Bastok", "Republic of Bastok - Heavy Airship & Steamer Docks",
                         List.of(
-                                new Landmark("Airship Agency Terminal", "H-6", 0.0f, 60.0f, "PORT"),
-                                new Landmark("Cid's Workshop (Chief Eng.)", "D-7", -140.0f, 20.0f, "LANDMARK"),
-                                new Landmark("Steamers Cargo Dock", "I-8", 60.0f, -40.0f, "PORT"),
-                                new Landmark("Mog House Residential", "K-6", 140.0f, 60.0f, "MOG_HOUSE")
+                                new Landmark("North Gustaberg Gate", "L-6", 150.3f, 6.3f, "GATE"),
+                                new Landmark("Bastok Markets Archway", "D-9", -193.5f, -84.0f, "GATE"),
+                                new Landmark("Airship Agency Terminal", "H-7", -30.0f, -70.0f, "PORT"),
+                                new Landmark("Steamers Cargo Dock", "H-8", 0.0f, -130.0f, "PORT"),
+                                new Landmark("Cid's Workshop (Chief Eng.)", "E-7", -129.3f, -20.0f, "LANDMARK"),
+                                new Landmark("Mog House Residential", "J-13", 60.0f, -252.8f, "MOG_HOUSE")
                         )
                 ),
 
@@ -199,30 +209,36 @@ public class ZoneIngameMapSnapshotSuiteTest {
                         238, 1, "map_zone_238_windurst_waters_north",
                         "Windurst Waters (North)", "Federation of Windurst - Canals & Academic Guilds",
                         List.of(
-                                new Landmark("The Aurastery (Magic)", "E-8", -80.0f, -40.0f, "GUILD"),
-                                new Landmark("The Rhinostery (Herbology)", "F-9", -20.0f, -80.0f, "GUILD"),
-                                new Landmark("North Gate (W. Sarutabaruta)", "F-5", -20.0f, 140.0f, "GATE"),
-                                new Landmark("Mog House Residential", "L-10", 160.0f, -120.0f, "MOG_HOUSE")
+                                new Landmark("West Sarutabaruta Gate", "G-4", -40.2f, 248.8f, "GATE"),
+                                new Landmark("The Aurastery (Magic Guild)", "K-6", 165.0f, 179.9f, "GUILD"),
+                                new Landmark("The Rhinostery (Herbology)", "H-14", 3.2f, -163.0f, "GUILD"),
+                                new Landmark("Port Windurst Archway", "F-15", -59.6f, -209.0f, "GATE"),
+                                new Landmark("Windurst Walls Archway", "K-9", 160.1f, 60.4f, "GATE"),
+                                new Landmark("Mog House Residential", "K-12", 159.9f, -64.1f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         238, 2, "map_zone_238_windurst_waters_south",
                         "Windurst Waters (South)", "Federation of Windurst - Southern Canals & Taverns",
                         List.of(
-                                new Landmark("Timbre Timbers Tavern", "F-10", -40.0f, -120.0f, "TAVERN"),
-                                new Landmark("Windurst Walls Archway", "H-9", 40.0f, -80.0f, "GATE"),
-                                new Landmark("Canal Central Bridge", "G-8", 0.0f, -40.0f, "LANDMARK")
+                                new Landmark("Timbre Timbers Tavern", "H-3", -67.9f, 21.8f, "TAVERN"),
+                                new Landmark("Culinarians' Guild", "G-3", -119.2f, 57.7f, "GUILD"),
+                                new Landmark("The Optistery", "H-2", -57.0f, 92.1f, "GUILD"),
+                                new Landmark("Federal Magic Research", "G-8", -88.0f, -151.3f, "LANDMARK"),
+                                new Landmark("Canal Promenade", "J-2", 8.7f, 68.0f, "LANDMARK")
                         )
                 ),
                 new ZoneMapScenario(
                         241, 0, "map_zone_241_windurst_woods",
                         "Windurst Woods", "Federation of Windurst - Forest Promenade & Bazaar",
                         List.of(
-                                new Landmark("Mithra Pride / Chocobos", "F-11", -40.0f, -140.0f, "LANDMARK"),
-                                new Landmark("Manaclipper Ferry Dock", "I-11", 80.0f, -140.0f, "PORT"),
-                                new Landmark("Auction House & Open Bazaar", "G-10", 0.0f, -100.0f, "LANDMARK"),
-                                new Landmark("Heavens Tower Portal", "H-11", 40.0f, -140.0f, "LANDMARK"),
-                                new Landmark("Mog House Residential", "K-12", 140.0f, -180.0f, "MOG_HOUSE")
+                                new Landmark("East Sarutabaruta Gate", "K-10", 126.7f, -40.0f, "GATE"),
+                                new Landmark("Port Windurst Archway", "F-11", -94.2f, -72.7f, "GATE"),
+                                new Landmark("Windurst Walls Archway", "G-7", -60.7f, 92.0f, "GATE"),
+                                new Landmark("Weavers' Guild", "G-12", -42.4f, -118.3f, "GUILD"),
+                                new Landmark("Chocobo Stables", "K-12", 127.0f, -134.1f, "LANDMARK"),
+                                new Landmark("The Manustery", "H-9", -9.1f, -13.1f, "GUILD"),
+                                new Landmark("Mog House Residential", "E-8", -144.7f, 40.0f, "MOG_HOUSE")
                         )
                 ),
 
@@ -231,21 +247,25 @@ public class ZoneIngameMapSnapshotSuiteTest {
                         244, 0, "map_zone_244_upper_jeuno",
                         "Upper Jeuno", "Grand Duchy of Jeuno - High Promenade & Embassy Bridge",
                         List.of(
-                                new Landmark("Ru'Lude Palace Gate", "H-7", 20.0f, 20.0f, "GATE"),
-                                new Landmark("Batallia Downs Gate", "F-5", -80.0f, 120.0f, "GATE"),
-                                new Landmark("Temple of the Goddess", "G-8", -20.0f, -40.0f, "LANDMARK"),
-                                new Landmark("Mog House Residential", "I-11", 60.0f, -160.0f, "MOG_HOUSE")
+                                new Landmark("Batallia Downs Gate", "F-5", -106.1f, 190.0f, "GATE"),
+                                new Landmark("Ru'Lude Gardens Gate", "J-10", 46.0f, -30.9f, "GATE"),
+                                new Landmark("Lower Jeuno Archway", "I-11", 4.8f, -54.9f, "GATE"),
+                                new Landmark("Goddess Temple", "H-9", -35.1f, 23.1f, "LANDMARK"),
+                                new Landmark("Marble Bridge Tavern", "F-7", -97.8f, 90.8f, "TAVERN"),
+                                new Landmark("Mog House Residential", "J-11", 49.2f, -82.9f, "MOG_HOUSE")
                         )
                 ),
                 new ZoneMapScenario(
                         245, 0, "map_zone_245_lower_jeuno",
                         "Lower Jeuno", "Grand Duchy of Jeuno - Central Bazaar & Neptune's Spire",
                         List.of(
-                                new Landmark("Rolanberry Fields Gate", "J-11", 100.0f, -160.0f, "GATE"),
-                                new Landmark("Neptune's Spire Tavern", "H-8", 20.0f, -20.0f, "TAVERN"),
-                                new Landmark("Auction House & Bazaar", "H-9", 0.0f, -60.0f, "LANDMARK"),
-                                new Landmark("Port Jeuno Stairs", "I-7", 40.0f, 40.0f, "GATE"),
-                                new Landmark("Mog House Residential", "H-10", 0.0f, -120.0f, "MOG_HOUSE")
+                                new Landmark("Rolanberry Fields Gate", "F-11", -123.1f, -200.7f, "GATE"),
+                                new Landmark("Upper Jeuno Stairs", "I-5", 0.2f, 59.6f, "GATE"),
+                                new Landmark("Port Jeuno Stairs", "J-6", 29.7f, 41.4f, "GATE"),
+                                new Landmark("Neptune's Spire Tavern", "J-7", 28.1f, -8.3f, "TAVERN"),
+                                new Landmark("Tenshodo H.Q.", "J-8", 38.2f, -57.8f, "LANDMARK"),
+                                new Landmark("Merry Minstrel Tavern", "H-8", -28.7f, -61.2f, "TAVERN"),
+                                new Landmark("Mog House Residential", "J-5", 43.9f, 88.6f, "MOG_HOUSE")
                         )
                 ),
 
@@ -254,40 +274,46 @@ public class ZoneIngameMapSnapshotSuiteTest {
                         248, 0, "map_zone_248_selbina",
                         "Selbina", "Zepwell / Kuzotz Sea Route - Coastal Free Port",
                         List.of(
-                                new Landmark("Passenger Ferry Pier", "H-10", 20.0f, -120.0f, "PORT"),
-                                new Landmark("Town Hall / Mayor's Office", "H-7", 0.0f, 20.0f, "LANDMARK"),
-                                new Landmark("Weavers' Guild & Sheep", "G-8", -40.0f, -20.0f, "GUILD"),
-                                new Landmark("Valkurm Dunes Town Gate", "F-6", -80.0f, 80.0f, "GATE")
+                                new Landmark("Valkurm Dunes Town Gate", "H-6", 16.9f, 104.3f, "GATE"),
+                                new Landmark("Passenger Ferry Pier", "H-11", 10.0f, -80.0f, "PORT"),
+                                new Landmark("Mayor's Residence", "G-9", -59.9f, 1.9f, "LANDMARK"),
+                                new Landmark("Weavers' Guild", "I-9", 21.1f, 7.6f, "GUILD"),
+                                new Landmark("Fishermen's Guild", "H-9", -20.2f, 7.6f, "GUILD")
                         )
                 ),
                 new ZoneMapScenario(
                         249, 0, "map_zone_249_mhaura",
                         "Mhaura", "Li'Telor / Mindartia Trade Harbor & Ferry Pier",
                         List.of(
-                                new Landmark("Steamship Ferry Pier", "H-8", 20.0f, -20.0f, "PORT"),
-                                new Landmark("Blacksmith Metalworks", "G-9", -40.0f, -60.0f, "GUILD"),
-                                new Landmark("Town Center Plaza", "G-8", -20.0f, -20.0f, "LANDMARK"),
-                                new Landmark("Buburimu Peninsula Gate", "F-6", -80.0f, 80.0f, "GATE")
+                                new Landmark("Buburimu Peninsula Gate", "H-7", -0.2f, 121.0f, "GATE"),
+                                new Landmark("Steamship Ferry Pier", "I-8", 30.0f, 70.0f, "PORT"),
+                                new Landmark("Blacksmiths' Guild", "G-9", -53.2f, 32.0f, "GUILD"),
+                                new Landmark("Goldsmiths' Guild", "G-8", -30.9f, 66.9f, "GUILD"),
+                                new Landmark("Sailors' Stay Tavern", "H-9", 20.0f, 57.2f, "TAVERN")
                         )
                 ),
                 new ZoneMapScenario(
                         100, 0, "map_zone_100_west_ronfaure",
                         "West Ronfaure", "Kingdom of San d'Oria - Emerald Canopy Woodlands",
                         List.of(
-                                new Landmark("Southern San d'Oria Gates", "I-6", 280.0f, 100.0f, "GATE"),
-                                new Landmark("Knightwell Lake & Watchtower", "E-7", -450.0f, -150.0f, "LANDMARK"),
-                                new Landmark("Regional Outpost", "G-9", -100.0f, -500.0f, "OUTPOST"),
-                                new Landmark("Ghelsba Outpost Entrance", "E-4", -500.0f, 650.0f, "GATE")
+                                new Landmark("Southern San d'Oria Gates", "I-6", -119.1f, 280.9f, "GATE"),
+                                new Landmark("Northern San d'Oria Gates", "I-6", -157.7f, 380.0f, "GATE"),
+                                new Landmark("Ghelsba Outpost Entrance", "E-4", -740.6f, 623.3f, "GATE"),
+                                new Landmark("La Theine Plateau Pass", "F-11", -560.4f, -613.2f, "GATE"),
+                                new Landmark("Knightwell Watchtower", "E-8", -716.8f, 18.2f, "LANDMARK"),
+                                new Landmark("Regional Outpost", "G-9", -446.3f, -260.6f, "OUTPOST")
                         )
                 ),
                 new ZoneMapScenario(
                         102, 0, "map_zone_102_la_theine_plateau",
                         "La Theine Plateau", "Gustaberg - Ronfaure Border - Rolling Highlands",
                         List.of(
-                                new Landmark("Crag of Holla (Teleport)", "K-8", 480.0f, -100.0f, "CRAG"),
-                                new Landmark("Ordelle's Caves Ravine", "H-7", 0.0f, 120.0f, "GATE"),
-                                new Landmark("Regional Outpost", "G-9", -150.0f, -480.0f, "OUTPOST"),
-                                new Landmark("West Ronfaure Canyon Pass", "D-4", -650.0f, 650.0f, "GATE")
+                                new Landmark("Crag of Holla (Telepoint)", "J-8", 420.0f, 20.0f, "CRAG"),
+                                new Landmark("West Ronfaure Pass", "E-4", -558.6f, 688.0f, "GATE"),
+                                new Landmark("Valkurm Dunes Ravine", "I-12", 160.2f, -764.0f, "GATE"),
+                                new Landmark("Ordelle's Caves Entrance", "F-7", -276.6f, 99.6f, "GATE"),
+                                new Landmark("Jugner Forest Pass", "M-8", 801.8f, -37.6f, "GATE"),
+                                new Landmark("Cavernous Maw", "E-4", -557.9f, 637.8f, "LANDMARK")
                         )
                 )
         );
@@ -376,39 +402,50 @@ public class ZoneIngameMapSnapshotSuiteTest {
     }
 
     private void drawCartographyGrid(BufferedImage canvas, Graphics2D g, int mx, int my, int mw, int mh) {
-        float cellW = mw / 8.0f;
-        float cellH = mh / 8.0f;
+        float cellW = mw / 16.0f;
+        float cellH = mh / 16.0f;
 
-        // Grid lines inside map area
-        g.setStroke(new BasicStroke(1.2f));
-        g.setColor(new Color(100, 190, 240, 70));
-
-        for (int col = 1; col < 8; col++) {
+        // Grid lines inside map area (16x16 authentic FFXI cartography grid)
+        for (int col = 1; col < 16; col++) {
             int cx = Math.round(mx + col * cellW);
+            if (col % 2 == 0) {
+                g.setStroke(new BasicStroke(1.2f));
+                g.setColor(new Color(100, 190, 240, 80));
+            } else {
+                g.setStroke(new BasicStroke(0.6f));
+                g.setColor(new Color(100, 190, 240, 35));
+            }
             g.drawLine(cx, my, cx, my + mh);
         }
-        for (int row = 1; row < 8; row++) {
+        for (int row = 1; row < 16; row++) {
             int cy = Math.round(my + row * cellH);
+            if (row % 2 == 0) {
+                g.setStroke(new BasicStroke(1.2f));
+                g.setColor(new Color(100, 190, 240, 80));
+            } else {
+                g.setStroke(new BasicStroke(0.6f));
+                g.setColor(new Color(100, 190, 240, 35));
+            }
             g.drawLine(mx, cy, mx + mw, cy);
         }
 
-        // Crosshairs at internal grid intersections
+        // Crosshairs at major grid intersections (every 2 cells = 8x8 major intersections)
         g.setColor(new Color(150, 225, 255, 140));
-        g.setStroke(new BasicStroke(1.5f));
-        int tick = 6;
-        for (int col = 1; col < 8; col++) {
+        g.setStroke(new BasicStroke(1.2f));
+        int tick = 5;
+        for (int col = 2; col < 16; col += 2) {
             int cx = Math.round(mx + col * cellW);
-            for (int row = 1; row < 8; row++) {
+            for (int row = 2; row < 16; row += 2) {
                 int cy = Math.round(my + row * cellH);
                 g.drawLine(cx - tick, cy, cx + tick, cy);
                 g.drawLine(cx, cy - tick, cx, cy + tick);
             }
         }
 
-        // Coordinate Column Headers (A to H) using authentic FontMojiRenderer
-        String[] cols = {"A", "B", "C", "D", "E", "F", "G", "H"};
+        // Coordinate Column Headers (A to P) using authentic FontMojiRenderer
+        String[] cols = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"};
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 16; i++) {
             int colCenter = Math.round(mx + (i + 0.5f) * cellW);
             int tw = measureTextWidth(cols[i], 1);
 
@@ -419,8 +456,8 @@ public class ZoneIngameMapSnapshotSuiteTest {
             fontMoji.drawString(canvas, cols[i], colCenter - tw / 2, my + mh + 8, FontMojiRenderer.COLOR_WHITE, 1);
         }
 
-        // Coordinate Row Sidebars (1 to 8) using authentic FontMojiRenderer
-        for (int i = 0; i < 8; i++) {
+        // Coordinate Row Sidebars (1 to 16) using authentic FontMojiRenderer
+        for (int i = 0; i < 16; i++) {
             int rowCenter = Math.round(my + (i + 0.5f) * cellH);
             String rowStr = String.valueOf(i + 1);
             int tw = measureTextWidth(rowStr, 1);
@@ -446,9 +483,13 @@ public class ZoneIngameMapSnapshotSuiteTest {
         float yOff = zm.yOffset();
 
         for (Landmark lm : landmarks) {
-            // Map worldX, worldZ to pixel coordinates
-            float normX = (lm.worldX - xOff) / mapSpan;
-            float normY = (lm.worldZ - yOff) / mapSpan;
+            // Authentic FFXI 512x512 map projection:
+            // mapPxX = 0.5f + (worldX / mapSpan) * 512.0f - xOff
+            // mapPxY = -0.5f + (-worldZ / mapSpan) * 512.0f - yOff
+            float mapPxX = 0.5f + (lm.worldX() / mapSpan) * 512.0f - xOff;
+            float mapPxY = -0.5f + (-lm.worldZ() / mapSpan) * 512.0f - yOff;
+            float normX = mapPxX / 512.0f;
+            float normY = mapPxY / 512.0f;
 
             // Clamp slightly inside map boundary
             normX = Math.max(0.01f, Math.min(0.99f, normX));
@@ -595,11 +636,11 @@ public class ZoneIngameMapSnapshotSuiteTest {
         float zMax = zm.yOffset() + span;
         float scalePxPerM = 1024.0f / span;
 
-        String telemetryLeft = String.format("Grid: 8x8 (%.0fm x %.0fm) | Offsets: X=%.1fm, Y=%.1fm | Scale: %.2f px/m",
-                span, span, zm.xOffset(), zm.yOffset(), scalePxPerM);
+        String telemetryLeft = String.format("Grid: 16x16 (A-P, 1-16) | Span: %.0fm | Offsets: X=%.0f, Y=%.0f | Scale: %.2f px/m",
+                span, zm.xOffset(), zm.yOffset(), scalePxPerM);
         fontMoji.drawString(canvas, telemetryLeft, 45, fy - 8, FontMojiRenderer.COLOR_WHITE, 1);
 
-        String telemetryRight = String.format("Extents: X[%.0f..%.0f] Z[%.0f..%.0f] | N=-Z S=+Z W=-X E=+X",
+        String telemetryRight = String.format("Extents: X[%.0f..%.0f] Z[%.0f..%.0f] | North=-Z South=+Z West=-X East=+X",
                 xMin, xMax, zMin, zMax);
         int rw = measureTextWidth(telemetryRight, 1);
         fontMoji.drawString(canvas, telemetryRight, canvasW - rw - 45, fy - 8, FontMojiRenderer.COLOR_GOLD, 1);

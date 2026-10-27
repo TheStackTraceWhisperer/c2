@@ -27,7 +27,6 @@ public class UnauthenticatedState implements ApplicationState {
     private final ApplicationStateService stateService;
     private final ClientState clientState;
     private final BeanProvider<AuthenticatedState> authenticatedProvider;
-    private final BeanProvider<OfflineWorldState> offlineWorldProvider;
     private final DesktopClientProperties props;
 
     private String host;
@@ -38,11 +37,6 @@ public class UnauthenticatedState implements ApplicationState {
         host = props.getDefaultServerHost();
         port = props.getDefaultServerPort();
         debugLog.log("Ready to connect — " + host + ":" + port);
-
-        if (Boolean.getBoolean("c2.offline")) {
-            debugLog.log("Offline mode requested via CLI flag — switching to 3D explorer...");
-            stateService.changeState(offlineWorldProvider::get);
-        }
     }
 
     @Override
@@ -55,10 +49,6 @@ public class UnauthenticatedState implements ApplicationState {
 
         if (panel.isLoginRequested()) {
             doLogin();
-        }
-        if (panel.isOfflineExploreRequested()) {
-            debugLog.log("Switching to Offline 3D World Explorer...");
-            stateService.changeState(offlineWorldProvider::get);
         }
         panel.clearIntents();
 

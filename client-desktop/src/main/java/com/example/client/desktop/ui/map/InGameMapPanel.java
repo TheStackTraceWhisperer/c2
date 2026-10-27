@@ -2,7 +2,6 @@ package com.example.client.desktop.ui.map;
 
 import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.interaction.ZoneInteraction;
-import com.example.asset.npc.NpcInfo;
 import com.example.client.desktop.util.ZoneNameRegistry;
 import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
@@ -93,7 +92,7 @@ public class InGameMapPanel implements AutoCloseable {
             List<ZoneInteraction> zoneInteractions,
             Collection<ClientState.RemoteEntityState> remoteEntities
     ) {
-        render(zoneId, activeSubZoneId, playerX, playerY, playerZ, playerYaw, zoneInteractions, remoteEntities, null);
+        render(zoneId, activeSubZoneId, playerX, playerY, playerZ, playerYaw, zoneInteractions, remoteEntities);
     }
 
     public void render(
@@ -104,8 +103,7 @@ public class InGameMapPanel implements AutoCloseable {
             float playerZ,
             float playerYaw,
             List<ZoneInteraction> zoneInteractions,
-            Collection<ClientState.RemoteEntityState> remoteEntities,
-            List<NpcInfo> offlineNpcs
+            Collection<ClientState.RemoteEntityState> remoteEntities
     ) {
         if (!visible) {
             return;
@@ -284,19 +282,6 @@ public class InGameMapPanel implements AutoCloseable {
                 String cat = isNpc ? "NPC" : "PLAYER";
                 int color = isNpc ? ImColor.rgba(255, 190, 70, 255) : ImColor.rgba(80, 255, 120, 255);
                 markers.add(new DynamicMapMarker(label, grid, mx, mz, cat, color));
-            }
-        }
-
-        // (c) Offline Town NPCs (when in offline exploration mode)
-        if (offlineNpcs != null && (remoteEntities == null || remoteEntities.isEmpty())) {
-            for (NpcInfo npc : offlineNpcs) {
-                float mx = npc.position().x();
-                float mz = npc.position().z();
-                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
-                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
-                String grid = formatGridCoord(lmMapX, lmMapY);
-                String label = String.format("[NPC #%d]", npc.id());
-                markers.add(new DynamicMapMarker(label, grid, mx, mz, "NPC", ImColor.rgba(255, 190, 70, 255)));
             }
         }
 

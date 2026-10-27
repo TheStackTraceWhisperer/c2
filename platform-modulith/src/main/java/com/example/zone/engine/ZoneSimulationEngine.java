@@ -20,8 +20,6 @@ import com.example.zone.state.ZoneEntityState;
 import com.example.zone.patrol.NpcPatrolSimulation;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
-import com.example.asset.npc.NpcInfo;
-import com.example.asset.npc.NpcTable;
 import com.example.world.dto.ZoneTransferNotification;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.annotation.PostConstruct;
@@ -79,8 +77,6 @@ public class ZoneSimulationEngine {
       loadDatZoneLines();
     }
     log.info("[ZONE-ENGINE] Loaded {} trigger zone lines for Zone #{}", cachedZoneLines.size(), properties.getZoneId());
-
-    loadTownNpcs();
 
     tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
       Thread t = new Thread(r, "zone-simulation-loop");
@@ -369,40 +365,6 @@ public class ZoneSimulationEngine {
     }
   }
 
-  public void loadTownNpcs() {
-    int zoneId = properties.getZoneId();
-    byte[] npcBytes = loadNpcTableBytes();
-    if (npcBytes == null || npcBytes.length == 0) {
-      log.warn("[ZONE-ENGINE] No NpcTable-V3.DAT found — skipping town NPC population for Zone #{}", zoneId);
-      return;
-    }
-
-    try {
-      NpcTable table = NpcTable.load(npcBytes);
-      List<NpcInfo> npcs = table.getByZone(zoneId);
-      int count = 0;
-      for (NpcInfo npc : npcs) {
-        long entityId = npc.id();
-        float yawDeg = (float) Math.toDegrees(npc.rotationRadians());
-        String name = String.format("NPC-%d", npc.id());
-        ZoneEntityState npcState = ZoneEntityState.createNpc(
-          entityId,
-          zoneId,
-          name,
-          npc.position().x(),
-          npc.position().y(),
-          npc.position().z(),
-          yawDeg
-        );
-        registerNpc(npcState);
-        count++;
-      }
-      log.info("[ZONE-ENGINE] Loaded {} town NPCs for Zone #{} into spatial simulation grid", count, zoneId);
-    } catch (Exception e) {
-      log.error("[ZONE-ENGINE] Failed to parse and load town NPCs for Zone #{}", zoneId, e);
-    }
-  }
-
   public void registerNpc(ZoneEntityState npcState) {
     entities.put(npcState.getCharacterId(), npcState);
     spatialGrid.updatePosition(npcState.getCharacterId(), npcState.getX(), npcState.getZ());
@@ -418,33 +380,6 @@ public class ZoneSimulationEngine {
 
   public int getEntityCount() {
     return entities.size();
-  }
-
-  private byte[] loadNpcTableBytes() {
-    String resPath = "/dats/tables/landsandboat/NpcTable-V3.DAT";
-    try (InputStream stream = getClass().getResourceAsStream(resPath)) {
-      if (stream != null) {
-        return stream.readAllBytes();
-      }
-    } catch (Exception ignored) {}
-
-    String configuredDir = properties.getAssetPath();
-    List<Path> candidates = List.of(
-      Path.of(configuredDir, "tables/landsandboat/NpcTable-V3.DAT"),
-      Path.of(configuredDir, "NpcTable-V3.DAT"),
-      Path.of("game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
-      Path.of("../game-asset-pipeline/src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT"),
-      Path.of("src/test/resources/dats/tables/landsandboat/NpcTable-V3.DAT")
-    );
-
-    for (Path p : candidates) {
-      if (Files.isRegularFile(p)) {
-        try {
-          return Files.readAllBytes(p);
-        } catch (Exception ignored) {}
-      }
-    }
-    return null;
   }
 
   public void flushDirtyEntitiesAsync() {

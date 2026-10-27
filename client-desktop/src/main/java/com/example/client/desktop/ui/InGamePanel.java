@@ -11,6 +11,30 @@ public class InGamePanel {
     @Getter private boolean pingRequested;
     @Getter private boolean logoutRequested;
     @Getter private boolean characterSelectRequested;
+    @Getter private boolean mapToggleRequested;
+    @Getter private int warpRequestedZoneId = -1;
+
+    private int selectedZoneIndex = 0;
+    private static final int[] WARP_ZONE_IDS = {
+            230, 231, 232, 233, 234, 235, 236, 238, 241, 244, 245, 248, 249, 100, 102
+    };
+    private static final String[] WARP_ZONE_NAMES = {
+            "South San d'Oria (230)",
+            "North San d'Oria (231)",
+            "Port San d'Oria (232)",
+            "Chateau d'Oraguille (233)",
+            "Bastok Mines (234)",
+            "Bastok Markets (235)",
+            "Port Bastok (236)",
+            "Windurst Waters (238)",
+            "Windurst Woods (241)",
+            "Upper Jeuno (244)",
+            "Lower Jeuno (245)",
+            "Selbina (248)",
+            "Mhaura (249)",
+            "West Ronfaure (100)",
+            "La Theine Plateau (102)"
+    };
 
     private String characterName = "";
     private String status = "";
@@ -57,6 +81,20 @@ public class InGamePanel {
         }
 
         ImGui.separator();
+        ImGui.text("World Cartography & Travel:");
+        if (ImGui.button("Toggle Cartography Map [M]")) {
+            mapToggleRequested = true;
+        }
+        imgui.type.ImInt selZone = new imgui.type.ImInt(selectedZoneIndex);
+        if (ImGui.combo("Zone", selZone, WARP_ZONE_NAMES)) {
+            selectedZoneIndex = selZone.get();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Warp")) {
+            warpRequestedZoneId = WARP_ZONE_IDS[selectedZoneIndex];
+        }
+
+        ImGui.separator();
         ImGui.text("Movement Controls (Camera-Relative):");
         ImGui.bulletText("W / S: Move Forward / Backward");
         ImGui.bulletText("A / D: Move Left / Right");
@@ -80,5 +118,7 @@ public class InGamePanel {
         pingRequested = false;
         characterSelectRequested = false;
         logoutRequested = false;
+        mapToggleRequested = false;
+        warpRequestedZoneId = -1;
     }
 }

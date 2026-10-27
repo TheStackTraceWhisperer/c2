@@ -84,11 +84,13 @@ class InGameStateTest {
         BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
         BeanProvider<AuthenticatedState> authProvider = Mockito.mock(BeanProvider.class);
         BeanProvider<CharacterSelectedState> selectedProvider = Mockito.mock(BeanProvider.class);
+        com.example.client.desktop.ui.map.InGameMapPanel mapPanel = Mockito.mock(com.example.client.desktop.ui.map.InGameMapPanel.class);
 
         return new InGameState(
                 panel, radarPanel, debugLog, keepAlive, clientState,
                 networkAdapter, stateService, windowService, movementHandler,
-                camera, unauthProvider, authProvider, selectedProvider
+                camera, unauthProvider, authProvider, selectedProvider,
+                mapPanel
         );
     }
 }

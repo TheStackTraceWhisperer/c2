@@ -17,10 +17,17 @@ import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.asset.config.FfxiPathConfig;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.renderer.VisualZoneRenderer;
+import com.example.client.desktop.ui.map.InGameMapPanel;
 import com.example.client.desktop.util.MatrixMath;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
+import com.ffxi.io.FileTableManager;
+import com.ffxi.tables.ZoneConfig;
+import com.ffxi.tables.ZoneIdToResourceId;
 import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.environment.AuthenticSkyDome;
+import com.ffxi.viewer.environment.WeatherParticleSystem;
+import com.ffxi.viewer.environment.WeatherPreset;
 import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -115,6 +122,37 @@ public class OfflineWorldState implements ApplicationState {
     private boolean manualTimeOverride = false;
     private float manualTimeHour = 12.0f;
 
+    // Authentic Sky Dome, Weather particle simulation & Cartography
+    private AuthenticSkyDome skyDome;
+    private WeatherParticleSystem weatherParticleSystem;
+    private WeatherType lastSkyWeather = null;
+    private InGameMapPanel inGameMapPanel;
+    private boolean mKeyPressed = false;
+    private int currentZoneId = 230;
+    private int selectedZoneIndex = 0;
+    private FileTableManager fileTableManager;
+
+    private static final int[] WARP_ZONE_IDS = {
+            230, 231, 232, 233, 234, 235, 236, 238, 241, 244, 245, 248, 249, 100, 102
+    };
+    private static final String[] WARP_ZONE_NAMES = {
+            "South San d'Oria (230)",
+            "North San d'Oria (231)",
+            "Port San d'Oria (232)",
+            "Chateau d'Oraguille (233)",
+            "Bastok Mines (234)",
+            "Bastok Markets (235)",
+            "Port Bastok (236)",
+            "Windurst Waters (238)",
+            "Windurst Woods (241)",
+            "Upper Jeuno (244)",
+            "Lower Jeuno (245)",
+            "Selbina (248)",
+            "Mhaura (249)",
+            "West Ronfaure (100)",
+            "La Theine Plateau (102)"
+    };
+
     @Override
     public void onEnter() {
         log.info("Entering OfflineWorldState — initializing 3D visual, collision, and character renderers");
@@ -125,6 +163,15 @@ public class OfflineWorldState implements ApplicationState {
             visualRenderer.init();
         } catch (Exception e) {
             log.error("Failed to initialize OpenGL renderers", e);
+        }
+
+        try {
+            this.skyDome = new AuthenticSkyDome();
+            this.weatherParticleSystem = new WeatherParticleSystem();
+            this.inGameMapPanel = new InGameMapPanel();
+            log.info("Initialized authentic sky dome, weather particle system, and in-game map panel");
+        } catch (Exception e) {
+            log.warn("Failed to initialize atmospheric systems in OfflineWorldState: {}", e.getMessage());
         }
 
         // 1. Try loading authentic FFXI zone and character models from retail install
@@ -277,6 +324,27 @@ public class OfflineWorldState implements ApplicationState {
     }
 
     byte[] loadZoneBytes(int zoneId) {
+        // 1. Check retail FFXI installation directory with dynamic FileTableManager
+        Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
+        if (Files.isDirectory(ffxiRoot)) {
+            try {
+                if (fileTableManager == null) {
+                    fileTableManager = new FileTableManager();
+                    fileTableManager.loadFromDirectory(ffxiRoot.toFile());
+                }
+                String zonePath = ZoneIdToResourceId.getMainAreaResourcePath(new ZoneConfig(zoneId), fileTableManager);
+                if (zonePath != null && !zonePath.isBlank()) {
+                    Path p = Path.of(zonePath);
+                    if (Files.isRegularFile(p)) {
+                        log.info("Loading zone {} DAT from retail FFXI install: {}", zoneId, p.toAbsolutePath());
+                        return Files.readAllBytes(p);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed resolving zone DAT via FileTableManager for zone {}: {}", zoneId, e.getMessage());
+            }
+        }
+
         String resourcePath = "/dats/zones/south_san_doria_230.DAT";
         try (InputStream stream = getClass().getResourceAsStream(resourcePath)) {
             if (stream != null) {
@@ -328,6 +396,25 @@ public class OfflineWorldState implements ApplicationState {
         handleMovement(handle, dt);
         camera.setTarget(playerX, playerY + 1.0f, playerZ);
 
+        if (handle != 0L) {
+            boolean mDown = GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
+            if (mDown && !mKeyPressed) {
+                if (inGameMapPanel != null) {
+                    inGameMapPanel.toggle();
+                }
+            }
+            mKeyPressed = mDown;
+        }
+
+        WeatherPreset weatherPreset = WeatherPreset.getById(currentWeather.getDatCode());
+        if (skyDome != null && currentWeather != lastSkyWeather) {
+            skyDome.updateMesh(weatherPreset);
+            lastSkyWeather = currentWeather;
+        }
+        if (weatherParticleSystem != null && handle != 0L) {
+            weatherParticleSystem.update(dt, new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), weatherPreset);
+        }
+
         if (handle == 0L) {
             return;
         }
@@ -359,6 +446,26 @@ public class OfflineWorldState implements ApplicationState {
         float[] view = new float[16];
         pMat.get(proj);
         vMat.get(view);
+
+        // Render authentic hemispherical sky dome backdrop
+        if (skyDome != null) {
+            VanadielTime vTime = manualTimeOverride
+                    ? VanadielTime.ofHour(manualTimeHour)
+                    : VanadielTime.now();
+            float hour = vTime.getHourFraction();
+            float dayFactor;
+            if (hour >= 6.0f && hour <= 18.0f) {
+                dayFactor = 1.0f;
+            } else if (hour > 18.0f && hour < 20.0f) {
+                dayFactor = 1.0f - 0.65f * ((hour - 18.0f) / 2.0f);
+            } else if (hour >= 20.0f || hour <= 4.0f) {
+                dayFactor = 0.35f;
+            } else {
+                dayFactor = 0.35f + 0.65f * ((hour - 4.0f) / 2.0f);
+            }
+            float brightness = dayFactor * weatherPreset.diffuseMultiplier();
+            skyDome.render(pMat, vMat, new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), brightness);
+        }
 
         // Render visual zone: prefer authentic ZoneShader pipeline from reference tools
         if (zoneShader != null && !zoneRenderChunks.isEmpty() && showVisualZone) {
@@ -431,7 +538,15 @@ public class OfflineWorldState implements ApplicationState {
             }
         }
 
-        // 3. Render ImGui HUD
+        // Render authentic weather particles
+        if (weatherParticleSystem != null) {
+            weatherParticleSystem.render(pMat, vMat, weatherPreset);
+        }
+
+        // 3. Render ImGui HUD & Cartography Map
+        if (inGameMapPanel != null) {
+            inGameMapPanel.render(currentZoneId, playerX, playerY, playerZ, playerYaw);
+        }
         renderImGuiHud(dt);
     }
 
@@ -687,6 +802,22 @@ public class OfflineWorldState implements ApplicationState {
         ImGui.textDisabled("• F1: Wireframe | F2: Visual Zone | F3: Collision Mesh | F5: Toggle Model");
 
         ImGui.separator();
+        ImGui.text("World Cartography & Travel:");
+        if (ImGui.button("Toggle Cartography Map [M]")) {
+            if (inGameMapPanel != null) {
+                inGameMapPanel.toggle();
+            }
+        }
+        imgui.type.ImInt selZone = new imgui.type.ImInt(selectedZoneIndex);
+        if (ImGui.combo("Zone Warp", selZone, WARP_ZONE_NAMES)) {
+            selectedZoneIndex = selZone.get();
+        }
+        ImGui.sameLine();
+        if (ImGui.button("Warp")) {
+            warpToZone(WARP_ZONE_IDS[selectedZoneIndex]);
+        }
+
+        ImGui.separator();
         if (ImGui.button("Reset Spawn Position")) {
             playerX = -50.0f;
             playerZ = -30.0f;
@@ -702,6 +833,30 @@ public class OfflineWorldState implements ApplicationState {
         }
 
         ImGui.end();
+    }
+
+    public void warpToZone(int zoneId) {
+        this.currentZoneId = zoneId;
+        log.info("OfflineWorldState: Warping to zone {}", zoneId);
+        loadZone(zoneId);
+        float spawnX = 0f;
+        float spawnZ = 0f;
+        var landmarks = InGameMapPanel.getLandmarksForZone(zoneId);
+        if (landmarks != null && !landmarks.isEmpty()) {
+            var gate = landmarks.stream().filter(l -> "GATE".equalsIgnoreCase(l.category())).findFirst().orElse(landmarks.get(0));
+            spawnX = gate.worldX();
+            spawnZ = gate.worldZ();
+        }
+        playerX = spawnX;
+        playerZ = spawnZ;
+        if (loadedZone != null && loadedZone.collisionSystem() != null) {
+            float floorY = loadedZone.collisionSystem().findFloorY(playerX, playerZ, 2000.0f);
+            if (Float.isFinite(floorY)) {
+                playerY = floorY;
+                lastFloorY = floorY;
+            }
+        }
+        camera.setTarget(playerX, playerY + 1.0f, playerZ);
     }
 
     @Override
@@ -731,6 +886,19 @@ public class OfflineWorldState implements ApplicationState {
         if (npcVisual != null) {
             try { npcVisual.close(); } catch (Exception ignored) {}
             npcVisual = null;
+        }
+
+        if (skyDome != null) {
+            try { skyDome.close(); } catch (Exception ignored) {}
+            skyDome = null;
+        }
+        if (weatherParticleSystem != null) {
+            try { weatherParticleSystem.close(); } catch (Exception ignored) {}
+            weatherParticleSystem = null;
+        }
+        if (inGameMapPanel != null) {
+            try { inGameMapPanel.close(); } catch (Exception ignored) {}
+            inGameMapPanel = null;
         }
 
         if (collisionRenderer != null) {

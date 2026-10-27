@@ -14,6 +14,7 @@ import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.InGamePanel;
 import com.example.client.desktop.ui.ScreenFader;
+import com.example.client.desktop.ui.map.InGameMapPanel;
 import com.example.client.desktop.ui.radar.WorldRadarPanel;
 import com.example.client.desktop.util.MatrixMath;
 import com.example.client.interp.InterpolatedEntityState;
@@ -26,8 +27,14 @@ import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
 import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementResponse;
+import com.ffxi.io.FileTableManager;
 import com.ffxi.tables.RaceGenderConfig;
+import com.ffxi.tables.ZoneConfig;
+import com.ffxi.tables.ZoneIdToResourceId;
 import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.environment.AuthenticSkyDome;
+import com.ffxi.viewer.environment.WeatherParticleSystem;
+import com.ffxi.viewer.environment.WeatherPreset;
 import com.ffxi.viewer.model.CharacterModelLoader;
 import com.ffxi.viewer.model.LoadedCharacter;
 import com.ffxi.viewer.model.LoadedZone;
@@ -80,6 +87,7 @@ public class InGameState implements ApplicationState {
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<AuthenticatedState> authProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
+    private final InGameMapPanel inGameMapPanel;
 
     private long accountId;
     private long characterId;
@@ -101,6 +109,13 @@ public class InGameState implements ApplicationState {
     private CharacterShader characterShader;
     private AuthenticCharacterInstance localPlayerVisual;
     private final Map<Long, AuthenticCharacterInstance> remoteEntityVisuals = new HashMap<>();
+
+    // Authentic Sky Dome, Weather Particles & File Table
+    private AuthenticSkyDome skyDome;
+    private WeatherParticleSystem weatherParticleSystem;
+    private WeatherType lastSkyWeather = null;
+    private boolean mKeyPressed = false;
+    private FileTableManager fileTableManager;
 
     private CollisionMeshRenderer collisionRenderer;
     private List<ZoneInteraction> zoneInteractions = List.of();
@@ -159,6 +174,14 @@ public class InGameState implements ApplicationState {
                 this.characterShader = new CharacterShader();
                 this.collisionRenderer = new CollisionMeshRenderer();
                 this.collisionRenderer.init();
+
+                try {
+                    this.skyDome = new AuthenticSkyDome();
+                    this.weatherParticleSystem = new WeatherParticleSystem();
+                    log.info("Initialized authentic sky dome and weather particle system");
+                } catch (Exception e) {
+                    log.warn("Failed to initialize sky dome or weather particle system: {}", e.getMessage());
+                }
 
                 Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
                 try {
@@ -223,7 +246,27 @@ public class InGameState implements ApplicationState {
     }
 
     byte[] loadZoneBytes(int zoneId) {
-        // 1. Check retail FFXI installation directory
+        // 1. Check retail FFXI installation directory with dynamic FileTableManager
+        Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
+        if (Files.isDirectory(ffxiRoot)) {
+            try {
+                if (fileTableManager == null) {
+                    fileTableManager = new FileTableManager();
+                    fileTableManager.loadFromDirectory(ffxiRoot.toFile());
+                }
+                String zonePath = ZoneIdToResourceId.getMainAreaResourcePath(new ZoneConfig(zoneId), fileTableManager);
+                if (zonePath != null && !zonePath.isBlank()) {
+                    Path p = Path.of(zonePath);
+                    if (Files.isRegularFile(p)) {
+                        log.info("Loading zone {} DAT from retail FFXI install: {}", zoneId, p.toAbsolutePath());
+                        return Files.readAllBytes(p);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed resolving zone DAT via FileTableManager for zone {}: {}", zoneId, e.getMessage());
+            }
+        }
+
         String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
         if (relRom != null) {
             Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
@@ -314,6 +357,25 @@ public class InGameState implements ApplicationState {
             if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_DOWN) == GLFW.GLFW_PRESS) {
                 radarPanel.getConfig().zoomSmooth(zoomRate * dt);
             }
+
+            // Cartography map overlay toggle via [M]
+            boolean mDown = GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
+            if (mDown && !mKeyPressed) {
+                if (inGameMapPanel != null) {
+                    inGameMapPanel.toggle();
+                }
+            }
+            mKeyPressed = mDown;
+        }
+
+        // Advance authentic weather simulation and dynamic sky dome mesh
+        WeatherPreset weatherPreset = WeatherPreset.getById(currentWeather.getDatCode());
+        if (skyDome != null && currentWeather != lastSkyWeather) {
+            skyDome.updateMesh(weatherPreset);
+            lastSkyWeather = currentWeather;
+        }
+        if (weatherParticleSystem != null && handle != 0L) {
+            weatherParticleSystem.update(dt, new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), weatherPreset);
         }
 
         screenFader.update(dt);
@@ -418,6 +480,26 @@ public class InGameState implements ApplicationState {
             pMat.get(proj);
             vMat.get(view);
 
+            // Render authentic hemispherical sky dome backdrop
+            if (skyDome != null) {
+                VanadielTime vTime = manualTimeOverride
+                        ? VanadielTime.ofHour(manualTimeHour)
+                        : VanadielTime.now();
+                float hour = vTime.getHourFraction();
+                float dayFactor;
+                if (hour >= 6.0f && hour <= 18.0f) {
+                    dayFactor = 1.0f;
+                } else if (hour > 18.0f && hour < 20.0f) {
+                    dayFactor = 1.0f - 0.65f * ((hour - 18.0f) / 2.0f);
+                } else if (hour >= 20.0f || hour <= 4.0f) {
+                    dayFactor = 0.35f;
+                } else {
+                    dayFactor = 0.35f + 0.65f * ((hour - 4.0f) / 2.0f);
+                }
+                float brightness = dayFactor * weatherPreset.diffuseMultiplier();
+                skyDome.render(pMat, vMat, new org.joml.Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), brightness);
+            }
+
             // Render 3D textured visual zone using authentic ZoneShader pipeline
             if (zoneShader != null && !zoneRenderChunks.isEmpty() && showVisualZone) {
                 zoneShader.bind();
@@ -495,6 +577,11 @@ public class InGameState implements ApplicationState {
                 }
             }
 
+            // Render authentic weather particles (rain streaks, heavy squalls, snow crystals, blizzard drifts, sandstorms, lightning)
+            if (weatherParticleSystem != null) {
+                weatherParticleSystem.render(pMat, vMat, weatherPreset);
+            }
+
             // Render 3D overhead billboard nameplates
             renderNameplates(proj, view, fbWidth, fbHeight, now);
 
@@ -502,12 +589,15 @@ public class InGameState implements ApplicationState {
             screenFader.render(handle, fbWidth, fbHeight);
         }
 
-        // 4. Render UI Panels & Clock HUD
+        // 4. Render UI Panels, Clock HUD & In-Game Cartography Map
         if (handle != 0L) {
             VanadielTime vTime = manualTimeOverride
                     ? VanadielTime.ofHour(manualTimeHour)
                     : VanadielTime.now();
             renderClockBanner(vTime);
+            if (inGameMapPanel != null) {
+                inGameMapPanel.render(currentZoneId, clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw());
+            }
         }
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
         panel.render();
@@ -524,6 +614,25 @@ public class InGameState implements ApplicationState {
         }
         if (panel.isLogoutRequested()) {
             doLogout();
+        }
+        if (panel.isMapToggleRequested()) {
+            if (inGameMapPanel != null) {
+                inGameMapPanel.toggle();
+            }
+        }
+        if (panel.getWarpRequestedZoneId() > 0) {
+            int warpZoneId = panel.getWarpRequestedZoneId();
+            debugLog.log("Executing client warp to zone #" + warpZoneId);
+            float spawnX = 0f;
+            float spawnY = 0f;
+            float spawnZ = 0f;
+            var landmarks = InGameMapPanel.getLandmarksForZone(warpZoneId);
+            if (landmarks != null && !landmarks.isEmpty()) {
+                var gate = landmarks.stream().filter(l -> "GATE".equalsIgnoreCase(l.category())).findFirst().orElse(landmarks.get(0));
+                spawnX = gate.worldX();
+                spawnZ = gate.worldZ();
+            }
+            handleZoneTransfer(new ZoneTransferNotification(warpZoneId, "127.0.0.1", 9001, spawnX, spawnY, spawnZ));
         }
         panel.clearIntents();
 
@@ -655,6 +764,18 @@ public class InGameState implements ApplicationState {
         if (collisionRenderer != null) {
             collisionRenderer.cleanup();
             collisionRenderer = null;
+        }
+
+        if (skyDome != null) {
+            try { skyDome.close(); } catch (Exception ignored) {}
+            skyDome = null;
+        }
+        if (weatherParticleSystem != null) {
+            try { weatherParticleSystem.close(); } catch (Exception ignored) {}
+            weatherParticleSystem = null;
+        }
+        if (inGameMapPanel != null) {
+            try { inGameMapPanel.close(); } catch (Exception ignored) {}
         }
     }
 

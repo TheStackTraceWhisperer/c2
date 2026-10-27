@@ -1,7 +1,11 @@
 package com.example.client.desktop.ui.map;
 
 import com.example.asset.config.FfxiPathConfig;
+import com.example.asset.interaction.ZoneInteraction;
+import com.example.asset.npc.NpcInfo;
 import com.example.client.desktop.util.ZoneNameRegistry;
+import com.example.client.state.ClientState;
+import com.example.common.protocol.JobId;
 import com.ffxi.crypto.DllLookupExtractor;
 import com.ffxi.crypto.DllLookupOffsets;
 import com.ffxi.export.TextureDecoder;
@@ -19,6 +23,7 @@ import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
+import imgui.type.ImInt;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
 import lombok.Setter;
@@ -32,6 +37,7 @@ import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,44 +45,28 @@ import java.util.Optional;
 
 /**
  * Authentic live in-game FFXI cartography map overlay.
- * Inspired by retail FFXI and XIM's MapDrawer.
- * Features:
- * - Dynamic texture loading from ZoneMapTable for any retail zone
+ * Follows retail FFXI and XIM's MapDrawer architecture:
+ * - Dynamic texture loading from ZoneMapTable for any retail zone and sub-zone/floor
  * - Authentic 16x16 cartographic coordinate grid (A through P, 1 through 16)
  * - Real-time local player positioning with rotating directional heading indicator
- * - Verified LandSandBoat landmark POI pins with category-based styling and interactive tooltips
+ * - 100% dynamic POI pins derived directly from game files:
+ *   - Retail ZoneInteraction records (zonelines to other zones, entrances, interactive doors)
+ *   - Live remote entities within Area of Interest (AOI) managed by server deltas
+ * - Zero hardcoded landmark tables or synthetic coordinates
  * - Toggleable via keybind [M] or UI action
  */
 @Slf4j
 @Prototype
 public class InGameMapPanel implements AutoCloseable {
 
-    public record MapLandmark(
+    public record DynamicMapMarker(
             String name,
             String gridCoord,
             float worldX,
             float worldZ,
             String category,
             int colorRgba
-    ) {
-        public MapLandmark(String name, String gridCoord, float worldX, float worldZ, String category) {
-            this(name, gridCoord, worldX, worldZ, category, colorForCategory(category));
-        }
-
-        private static int colorForCategory(String category) {
-            return switch (category.toUpperCase()) {
-                case "GATE" -> ImColor.rgba(100, 220, 255, 255);       // Cyan
-                case "LANDMARK" -> ImColor.rgba(255, 215, 0, 255);   // Gold
-                case "GUILD" -> ImColor.rgba(150, 255, 150, 255);      // Soft Green
-                case "PORT" -> ImColor.rgba(120, 180, 255, 255);       // Azure
-                case "MOG_HOUSE" -> ImColor.rgba(255, 140, 220, 255);  // Pink
-                case "TAVERN" -> ImColor.rgba(255, 170, 90, 255);     // Amber
-                case "CRAG" -> ImColor.rgba(220, 160, 255, 255);       // Purple
-                case "OUTPOST" -> ImColor.rgba(255, 100, 100, 255);    // Coral Red
-                default -> ImColor.rgba(240, 240, 240, 255);
-            };
-        }
-    }
+    ) {}
 
     @Getter
     @Setter
@@ -84,162 +74,39 @@ public class InGameMapPanel implements AutoCloseable {
 
     private ZoneMapTable zoneMapTable;
     private FileTableManager fileTableManager;
-    private final Map<Integer, Integer> zoneGlTextures = new HashMap<>();
-    private final Map<Integer, ZoneMap> zoneMapMetadata = new HashMap<>();
+    private final Map<Long, Integer> zoneGlTextures = new HashMap<>();
+    private final Map<Long, ZoneMap> zoneMapMetadata = new HashMap<>();
 
     private int activeZoneId = -1;
     private int activeSubZoneId = 0;
-
-    // Static verified landmark registry mapped by zone ID
-    private static final Map<Integer, List<MapLandmark>> ZONE_LANDMARKS = new HashMap<>();
-
-    static {
-        ZONE_LANDMARKS.put(230, List.of(
-                new MapLandmark("West Gate (West Ronfaure)", "F-10", -113.4f, -57.4f, "GATE"),
-                new MapLandmark("East Gate (East Ronfaure)", "L-10", 113.5f, -57.4f, "GATE"),
-                new MapLandmark("North San d'Oria Archway", "I-7", 0.0f, 58.0f, "GATE"),
-                new MapLandmark("Lion Springs Tavern", "K-6", 99.4f, 117.3f, "TAVERN"),
-                new MapLandmark("Tanners' Guild", "E-8", -187.7f, 19.4f, "GUILD"),
-                new MapLandmark("Mog House Residential", "M-5", 164.9f, 164.8f, "MOG_HOUSE"),
-                new MapLandmark("Count's Manor", "B-6", -294.1f, 93.0f, "LANDMARK")
-        ));
-
-        ZONE_LANDMARKS.put(231, List.of(
-                new MapLandmark("Grand San d'Oria Cathedral", "M-6", 149.9f, 141.9f, "LANDMARK"),
-                new MapLandmark("Chateau d'Oraguille Gate", "I-7", 0.0f, 99.0f, "GATE"),
-                new MapLandmark("South Gate (Rue du Bois)", "I-10", -0.1f, -36.1f, "GATE"),
-                new MapLandmark("West Ronfaure Gate", "D-8", -252.2f, 43.9f, "GATE"),
-                new MapLandmark("Port San d'Oria Gate", "G-3", -123.5f, 270.5f, "GATE"),
-                new MapLandmark("Carpenters' Guild", "E-3", -170.1f, 266.7f, "GUILD"),
-                new MapLandmark("Mog House Residential", "M-10", 135.0f, -8.4f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(232, List.of(
-                new MapLandmark("North San d'Oria Gate", "F-10", -111.8f, -136.5f, "GATE"),
-                new MapLandmark("Airship Terminal / Departures", "H-6", -25.0f, 28.0f, "PORT"),
-                new MapLandmark("Cargo Room & Warehouses", "H-10", -16.0f, -126.1f, "LANDMARK"),
-                new MapLandmark("Rusty Anchor Tavern", "G-7", -56.7f, -36.0f, "TAVERN"),
-                new MapLandmark("Mog House Residential", "J-10", 83.3f, -139.3f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(233, List.of(
-                new MapLandmark("Royal Throne Room (King Destin)", "H-8", 0.0f, 42.4f, "LANDMARK"),
-                new MapLandmark("Prince Royal's Room (Trion)", "H-7", -38.0f, 88.3f, "LANDMARK"),
-                new MapLandmark("Great Hall of Knights (Halver)", "I-9", 2.4f, 2.0f, "LANDMARK"),
-                new MapLandmark("Bostaunieux Oubliette", "I-8", 12.5f, 24.0f, "GATE"),
-                new MapLandmark("Temple Knight Quarters", "I-9", 19.4f, -4.0f, "LANDMARK")
-        ));
-
-        ZONE_LANDMARKS.put(234, List.of(
-                new MapLandmark("South Gustaberg Gate", "H-10", -16.0f, -136.0f, "GATE"),
-                new MapLandmark("Zeruhn Mines Entrance", "D-7", -196.0f, -21.9f, "GATE"),
-                new MapLandmark("Bastok Markets Archway", "F-5", -104.1f, 84.6f, "GATE"),
-                new MapLandmark("Alchemists' Guild", "K-7", 94.0f, -4.0f, "GUILD"),
-                new MapLandmark("Bat's Lair Tavern", "H-6", -26.0f, 41.7f, "TAVERN"),
-                new MapLandmark("Mog House Residential", "K-8", 121.8f, -72.0f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(235, List.of(
-                new MapLandmark("South Gustaberg Gate", "D-11", -365.7f, -185.6f, "GATE"),
-                new MapLandmark("Bastok Mines Archway", "H-11", -202.2f, -197.8f, "GATE"),
-                new MapLandmark("Port Bastok Archway", "G-4", -234.0f, 92.3f, "GATE"),
-                new MapLandmark("Metalworks Archway", "H-7", -212.0f, 0.0f, "GATE"),
-                new MapLandmark("Goldsmiths' Guild", "H-8", -202.9f, -65.6f, "GUILD"),
-                new MapLandmark("Steaming Sheep Restaurant", "E-6", -152.9f, 4.8f, "TAVERN"),
-                new MapLandmark("Mog House Residential", "J-6", -146.2f, 29.9f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(236, List.of(
-                new MapLandmark("North Gustaberg Gate", "L-6", 150.3f, 6.3f, "GATE"),
-                new MapLandmark("Bastok Markets Archway", "D-9", -193.5f, -84.0f, "GATE"),
-                new MapLandmark("Airship Agency Terminal", "H-7", -30.0f, -70.0f, "PORT"),
-                new MapLandmark("Steamers Cargo Dock", "H-8", 0.0f, -130.0f, "PORT"),
-                new MapLandmark("Cid's Workshop (Chief Eng.)", "E-7", -129.3f, -20.0f, "LANDMARK"),
-                new MapLandmark("Mog House Residential", "J-13", 60.0f, -252.8f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(238, List.of(
-                new MapLandmark("West Sarutabaruta Gate", "G-4", -40.2f, 248.8f, "GATE"),
-                new MapLandmark("The Aurastery (Magic Guild)", "K-6", 165.0f, 179.9f, "GUILD"),
-                new MapLandmark("The Rhinostery (Herbology)", "H-14", 3.2f, -163.0f, "GUILD"),
-                new MapLandmark("Port Windurst Archway", "F-15", -59.6f, -209.0f, "GATE"),
-                new MapLandmark("Windurst Walls Archway", "K-9", 160.1f, 60.4f, "GATE"),
-                new MapLandmark("Mog House Residential", "K-12", 159.9f, -64.1f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(241, List.of(
-                new MapLandmark("East Sarutabaruta Gate", "K-10", 126.7f, -40.0f, "GATE"),
-                new MapLandmark("Port Windurst Archway", "F-11", -94.2f, -72.7f, "GATE"),
-                new MapLandmark("Windurst Walls Archway", "G-7", -60.7f, 92.0f, "GATE"),
-                new MapLandmark("Weavers' Guild", "G-12", -42.4f, -118.3f, "GUILD"),
-                new MapLandmark("Chocobo Stables", "K-12", 127.0f, -134.1f, "LANDMARK"),
-                new MapLandmark("The Manustery", "H-9", -9.1f, -13.1f, "GUILD"),
-                new MapLandmark("Mog House Residential", "E-8", -144.7f, 40.0f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(244, List.of(
-                new MapLandmark("Batallia Downs Gate", "F-5", -106.1f, 190.0f, "GATE"),
-                new MapLandmark("Ru'Lude Gardens Gate", "J-10", 46.0f, -30.9f, "GATE"),
-                new MapLandmark("Lower Jeuno Archway", "I-11", 4.8f, -54.9f, "GATE"),
-                new MapLandmark("Goddess Temple", "H-9", -35.1f, 23.1f, "LANDMARK"),
-                new MapLandmark("Marble Bridge Tavern", "F-7", -97.8f, 90.8f, "TAVERN"),
-                new MapLandmark("Mog House Residential", "J-11", 49.2f, -82.9f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(245, List.of(
-                new MapLandmark("Rolanberry Fields Gate", "F-11", -123.1f, -200.7f, "GATE"),
-                new MapLandmark("Upper Jeuno Stairs", "I-5", 0.2f, 59.6f, "GATE"),
-                new MapLandmark("Port Jeuno Stairs", "J-6", 29.7f, 41.4f, "GATE"),
-                new MapLandmark("Neptune's Spire Tavern", "J-7", 28.1f, -8.3f, "TAVERN"),
-                new MapLandmark("Tenshodo H.Q.", "J-8", 38.2f, -57.8f, "LANDMARK"),
-                new MapLandmark("Merry Minstrel Tavern", "H-8", -28.7f, -61.2f, "TAVERN"),
-                new MapLandmark("Mog House Residential", "J-5", 43.9f, 88.6f, "MOG_HOUSE")
-        ));
-
-        ZONE_LANDMARKS.put(248, List.of(
-                new MapLandmark("Valkurm Dunes Town Gate", "H-6", 16.9f, 104.3f, "GATE"),
-                new MapLandmark("Passenger Ferry Pier", "H-11", 10.0f, -80.0f, "PORT"),
-                new MapLandmark("Mayor's Residence", "G-9", -59.9f, 1.9f, "LANDMARK"),
-                new MapLandmark("Weavers' Guild", "I-9", 21.1f, 7.6f, "GUILD"),
-                new MapLandmark("Fishermen's Guild", "H-9", -20.2f, 7.6f, "GUILD")
-        ));
-
-        ZONE_LANDMARKS.put(249, List.of(
-                new MapLandmark("Buburimu Peninsula Gate", "H-7", -0.2f, 121.0f, "GATE"),
-                new MapLandmark("Steamship Ferry Pier", "I-8", 30.0f, 70.0f, "PORT"),
-                new MapLandmark("Blacksmiths' Guild", "G-9", -53.2f, 32.0f, "GUILD"),
-                new MapLandmark("Goldsmiths' Guild", "G-8", -30.9f, 66.9f, "GUILD"),
-                new MapLandmark("Sailors' Stay Tavern", "H-9", 20.0f, 57.2f, "TAVERN")
-        ));
-
-        ZONE_LANDMARKS.put(100, List.of(
-                new MapLandmark("Southern San d'Oria Gates", "I-6", -119.1f, 280.9f, "GATE"),
-                new MapLandmark("Northern San d'Oria Gates", "I-6", -157.7f, 380.0f, "GATE"),
-                new MapLandmark("Ghelsba Outpost Entrance", "E-4", -740.6f, 623.3f, "GATE"),
-                new MapLandmark("La Theine Plateau Pass", "F-11", -560.4f, -613.2f, "GATE"),
-                new MapLandmark("Knightwell Watchtower", "E-8", -716.8f, 18.2f, "LANDMARK"),
-                new MapLandmark("Regional Outpost", "G-9", -446.3f, -260.6f, "OUTPOST")
-        ));
-
-        ZONE_LANDMARKS.put(102, List.of(
-                new MapLandmark("Crag of Holla (Telepoint)", "J-8", 420.0f, 20.0f, "CRAG"),
-                new MapLandmark("West Ronfaure Pass", "E-4", -558.6f, 688.0f, "GATE"),
-                new MapLandmark("Valkurm Dunes Ravine", "I-12", 160.2f, -764.0f, "GATE"),
-                new MapLandmark("Ordelle's Caves Entrance", "F-7", -276.6f, 99.6f, "GATE"),
-                new MapLandmark("Jugner Forest Pass", "M-8", 801.8f, -37.6f, "GATE"),
-                new MapLandmark("Cavernous Maw", "E-4", -557.9f, 637.8f, "LANDMARK")
-        ));
-    }
-
-    public static List<MapLandmark> getLandmarksForZone(int zoneId) {
-        return ZONE_LANDMARKS.getOrDefault(zoneId, List.of());
-    }
 
     public void toggle() {
         this.visible = !this.visible;
     }
 
-    public void render(int zoneId, float playerX, float playerY, float playerZ, float playerYaw) {
+    public void render(
+            int zoneId,
+            float playerX,
+            float playerY,
+            float playerZ,
+            float playerYaw,
+            List<ZoneInteraction> zoneInteractions,
+            Collection<ClientState.RemoteEntityState> remoteEntities
+    ) {
+        render(zoneId, activeSubZoneId, playerX, playerY, playerZ, playerYaw, zoneInteractions, remoteEntities, null);
+    }
+
+    public void render(
+            int zoneId,
+            int subZoneId,
+            float playerX,
+            float playerY,
+            float playerZ,
+            float playerYaw,
+            List<ZoneInteraction> zoneInteractions,
+            Collection<ClientState.RemoteEntityState> remoteEntities,
+            List<NpcInfo> offlineNpcs
+    ) {
         if (!visible) {
             return;
         }
@@ -247,13 +114,15 @@ public class InGameMapPanel implements AutoCloseable {
         // Lazy initialize tables from FFXI installation if not yet loaded
         ensureTablesLoaded();
 
-        if (this.activeZoneId != zoneId) {
+        if (this.activeZoneId != zoneId || this.activeSubZoneId != subZoneId) {
             this.activeZoneId = zoneId;
+            this.activeSubZoneId = subZoneId;
             loadZoneTexture(zoneId, activeSubZoneId);
         }
 
-        ZoneMap zm = zoneMapMetadata.get(zoneId);
-        Integer texId = zoneGlTextures.get(zoneId);
+        long mapKey = (((long) zoneId) << 32) | (activeSubZoneId & 0xFFFFFFFFL);
+        ZoneMap zm = zoneMapMetadata.get(mapKey);
+        Integer texId = zoneGlTextures.get(mapKey);
         String zoneName = ZoneNameRegistry.getZoneName(zoneId);
 
         ImGui.setNextWindowPos(260, 40, ImGuiCond.Once);
@@ -270,6 +139,22 @@ public class InGameMapPanel implements AutoCloseable {
             this.visible = false;
         }
         ImGui.sameLine();
+
+        // Floor / Multi-map selection if the zone contains multiple maps (e.g. Jeuno, dungeons)
+        List<ZoneMap> mapsForZone = (zoneMapTable != null) ? zoneMapTable.getAllForZone(zoneId) : List.of();
+        if (mapsForZone.size() > 1) {
+            String[] floorNames = new String[mapsForZone.size()];
+            for (int i = 0; i < mapsForZone.size(); i++) {
+                floorNames[i] = "Floor #" + mapsForZone.get(i).subZoneId();
+            }
+            ImInt selSub = new ImInt(activeSubZoneId);
+            if (ImGui.combo("##FloorSelector", selSub, floorNames)) {
+                this.activeSubZoneId = selSub.get();
+                loadZoneTexture(zoneId, activeSubZoneId);
+            }
+            ImGui.sameLine();
+        }
+
         ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, "16x16 Cartographic Grid (A-P, 1-16)");
 
         float span = (zm != null && zm.mapSizePx() > 0) ? (float) zm.mapSizePx() : 640.0f;
@@ -281,11 +166,7 @@ public class InGameMapPanel implements AutoCloseable {
         float pMapY = -0.5f + (-playerZ / span) * 512.0f - yOff;
         float pNormX = pMapX / 512.0f;
         float pNormY = pMapY / 512.0f;
-
-        int pColIdx = (int) Math.floor(15.0 * pNormX);
-        int pRowIdx = 1 + (int) Math.floor(15.0 * pNormY);
-        char pColChar = (pColIdx >= 0 && pColIdx < 16) ? (char) ('A' + pColIdx) : '?';
-        String playerGridStr = String.format("%c-%d", pColChar, pRowIdx);
+        String playerGridStr = formatGridCoord(pMapX, pMapY);
 
         ImGui.sameLine();
         ImGui.text(String.format("| Pos: [%s] (X: %.1f, Z: %.1f)", playerGridStr, playerX, playerZ));
@@ -354,41 +235,106 @@ public class InGameMapPanel implements AutoCloseable {
             drawList.addText(endX + 6.0f, rowCenter - 6.0f, whiteText, rStr);
         }
 
-        // 4. Render Landmark Markers
-        List<MapLandmark> landmarks = ZONE_LANDMARKS.get(zoneId);
-        float mouseX = ImGui.getMousePosX();
-        float mouseY = ImGui.getMousePosY();
-        MapLandmark hoveredLandmark = null;
+        // 4. Dynamically Harvest Markers from Game Data
+        List<DynamicMapMarker> markers = new ArrayList<>();
 
-        if (landmarks != null) {
-            for (MapLandmark lm : landmarks) {
-                float lmMapX = 0.5f + (lm.worldX() / span) * 512.0f - xOff;
-                float lmMapY = -0.5f + (-lm.worldZ() / span) * 512.0f - yOff;
-                float lmNormX = Math.max(0.01f, Math.min(0.99f, lmMapX / 512.0f));
-                float lmNormY = Math.max(0.01f, Math.min(0.99f, lmMapY / 512.0f));
+        // (a) ZoneInteraction volumes parsed from DAT section 0x36 ("RID")
+        if (zoneInteractions != null) {
+            for (ZoneInteraction zi : zoneInteractions) {
+                float mx = zi.getPosition().x();
+                float mz = zi.getPosition().z();
+                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
+                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
+                String grid = formatGridCoord(lmMapX, lmMapY);
 
-                float lx = startX + lmNormX * mapSize;
-                float ly = startY + lmNormY * mapSize;
-
-                // Draw outer ring and inner dot
-                drawList.addCircle(lx, ly, 5.0f, lm.colorRgba(), 12, 1.5f);
-                drawList.addCircleFilled(lx, ly, 2.5f, ImColor.rgba(255, 255, 255, 255), 8);
-
-                // Hover check
-                float dist = (float) Math.hypot(mouseX - lx, mouseY - ly);
-                if (dist <= 8.0f) {
-                    hoveredLandmark = lm;
-                    drawList.addCircle(lx, ly, 9.0f, ImColor.rgba(255, 255, 255, 200), 16, 2.0f);
+                if (zi.isZoneLine()) {
+                    Integer targetZone = zi.getTargetZoneId();
+                    String label = (targetZone != null)
+                            ? "Zoneline -> " + ZoneNameRegistry.getZoneName(targetZone) + " (#" + targetZone + ")"
+                            : (zi.isMogHouse() ? "Mog House Residence" : "Zoneline [" + zi.getDestId() + "]");
+                    String category = zi.isMogHouse() ? "MOG_HOUSE" : "GATE";
+                    int color = zi.isMogHouse() ? ImColor.rgba(255, 140, 220, 255) : ImColor.rgba(100, 220, 255, 255);
+                    markers.add(new DynamicMapMarker(label, grid, mx, mz, category, color));
+                } else if (zi.isZoneEntrance()) {
+                    String label = "Spawn Point [" + zi.getSourceId() + "]";
+                    markers.add(new DynamicMapMarker(label, grid, mx, mz, "ENTRANCE", ImColor.rgba(150, 255, 150, 255)));
+                } else if (zi.isDoor()) {
+                    String label = "Door / Gateway [" + zi.getSourceId() + "]";
+                    markers.add(new DynamicMapMarker(label, grid, mx, mz, "DOOR", ImColor.rgba(200, 180, 255, 255)));
+                } else if (zi.isFishingArea()) {
+                    String label = "Fishing Boundary [" + zi.getSourceId() + "]";
+                    markers.add(new DynamicMapMarker(label, grid, mx, mz, "FISHING", ImColor.rgba(130, 200, 255, 255)));
                 }
             }
         }
 
-        // 5. Render Player Position & Facing Arrow
+        // (b) Live Entities managed by server AOI events (ZoneStateDeltaMessage)
+        if (remoteEntities != null) {
+            for (ClientState.RemoteEntityState entity : remoteEntities) {
+                float mx = entity.x();
+                float mz = entity.z();
+                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
+                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
+                String grid = formatGridCoord(lmMapX, lmMapY);
+
+                boolean isNpc = entity.mainJobId() == JobId.NPC;
+                String label = isNpc
+                        ? "[NPC] " + entity.name()
+                        : entity.name() + " (" + JobId.toAbbreviation(entity.mainJobId()) + " Lv" + entity.level() + ")";
+                String cat = isNpc ? "NPC" : "PLAYER";
+                int color = isNpc ? ImColor.rgba(255, 190, 70, 255) : ImColor.rgba(80, 255, 120, 255);
+                markers.add(new DynamicMapMarker(label, grid, mx, mz, cat, color));
+            }
+        }
+
+        // (c) Offline Town NPCs (when in offline exploration mode)
+        if (offlineNpcs != null && (remoteEntities == null || remoteEntities.isEmpty())) {
+            for (NpcInfo npc : offlineNpcs) {
+                float mx = npc.position().x();
+                float mz = npc.position().z();
+                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
+                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
+                String grid = formatGridCoord(lmMapX, lmMapY);
+                String label = String.format("[NPC #%d]", npc.id());
+                markers.add(new DynamicMapMarker(label, grid, mx, mz, "NPC", ImColor.rgba(255, 190, 70, 255)));
+            }
+        }
+
+        // Render Dynamic Markers
+        float mouseX = ImGui.getMousePosX();
+        float mouseY = ImGui.getMousePosY();
+        DynamicMapMarker hoveredMarker = null;
+
+        for (DynamicMapMarker m : markers) {
+            float lmMapX = 0.5f + (m.worldX() / span) * 512.0f - xOff;
+            float lmMapY = -0.5f + (-m.worldZ() / span) * 512.0f - yOff;
+
+            // Only draw if within map bounds
+            if (lmMapX < -20.0f || lmMapX > 532.0f || lmMapY < -20.0f || lmMapY > 532.0f) {
+                continue;
+            }
+
+            float lmNormX = Math.max(0.005f, Math.min(0.995f, lmMapX / 512.0f));
+            float lmNormY = Math.max(0.005f, Math.min(0.995f, lmMapY / 512.0f));
+
+            float lx = startX + lmNormX * mapSize;
+            float ly = startY + lmNormY * mapSize;
+
+            drawList.addCircle(lx, ly, 4.5f, m.colorRgba(), 12, 1.5f);
+            drawList.addCircleFilled(lx, ly, 2.0f, ImColor.rgba(255, 255, 255, 255), 8);
+
+            float dist = (float) Math.hypot(mouseX - lx, mouseY - ly);
+            if (dist <= 8.0f) {
+                hoveredMarker = m;
+                drawList.addCircle(lx, ly, 9.0f, ImColor.rgba(255, 255, 255, 220), 16, 2.0f);
+            }
+        }
+
+        // 5. Render Local Player Position & Facing Arrow
         if (pNormX >= 0.0f && pNormX <= 1.0f && pNormY >= 0.0f && pNormY <= 1.0f) {
             float px = startX + pNormX * mapSize;
             float py = startY + pNormY * mapSize;
 
-            // Player blip
             int playerGlow = ImColor.rgba(50, 255, 100, 90);
             int playerColor = ImColor.rgba(50, 255, 100, 255);
             drawList.addCircleFilled(px, py, 7.0f, playerGlow);
@@ -403,12 +349,13 @@ public class InGameMapPanel implements AutoCloseable {
             drawList.addLine(px, py, tipX, tipY, ImColor.rgba(255, 255, 255, 240), 2.0f);
         }
 
-        // 6. Interactive Landmark Tooltip
-        if (hoveredLandmark != null) {
+        // 6. Interactive Marker Tooltip
+        if (hoveredMarker != null) {
             ImGui.beginTooltip();
-            ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, "[" + hoveredLandmark.gridCoord() + "] " + hoveredLandmark.name());
-            ImGui.text(String.format("Category: %s | (X: %.1f, Z: %.1f)",
-                    hoveredLandmark.category(), hoveredLandmark.worldX(), hoveredLandmark.worldZ()));
+            ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, "[" + hoveredMarker.gridCoord() + "] " + hoveredMarker.name());
+            float dist = (float) Math.hypot(hoveredMarker.worldX() - playerX, hoveredMarker.worldZ() - playerZ);
+            ImGui.text(String.format("Type: %s | Pos: (%.1f, %.1f) | Range: %.1fm",
+                    hoveredMarker.category(), hoveredMarker.worldX(), hoveredMarker.worldZ(), dist));
             ImGui.endTooltip();
         }
 
@@ -419,10 +366,19 @@ public class InGameMapPanel implements AutoCloseable {
         // 7. Footer Telemetry
         float scaleMeters = span / 16.0f;
         ImGui.textColored(0.85f, 0.85f, 0.85f, 1.0f,
-                String.format("Span: %.0fm (%.1fm/cell) | Offsets: X=%.0f, Y=%.0f | North=-Z, South=+Z, West=-X, East=+X",
-                        span, xOff, yOff, scaleMeters));
+                String.format("Span: %.0fm (%.1fm/cell) | Offsets: X=%.0f, Y=%.0f | Active Markers: %d | Retail Engine: N=-Z, E=+X",
+                        span, xOff, yOff, scaleMeters, markers.size()));
 
         ImGui.end();
+    }
+
+    public static String formatGridCoord(float mapPxX, float mapPxY) {
+        int col = (int) Math.floor(15.0f * mapPxX / 512.0f);
+        int row = 1 + (int) Math.floor(15.0f * mapPxY / 512.0f);
+        col = Math.max(0, Math.min(15, col));
+        row = Math.max(1, Math.min(16, row));
+        char colLetter = (char) ('A' + col);
+        return colLetter + "-" + row;
     }
 
     private void ensureTablesLoaded() {
@@ -453,12 +409,13 @@ public class InGameMapPanel implements AutoCloseable {
     }
 
     private void loadZoneTexture(int zoneId, int subZoneId) {
-        if (zoneGlTextures.containsKey(zoneId)) {
+        ensureTablesLoaded();
+        if (zoneMapTable == null || fileTableManager == null) {
             return;
         }
 
-        ensureTablesLoaded();
-        if (zoneMapTable == null || fileTableManager == null) {
+        long key = (((long) zoneId) << 32) | (subZoneId & 0xFFFFFFFFL);
+        if (zoneGlTextures.containsKey(key)) {
             return;
         }
 
@@ -468,72 +425,60 @@ public class InGameMapPanel implements AutoCloseable {
         }
 
         ZoneMap zm = zmOpt.get();
-        zoneMapMetadata.put(zoneId, zm);
+        zoneMapMetadata.put(key, zm);
 
         try {
             Path datPath = fileTableManager.getFileNioPath(zm.fileId());
-            if (datPath == null || !Files.exists(datPath)) {
+            if (datPath == null || !Files.isRegularFile(datPath)) {
                 return;
             }
 
             byte[] datBytes = Files.readAllBytes(datPath);
             DatResourceGraph graph = DatParser.parseResourceGraph(new ByteReader(datBytes, datPath.getFileName().toString()));
-            if (graph == null) {
-                return;
-            }
+            TextureResource texResource = findFirstTexture(graph.rootDirectory());
 
-            List<TextureResource> textures = new ArrayList<>();
-            collectTextures(graph.rootDirectory(), textures);
-            if (textures.isEmpty()) {
-                return;
-            }
-
-            TextureResource mapTexture = textures.get(0);
-            byte[] rgba = TextureDecoder.decode(datBytes, mapTexture);
-            if (rgba == null) {
-                return;
-            }
-
-            int texId = uploadGlTexture(rgba, mapTexture.width(), mapTexture.height());
-            if (texId > 0) {
-                zoneGlTextures.put(zoneId, texId);
-                log.info("Loaded authentic in-game map texture for zone {} -> OpenGL Tex ID {}", zoneId, texId);
+            if (texResource != null) {
+                byte[] rgba = TextureDecoder.decode(datBytes, texResource);
+                int texId = uploadGlTexture(rgba, texResource.width(), texResource.height());
+                zoneGlTextures.put(key, texId);
+                log.info("Uploaded authentic in-game map texture for zone {} subZone {}: {}x{} (GL texture #{})",
+                        zoneId, subZoneId, texResource.width(), texResource.height(), texId);
             }
         } catch (Exception e) {
-            log.error("Failed loading in-game map texture for zone {}", zoneId, e);
+            log.warn("Failed loading map DAT for zone {} subZone {}: {}", zoneId, subZoneId, e.getMessage());
         }
     }
 
-    private int uploadGlTexture(byte[] rgba, int width, int height) {
-        ByteBuffer buffer = ByteBuffer.allocateDirect(rgba.length).order(ByteOrder.nativeOrder());
-        buffer.put(rgba).flip();
+    private TextureResource findFirstTexture(DirectoryResource dir) {
+        if (dir == null) return null;
+        for (ResourceNode child : dir.children()) {
+            if (child instanceof TextureResource tr) {
+                return tr;
+            }
+            if (child instanceof DirectoryResource subDir) {
+                TextureResource nested = findFirstTexture(subDir);
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
 
+    private int uploadGlTexture(byte[] rgba, int width, int height) {
         int texId = GL11.glGenTextures();
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
         GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
 
-        GL11.glTexImage2D(
-                GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8,
-                width, height, 0,
-                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer
-        );
+        ByteBuffer buffer = ByteBuffer.allocateDirect(rgba.length).order(ByteOrder.nativeOrder());
+        buffer.put(rgba).flip();
+
+        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
 
         return texId;
-    }
-
-    private void collectTextures(DirectoryResource dir, List<TextureResource> list) {
-        if (dir == null) return;
-        for (ResourceNode child : dir.children()) {
-            if (child instanceof TextureResource tr) {
-                list.add(tr);
-            } else if (child instanceof DirectoryResource subDir) {
-                collectTextures(subDir, list);
-            }
-        }
     }
 
     @Override
@@ -545,5 +490,6 @@ public class InGameMapPanel implements AutoCloseable {
         }
         zoneGlTextures.clear();
         zoneMapMetadata.clear();
+        this.activeZoneId = -1;
     }
 }

@@ -495,7 +495,8 @@ public class ZoneSimulationEngine {
     int idx = 1;
     for (ZoneInteraction zi : interactions) {
       if (zi.isZoneLine()) {
-        int targetZoneId = parseTargetZoneId(zi.getDestId(), properties.getZoneId());
+        Integer resolvedTarget = zi.getTargetZoneId();
+        int targetZoneId = (resolvedTarget != null) ? resolvedTarget : parseTargetZoneId(zi.getDestId(), properties.getZoneId());
         float halfX = Math.max(0.5f, Math.abs(zi.getSize().x()) / 2.0f);
         float halfY = Math.max(1.0f, Math.abs(zi.getSize().y()) / 2.0f);
         float halfZ = Math.max(0.5f, Math.abs(zi.getSize().z()) / 2.0f);

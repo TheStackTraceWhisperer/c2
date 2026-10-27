@@ -596,7 +596,12 @@ public class InGameState implements ApplicationState {
                     : VanadielTime.now();
             renderClockBanner(vTime);
             if (inGameMapPanel != null) {
-                inGameMapPanel.render(currentZoneId, clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw());
+                inGameMapPanel.render(
+                        currentZoneId,
+                        clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
+                        zoneInteractions,
+                        clientState.getRemoteEntities().values()
+                );
             }
         }
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
@@ -626,11 +631,17 @@ public class InGameState implements ApplicationState {
             float spawnX = 0f;
             float spawnY = 0f;
             float spawnZ = 0f;
-            var landmarks = InGameMapPanel.getLandmarksForZone(warpZoneId);
-            if (landmarks != null && !landmarks.isEmpty()) {
-                var gate = landmarks.stream().filter(l -> "GATE".equalsIgnoreCase(l.category())).findFirst().orElse(landmarks.get(0));
-                spawnX = gate.worldX();
-                spawnZ = gate.worldZ();
+            byte[] targetBytes = loadZoneBytes(warpZoneId);
+            if (targetBytes != null && targetBytes.length > 0) {
+                List<ZoneInteraction> targetInteractions = ZoneInteractionParser.parseInteractions(targetBytes);
+                for (ZoneInteraction zi : targetInteractions) {
+                    if (zi.isZoneEntrance()) {
+                        spawnX = zi.getPosition().x();
+                        spawnY = zi.getPosition().y();
+                        spawnZ = zi.getPosition().z();
+                        break;
+                    }
+                }
             }
             handleZoneTransfer(new ZoneTransferNotification(warpZoneId, "127.0.0.1", 9001, spawnX, spawnY, spawnZ));
         }

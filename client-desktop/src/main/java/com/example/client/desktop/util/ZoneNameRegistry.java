@@ -46,4 +46,12 @@ public final class ZoneNameRegistry {
     public static String getZoneName(int zoneId) {
         return ZONE_NAMES.getOrDefault(zoneId, "Zone " + zoneId);
     }
+
+    public static java.util.List<Integer> getRegisteredZoneIds() {
+        return ZONE_NAMES.keySet().stream().sorted().toList();
+    }
+
+    public static Map<Integer, String> getAllZoneNames() {
+        return ZONE_NAMES;
+    }
 }

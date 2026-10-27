@@ -58,6 +58,42 @@ public final class ZoneInteraction {
         return sourceId != null && sourceId.startsWith("f");
     }
 
+    public boolean isMogHouse() {
+        return destId != null && (destId.startsWith("zmr") || destId.startsWith("zms"));
+    }
+
+    /**
+     * Decodes the destination zone ID from the base-36 retail FFXI zoneline identifier.
+     * Matches the authentic engine logic in XIM and retail DATs:
+     * Characters 1 and 2 encode the zoneId in base-36, with overflow handling for special zones.
+     */
+    public Integer getTargetZoneId() {
+        if (!isZoneLine() || destId == null || destId.length() < 3) {
+            return null;
+        }
+        if (isMogHouse()) {
+            return null; // Handled as Mog House transition, not global zone
+        }
+        try {
+            char c1 = Character.toLowerCase(destId.charAt(1));
+            char c2 = Character.toLowerCase(destId.charAt(2));
+            int v1 = (c1 >= '0' && c1 <= '9') ? (c1 - '0') : ((c1 >= 'a' && c1 <= 'z') ? (c1 - 'a' + 10) : -1);
+            int v2 = (c2 >= '0' && c2 <= '9') ? (c2 - '0') : ((c2 >= 'a' && c2 <= 'z') ? (c2 - 'a' + 10) : -1);
+            if (v1 < 0 || v2 < 0) return null;
+            int rawZoneId = v1 * 36 + v2;
+            int entranceOverflowOffset = 18 * 36; // 648
+            if (rawZoneId < entranceOverflowOffset) {
+                return rawZoneId;
+            } else if (rawZoneId == 0x333 || rawZoneId == 0x334) {
+                return rawZoneId;
+            } else {
+                return rawZoneId - entranceOverflowOffset;
+            }
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
      * Checks if a 3D coordinate falls inside this interaction volume.
      */

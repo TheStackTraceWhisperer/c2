@@ -129,29 +129,15 @@ public class OfflineWorldState implements ApplicationState {
     private InGameMapPanel inGameMapPanel;
     private boolean mKeyPressed = false;
     private int currentZoneId = 230;
+    private int activeSubZoneId = 0;
     private int selectedZoneIndex = 0;
     private FileTableManager fileTableManager;
+    private List<com.example.asset.interaction.ZoneInteraction> zoneInteractions = List.of();
 
-    private static final int[] WARP_ZONE_IDS = {
-            230, 231, 232, 233, 234, 235, 236, 238, 241, 244, 245, 248, 249, 100, 102
-    };
-    private static final String[] WARP_ZONE_NAMES = {
-            "South San d'Oria (230)",
-            "North San d'Oria (231)",
-            "Port San d'Oria (232)",
-            "Chateau d'Oraguille (233)",
-            "Bastok Mines (234)",
-            "Bastok Markets (235)",
-            "Port Bastok (236)",
-            "Windurst Waters (238)",
-            "Windurst Woods (241)",
-            "Upper Jeuno (244)",
-            "Lower Jeuno (245)",
-            "Selbina (248)",
-            "Mhaura (249)",
-            "West Ronfaure (100)",
-            "La Theine Plateau (102)"
-    };
+    private static final List<Integer> WARP_ZONE_IDS = com.example.client.desktop.util.ZoneNameRegistry.getRegisteredZoneIds();
+    private static final String[] WARP_ZONE_NAMES = WARP_ZONE_IDS.stream()
+            .map(id -> com.example.client.desktop.util.ZoneNameRegistry.getZoneName(id) + " (" + id + ")")
+            .toArray(String[]::new);
 
     @Override
     public void onEnter() {
@@ -294,6 +280,11 @@ public class OfflineWorldState implements ApplicationState {
                 collisionRenderer.uploadNpcMarkers(this.townNpcs);
                 log.info("Loaded {} town NPCs for zone {}", townNpcs.size(), zoneId);
             }
+
+            // 4. Zone Interactions (Zonelines & Entrances)
+            try {
+                this.zoneInteractions = com.example.asset.interaction.ZoneInteractionParser.parseInteractions(bytes.clone());
+            } catch (Exception ignored) {}
         } catch (Exception e) {
             log.error("Error loading zone DAT for offline exploration", e);
         }
@@ -545,7 +536,7 @@ public class OfflineWorldState implements ApplicationState {
 
         // 3. Render ImGui HUD & Cartography Map
         if (inGameMapPanel != null) {
-            inGameMapPanel.render(currentZoneId, playerX, playerY, playerZ, playerYaw);
+            inGameMapPanel.render(currentZoneId, activeSubZoneId, playerX, playerY, playerZ, playerYaw, zoneInteractions, null, townNpcs);
         }
         renderImGuiHud(dt);
     }
@@ -814,7 +805,7 @@ public class OfflineWorldState implements ApplicationState {
         }
         ImGui.sameLine();
         if (ImGui.button("Warp")) {
-            warpToZone(WARP_ZONE_IDS[selectedZoneIndex]);
+            warpToZone(WARP_ZONE_IDS.get(selectedZoneIndex));
         }
 
         ImGui.separator();
@@ -841,11 +832,12 @@ public class OfflineWorldState implements ApplicationState {
         loadZone(zoneId);
         float spawnX = 0f;
         float spawnZ = 0f;
-        var landmarks = InGameMapPanel.getLandmarksForZone(zoneId);
-        if (landmarks != null && !landmarks.isEmpty()) {
-            var gate = landmarks.stream().filter(l -> "GATE".equalsIgnoreCase(l.category())).findFirst().orElse(landmarks.get(0));
-            spawnX = gate.worldX();
-            spawnZ = gate.worldZ();
+        for (com.example.asset.interaction.ZoneInteraction zi : zoneInteractions) {
+            if (zi.isZoneEntrance()) {
+                spawnX = zi.getPosition().x();
+                spawnZ = zi.getPosition().z();
+                break;
+            }
         }
         playerX = spawnX;
         playerZ = spawnZ;

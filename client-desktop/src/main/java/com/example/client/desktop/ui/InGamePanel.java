@@ -1,9 +1,12 @@
 package com.example.client.desktop.ui;
 
+import com.example.client.desktop.util.ZoneNameRegistry;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
+
+import java.util.List;
 
 @Prototype
 public class InGamePanel {
@@ -15,26 +18,10 @@ public class InGamePanel {
     @Getter private int warpRequestedZoneId = -1;
 
     private int selectedZoneIndex = 0;
-    private static final int[] WARP_ZONE_IDS = {
-            230, 231, 232, 233, 234, 235, 236, 238, 241, 244, 245, 248, 249, 100, 102
-    };
-    private static final String[] WARP_ZONE_NAMES = {
-            "South San d'Oria (230)",
-            "North San d'Oria (231)",
-            "Port San d'Oria (232)",
-            "Chateau d'Oraguille (233)",
-            "Bastok Mines (234)",
-            "Bastok Markets (235)",
-            "Port Bastok (236)",
-            "Windurst Waters (238)",
-            "Windurst Woods (241)",
-            "Upper Jeuno (244)",
-            "Lower Jeuno (245)",
-            "Selbina (248)",
-            "Mhaura (249)",
-            "West Ronfaure (100)",
-            "La Theine Plateau (102)"
-    };
+    private static final List<Integer> WARP_ZONE_IDS = ZoneNameRegistry.getRegisteredZoneIds();
+    private static final String[] WARP_ZONE_NAMES = WARP_ZONE_IDS.stream()
+            .map(id -> ZoneNameRegistry.getZoneName(id) + " (" + id + ")")
+            .toArray(String[]::new);
 
     private String characterName = "";
     private String status = "";
@@ -91,7 +78,7 @@ public class InGamePanel {
         }
         ImGui.sameLine();
         if (ImGui.button("Warp")) {
-            warpRequestedZoneId = WARP_ZONE_IDS[selectedZoneIndex];
+            warpRequestedZoneId = WARP_ZONE_IDS.get(selectedZoneIndex);
         }
 
         ImGui.separator();

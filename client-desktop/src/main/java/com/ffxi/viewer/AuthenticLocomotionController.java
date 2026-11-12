@@ -24,7 +24,12 @@ public final class AuthenticLocomotionController {
         COMBAT
     }
 
-    public static final float DEFAULT_TRANSITION_DURATION = 0.15f; // 150ms authentic cross-fade
+    /** Authentic FFXI motion transition blend duration: 16 client ticks at 60 Hz (~267ms) matching vana-client motion.rs */
+    public static final float BLEND_TICKS = 16.0f;
+    public static final float DEFAULT_TRANSITION_DURATION = BLEND_TICKS / 60.0f; // ~0.2667s
+
+    /** Authentic baseline player speed in Vana'diel units per second (SpeedBase 50 * 0.1) */
+    public static final float SPEED_BASE = 5.0f;
 
     private final SkeletonResource skeleton;
     private final Map<State, CharacterAnimator> animators = new EnumMap<>(State.class);
@@ -35,6 +40,7 @@ public final class AuthenticLocomotionController {
 
     private float blendWeight = 1.0f; // 1.0 = fully in targetState (or currentState when not transitioning)
     private float transitionDuration = DEFAULT_TRANSITION_DURATION;
+    private float moveRatio = 0.0f;
     private double currentTime = 0.0;
     private double targetTime = 0.0;
 
@@ -135,9 +141,18 @@ public final class AuthenticLocomotionController {
     /**
      * Determines desired locomotion state based on movement flags and velocity,
      * advancing cross-fading blend progress and animation playback times.
+     * Evaluates authentic move_ratio smoothing (0.25 new + 0.75 old) matching FFXiMain FUN_100c68f0.
      */
     public void update(float dt, int movementFlags, float horizontalSpeed) {
-        State desired = resolveDesiredState(movementFlags, horizontalSpeed);
+        // Authentic movement ratio: stops below 1e-4 units, else smooths 0.25 new + 0.75 old, capped at 3.0
+        if (horizontalSpeed < 1e-4f) {
+            moveRatio = 0.0f;
+        } else {
+            float r = horizontalSpeed / SPEED_BASE;
+            moveRatio = Math.min(3.0f, r * 0.25f + moveRatio * 0.75f);
+        }
+
+        State desired = resolveDesiredState(movementFlags, moveRatio);
 
         if (desired != targetState) {
             if (blendWeight >= 1.0f) {
@@ -157,19 +172,19 @@ public final class AuthenticLocomotionController {
             }
         }
 
-        // Playback speed scaling proportional to velocity
+        // Playback speed scaling matching vana-client motion.rs choose() rate
         float speedMultiplier = 1.0f;
         if (targetState == State.RUN) {
-            speedMultiplier = Math.max(0.6f, Math.min(1.8f, horizontalSpeed / 5.0f));
+            speedMultiplier = Math.max(0.5f, Math.min(2.0f, moveRatio));
         } else if (targetState == State.WALK) {
-            speedMultiplier = Math.max(0.6f, Math.min(1.5f, horizontalSpeed / 2.5f));
+            speedMultiplier = Math.max(0.5f, Math.min(2.0f, moveRatio * 3.0f));
         }
 
         currentTime += dt * speedMultiplier;
         targetTime += dt * speedMultiplier;
     }
 
-    public State resolveDesiredState(int movementFlags, float horizontalSpeed) {
+    public State resolveDesiredState(int movementFlags, float ratio) {
         final int FLAG_FORWARD = 1;
         final int FLAG_BACKWARD = 2;
         final int FLAG_STRAFE_LEFT = 4;
@@ -180,9 +195,20 @@ public final class AuthenticLocomotionController {
         if ((movementFlags & FLAG_RESTING) != 0) {
             return State.REST;
         }
-        if ((movementFlags & (FLAG_FORWARD | FLAG_BACKWARD | FLAG_STRAFE_LEFT | FLAG_STRAFE_RIGHT)) != 0 || horizontalSpeed > 0.2f) {
-            return (horizontalSpeed >= 3.8f) ? State.RUN : State.WALK;
+
+        // Authentic FFXI ratio thresholds from motion.rs:
+        // if ratio > 1/3: if ratio * 3 <= 1.5 -> walk, else run.
+        // else if ratio > 1e-4: walk. else: idle/combat stand.
+        if (ratio > (1.0f / 3.0f)) {
+            if (ratio * 3.0f <= 1.5f) {
+                return State.WALK;
+            } else {
+                return State.RUN;
+            }
+        } else if (ratio > 1e-4f) {
+            return State.WALK;
         }
+
         if ((movementFlags & FLAG_ENGAGED) != 0) {
             return State.COMBAT;
         }

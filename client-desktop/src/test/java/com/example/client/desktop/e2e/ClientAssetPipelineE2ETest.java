@@ -1,5 +1,6 @@
 package com.example.client.desktop.e2e;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.loader.RomAssetLoader;
 import com.example.asset.mesh.VisualSubMesh;
@@ -214,6 +215,16 @@ public class ClientAssetPipelineE2ETest {
     }
 
     private byte[] loadDatFile(String filename) {
+        String relRom = filename.contains("230") ? "ROM/1/31.DAT" : (filename.contains("100") ? "ROM/1/30.DAT" : null);
+        if (relRom != null) {
+            java.util.Optional<Path> romOpt = FfxiPathConfig.resolveRomFile(relRom);
+            if (romOpt.isPresent() && Files.isRegularFile(romOpt.get())) {
+                try {
+                    return Files.readAllBytes(romOpt.get());
+                } catch (Exception ignored) {}
+            }
+        }
+
         List<Path> candidates = List.of(
                 Path.of("game-asset-pipeline/src/test/resources/dats/zones", filename),
                 Path.of("../game-asset-pipeline/src/test/resources/dats/zones", filename),

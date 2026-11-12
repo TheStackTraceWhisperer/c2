@@ -28,6 +28,7 @@ class CharacterLocomotionAnimationTest {
     @DisplayName("AuthenticLocomotionController transitions smoothly between IDLE, WALK, RUN, REST, and COMBAT")
     void testAuthenticLocomotionTransitions() {
         AuthenticLocomotionController controller = new AuthenticLocomotionController(null, null, null);
+        controller.setTransitionDuration(0.15f);
         assertEquals(AuthenticLocomotionController.State.IDLE, controller.getCurrentState());
 
         // Zero speed with no movement flags -> IDLE
@@ -46,8 +47,10 @@ class CharacterLocomotionAnimationTest {
         assertEquals(AuthenticLocomotionController.State.WALK, controller.getCurrentState());
         assertFalse(controller.isTransitioning());
 
-        // Sprinting forward at 6.0 m/s -> RUN
-        controller.update(0.05f, 1, 6.0f);
+        // Sprinting forward at 6.0 m/s -> RUN (settles move ratio into RUN threshold)
+        for (int i = 0; i < 3; i++) {
+            controller.update(0.02f, 1, 6.0f);
+        }
         assertEquals(AuthenticLocomotionController.State.RUN, controller.getTargetState());
         controller.update(0.15f, 1, 6.0f);
         assertEquals(AuthenticLocomotionController.State.RUN, controller.getCurrentState());

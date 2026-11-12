@@ -1,6 +1,7 @@
 package com.example.zone.engine;
 
 import com.example.config.ZoneServerProperties;
+import com.example.asset.config.FfxiPathConfig;
 import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
@@ -468,7 +469,18 @@ public class ZoneSimulationEngine {
   }
 
   byte[] loadZoneDatBytes(int zoneId) {
-    String resPath = "/dats/zones/south_san_doria_230.DAT";
+    // 1. Check retail FFXI installation directory
+    String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
+    if (relRom != null) {
+      java.util.Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
+      if (installedPath.isPresent() && Files.isRegularFile(installedPath.get())) {
+        try {
+          return Files.readAllBytes(installedPath.get());
+        } catch (Exception ignored) {}
+      }
+    }
+
+    String resPath = (zoneId == 230) ? "/dats/zones/south_san_doria_230.DAT" : "/dats/zones/west_ronfaure_100.DAT";
     try (InputStream stream = getClass().getResourceAsStream(resPath)) {
       if (stream != null) {
         return stream.readAllBytes();

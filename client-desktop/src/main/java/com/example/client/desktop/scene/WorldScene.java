@@ -18,6 +18,8 @@ import com.ffxi.viewer.renderer.ZoneMeshBuffer;
 import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneShader;
 import com.ffxi.viewer.renderer.ZoneTextureLoader;
+import com.ffxi.viewer.shader.ShadowMapRenderer;
+import com.ffxi.viewer.shader.SsaoRenderer;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +65,12 @@ public class WorldScene implements AutoCloseable {
     // Character Rendering
     private CharacterShader characterShader;
 
+    // Advanced Lighting & Shadow Systems
+    private ShadowMapRenderer shadowRenderer;
+    private SsaoRenderer ssaoRenderer;
+    @Setter private boolean enableShadows = true;
+    @Setter private boolean enableSsao = true;
+
     // Atmospheric & Weather Systems
     private AuthenticSkyDome skyDome;
     private WeatherParticleSystem weatherParticleSystem;
@@ -98,6 +106,13 @@ public class WorldScene implements AutoCloseable {
             this.characterShader = new CharacterShader();
             this.collisionRenderer = new CollisionMeshRenderer();
             this.collisionRenderer.init();
+
+            try {
+                this.shadowRenderer = new ShadowMapRenderer();
+                this.ssaoRenderer = new SsaoRenderer(1280, 720);
+            } catch (Exception e) {
+                log.warn("Shadow/SSAO systems unavailable in current GL context: {}", e.getMessage());
+            }
 
             try {
                 this.skyDome = new AuthenticSkyDome();
@@ -210,10 +225,6 @@ public class WorldScene implements AutoCloseable {
     public void render(int viewportWidth, int viewportHeight) {
         int w = Math.max(1, viewportWidth);
         int h = Math.max(1, viewportHeight);
-        GL11.glViewport(0, 0, w, h);
-
-        GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
         float aspect = (float) w / (float) h;
         Matrix4f pMat = camera.getProjectionMatrix(aspect);
@@ -224,12 +235,48 @@ public class WorldScene implements AutoCloseable {
         pMat.get(proj);
         vMat.get(view);
 
-        // 1. Atmospheric Sky Dome Pass
+        VanadielTime vTime = manualTimeOverride
+                ? VanadielTime.ofHour(manualTimeHour)
+                : VanadielTime.now();
+        float hour = vTime.getHourFraction();
+        float sunAngle = (float) ((hour / 24.0f) * 2.0 * Math.PI);
+        Vector3f sunDir = new Vector3f((float) Math.sin(sunAngle), (float) Math.cos(sunAngle), 0.25f).normalize();
+        Vector3f moonDir = new Vector3f(-sunDir.x, -sunDir.y, -0.25f).normalize();
+        Vector3f activeLightDir = sunDir.y > 0.0f ? sunDir : moonDir;
+
+        Vector3f shadowTarget = (localPlayerActor != null)
+                ? new Vector3f(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ())
+                : new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+
+        // 1. Directional Shadow Pass
+        if (enableShadows && shadowRenderer != null && !zoneRenderChunks.isEmpty()) {
+            shadowRenderer.computeLightSpaceMatrix(activeLightDir, shadowTarget, 60.0f, 10.0f, 150.0f);
+            shadowRenderer.beginShadowPass();
+            for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                shadowRenderer.setModelMatrix(chunk.modelMatrix(), chunk.discardThreshold());
+                chunk.buffer().draw();
+            }
+            shadowRenderer.endShadowPass(w, h);
+        }
+
+        // 2. SSAO Geometry & Blur Passes
+        if (enableSsao && ssaoRenderer != null && !zoneRenderChunks.isEmpty()) {
+            ssaoRenderer.resize(w, h);
+            ssaoRenderer.beginGeometryPass();
+            for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                chunk.buffer().draw();
+            }
+            ssaoRenderer.computeSsao(pMat, 3.5f, 0.025f, 1.6f, true);
+        }
+
+        // 3. Clear Screen & Main Viewport Setup
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        GL11.glViewport(0, 0, w, h);
+        GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+
+        // 4. Atmospheric Sky Dome Pass
         if (showSkyDome && skyDome != null) {
-            VanadielTime vTime = manualTimeOverride
-                    ? VanadielTime.ofHour(manualTimeHour)
-                    : VanadielTime.now();
-            float hour = vTime.getHourFraction();
             float dayFactor = (hour >= 6.0f && hour <= 18.0f) ? 1.0f
                     : ((hour > 18.0f && hour < 20.0f) ? 1.0f - 0.65f * ((hour - 18.0f) / 2.0f)
                     : ((hour >= 20.0f || hour <= 4.0f) ? 0.35f
@@ -238,9 +285,17 @@ public class WorldScene implements AutoCloseable {
             skyDome.render(pMat, vMat, new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), brightness);
         }
 
-        // 2. Zone Geometry Multi-Pass (Opaque & Alpha-Test Pass 0, Blended Pass 1)
+        // 5. Zone Geometry Multi-Pass (Opaque & Alpha-Test Pass 0, Blended Pass 1)
         if (showVisualZone && zoneShader != null && zoneTextureLoader != null && !zoneRenderChunks.isEmpty()) {
             zoneShader.bind();
+            if (enableShadows && shadowRenderer != null) {
+                GL13.glActiveTexture(GL13.GL_TEXTURE2);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, shadowRenderer.getDepthTextureId());
+            }
+            if (enableSsao && ssaoRenderer != null) {
+                GL13.glActiveTexture(GL13.GL_TEXTURE3);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, ssaoRenderer.getFinalSsaoTextureId(true));
+            }
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
             for (int pass = 0; pass < 2; pass++) {
@@ -438,6 +493,14 @@ public class WorldScene implements AutoCloseable {
         if (collisionRenderer != null) {
             try { collisionRenderer.close(); } catch (Exception ignored) {}
             collisionRenderer = null;
+        }
+        if (shadowRenderer != null) {
+            try { shadowRenderer.close(); } catch (Exception ignored) {}
+            shadowRenderer = null;
+        }
+        if (ssaoRenderer != null) {
+            try { ssaoRenderer.close(); } catch (Exception ignored) {}
+            ssaoRenderer = null;
         }
         if (skyDome != null) {
             try { skyDome.close(); } catch (Exception ignored) {}

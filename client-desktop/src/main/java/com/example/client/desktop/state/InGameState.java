@@ -251,6 +251,7 @@ public class InGameState implements ApplicationState {
         for (var entity : clientState.getRemoteEntities().values()) {
             InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
             SceneActor actor = worldScene.getActor(entity.characterId());
+            boolean isNew = (actor == null);
             if (actor == null) {
                 SceneActor.ActorType aType = (entity.mainJobId() == JobId.NPC)
                         ? SceneActor.ActorType.NPC
@@ -263,11 +264,14 @@ public class InGameState implements ApplicationState {
                 } catch (Exception ignored) {}
                 worldScene.addActor(actor);
             }
-            actor.setPosition(interp.x(), interp.y(), interp.z());
-            actor.setRotation(interp.yaw());
-            float speed = (float) Math.hypot(interp.vx(), interp.vz());
+            if (isNew) {
+                actor.setPosition(interp.x(), interp.y(), interp.z());
+                actor.setRotation(interp.yaw());
+            }
+            actor.setTargetTransform(interp.x(), interp.y(), interp.z(), interp.yaw(), interp.vx(), interp.vy(), interp.vz());
+            float speed = interp.speedHorizontal();
             actor.setMovementSpeed(speed);
-            actor.setMovementFlags(speed > 0.1f ? MovementFlags.FORWARD : MovementFlags.IDLE);
+            actor.setMovementFlags(interp.moveFlags() != 0 ? interp.moveFlags() : (speed > 0.1f ? MovementFlags.FORWARD : MovementFlags.IDLE));
         }
 
         for (SceneActor a : worldScene.getActors()) {

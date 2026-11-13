@@ -46,7 +46,6 @@ import java.util.Optional;
  * Authentic live in-game FFXI cartography map overlay.
  * Follows retail FFXI and XIM's MapDrawer architecture:
  * - Dynamic texture loading from ZoneMapTable for any retail zone and sub-zone/floor
- * - Authentic 16x16 cartographic coordinate grid (A through P, 1 through 16)
  * - Real-time local player positioning with rotating directional heading indicator
  * - 100% dynamic POI pins derived directly from game files:
  *   - Retail ZoneInteraction records (zonelines to other zones, entrances, interactive doors)
@@ -153,8 +152,6 @@ public class InGameMapPanel implements AutoCloseable {
             ImGui.sameLine();
         }
 
-        ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, "16x16 Cartographic Grid (A-P, 1-16)");
-
         float span = (zm != null && zm.mapSizePx() > 0) ? (float) zm.mapSizePx() : 640.0f;
         float xOff = (zm != null) ? zm.xOffset() : -304.0f;
         float yOff = (zm != null) ? zm.yOffset() : -304.0f;
@@ -166,15 +163,14 @@ public class InGameMapPanel implements AutoCloseable {
         float pNormY = pMapY / 512.0f;
         String playerGridStr = formatGridCoord(pMapX, pMapY);
 
-        ImGui.sameLine();
-        ImGui.text(String.format("| Pos: [%s] (X: %.1f, Z: %.1f)", playerGridStr, playerX, playerZ));
+        ImGui.text(String.format("Pos: [%s] (X: %.1f, Z: %.1f)", playerGridStr, playerX, playerZ));
 
         ImGui.separator();
 
-        // 2. Map Canvas Area (512x512 with margins for coordinate headers)
+        // 2. Map Canvas Area (512x512)
         float mapSize = 512.0f;
-        float startX = ImGui.getCursorScreenPosX() + 24.0f;
-        float startY = ImGui.getCursorScreenPosY() + 24.0f;
+        float startX = ImGui.getCursorScreenPosX() + 10.0f;
+        float startY = ImGui.getCursorScreenPosY() + 10.0f;
         float endX = startX + mapSize;
         float endY = startY + mapSize;
 
@@ -183,7 +179,7 @@ public class InGameMapPanel implements AutoCloseable {
         // Outer border background
         int borderColor = ImColor.rgba(180, 150, 80, 255);
         int bgSlate = ImColor.rgba(14, 18, 28, 240);
-        drawList.addRectFilled(startX - 22, startY - 22, endX + 22, endY + 22, bgSlate, 6.0f);
+        drawList.addRectFilled(startX - 8, startY - 8, endX + 8, endY + 8, bgSlate, 6.0f);
         drawList.addRect(startX - 1, startY - 1, endX + 1, endY + 1, borderColor, 0.0f, 0, 2.0f);
 
         // Render actual decoded zone map texture if available
@@ -195,45 +191,7 @@ public class InGameMapPanel implements AutoCloseable {
             drawList.addText(startX + 160, startY + 240, ImColor.rgba(200, 200, 200, 255), "No In-Game Map Available");
         }
 
-        // 3. Render Authentic 16x16 Cartography Grid
-        float cellW = mapSize / 16.0f;
-        float cellH = mapSize / 16.0f;
-        int gridMinor = ImColor.rgba(100, 190, 240, 35);
-        int gridMajor = ImColor.rgba(100, 190, 240, 80);
-        int goldText = ImColor.rgba(255, 215, 0, 255);
-        int whiteText = ImColor.rgba(240, 240, 240, 220);
-
-        for (int col = 1; col < 16; col++) {
-            float cx = startX + col * cellW;
-            int colColor = (col % 2 == 0) ? gridMajor : gridMinor;
-            float thickness = (col % 2 == 0) ? 1.2f : 0.6f;
-            drawList.addLine(cx, startY, cx, endY, colColor, thickness);
-        }
-        for (int row = 1; row < 16; row++) {
-            float cy = startY + row * cellH;
-            int rowColor = (row % 2 == 0) ? gridMajor : gridMinor;
-            float thickness = (row % 2 == 0) ? 1.2f : 0.6f;
-            drawList.addLine(startX, cy, endX, cy, rowColor, thickness);
-        }
-
-        // Coordinate Column Letters (A to P)
-        String[] cols = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"};
-        for (int i = 0; i < 16; i++) {
-            float colCenter = startX + (i + 0.5f) * cellW;
-            drawList.addText(colCenter - 4.0f, startY - 18.0f, goldText, cols[i]);
-            drawList.addText(colCenter - 4.0f, endY + 4.0f, whiteText, cols[i]);
-        }
-
-        // Coordinate Row Numbers (1 to 16)
-        for (int i = 0; i < 16; i++) {
-            float rowCenter = startY + (i + 0.5f) * cellH;
-            String rStr = String.valueOf(i + 1);
-            float off = (i + 1 >= 10) ? -18.0f : -12.0f;
-            drawList.addText(startX + off, rowCenter - 6.0f, goldText, rStr);
-            drawList.addText(endX + 6.0f, rowCenter - 6.0f, whiteText, rStr);
-        }
-
-        // 4. Dynamically Harvest Markers from Game Data
+        // 3. Dynamically Harvest Markers from Game Data
         List<DynamicMapMarker> markers = new ArrayList<>();
 
         // (a) ZoneInteraction volumes parsed from DAT section 0x36 ("RID")

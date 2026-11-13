@@ -165,13 +165,13 @@ public class ThirdPersonCameraSnapshotSuiteTest {
 
         List<OrbitAngle> orbitAngles = List.of(
                 new OrbitAngle(0.0f,   "camera_orbit_000_behind.png",        "Orbit 000° | Directly Behind Player",       "Default Third-Person Chase Angle: Player Facing North, Back to Camera"),
-                new OrbitAngle(45.0f,  "camera_orbit_045_rear_right.png",   "Orbit 045° | Rear-Right 3/4 Perspective",   "Camera Over Right Shoulder: Looking North-East along Diagonal"),
-                new OrbitAngle(90.0f,  "camera_orbit_090_right_profile.png", "Orbit 090° | Right Side Profile",          "Camera Positioned West of Player: Viewing Full Right Profile Facing Left"),
-                new OrbitAngle(135.0f, "camera_orbit_135_front_right.png",  "Orbit 135° | Front-Right 3/4 Perspective",  "Camera in Front-Right Quadrant: Looking toward Player Chest and Face"),
+                new OrbitAngle(45.0f,  "camera_orbit_045_rear_left.png",    "Orbit 045° | Rear-Left 3/4 Perspective",    "Camera Over Left Shoulder: Positioned South-West Looking toward Player"),
+                new OrbitAngle(90.0f,  "camera_orbit_090_left_profile.png",  "Orbit 090° | Left Side Profile",           "Camera Positioned West of Player: Viewing Full Left Profile"),
+                new OrbitAngle(135.0f, "camera_orbit_135_front_left.png",   "Orbit 135° | Front-Left 3/4 Perspective",   "Camera in Front-Left Quadrant (North-West): Looking toward Player Left Chest and Face"),
                 new OrbitAngle(180.0f, "camera_orbit_180_front.png",        "Orbit 180° | Front-Facing Portrait",        "Camera Directly North of Player: Player Facing Straight into Lens"),
-                new OrbitAngle(225.0f, "camera_orbit_225_front_left.png",   "Orbit 225° | Front-Left 3/4 Perspective",   "Camera in Front-Left Quadrant: Looking toward Player Chest and Face"),
-                new OrbitAngle(270.0f, "camera_orbit_270_left_profile.png",  "Orbit 270° | Left Side Profile",           "Camera Positioned East of Player: Viewing Full Left Profile Facing Right"),
-                new OrbitAngle(315.0f, "camera_orbit_315_rear_left.png",    "Orbit 315° | Rear-Left 3/4 Perspective",    "Camera Over Left Shoulder: Looking North-West along Diagonal")
+                new OrbitAngle(225.0f, "camera_orbit_225_front_right.png",  "Orbit 225° | Front-Right 3/4 Perspective",  "Camera in Front-Right Quadrant (North-East): Looking toward Player Right Ribcage and Face"),
+                new OrbitAngle(270.0f, "camera_orbit_270_right_profile.png", "Orbit 270° | Right Side Profile",          "Camera Positioned East of Player: Viewing Full Right Profile"),
+                new OrbitAngle(315.0f, "camera_orbit_315_rear_right.png",   "Orbit 315° | Rear-Right 3/4 Perspective",   "Camera Over Right Shoulder: Positioned South-East Looking toward Player")
         );
 
         float charYaw = 0.0f; // Stationary character facing North

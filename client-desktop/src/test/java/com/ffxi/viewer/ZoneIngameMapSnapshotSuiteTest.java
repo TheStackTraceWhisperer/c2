@@ -112,7 +112,7 @@ public class ZoneIngameMapSnapshotSuiteTest {
     }
 
     @Test
-    @DisplayName("Decode and render all authentic in-game retail maps with 8x8 cartography grids and POI landmarks")
+    @DisplayName("Decode and render all authentic in-game retail maps with POI landmarks")
     void testRenderAllZoneIngameMaps() throws Exception {
         List<ZoneMapScenario> scenarios = List.of(
                 // 1. San d'Oria Kingdom
@@ -360,11 +360,6 @@ public class ZoneIngameMapSnapshotSuiteTest {
         g.setColor(new Color(14, 18, 28));
         g.fillRect(0, 0, canvasW, canvasH);
 
-        // Subtle tech grid pattern across background
-        g.setColor(new Color(24, 32, 48, 120));
-        for (int x = 0; x < canvasW; x += 40) g.drawLine(x, 0, x, canvasH);
-        for (int y = 0; y < canvasH; y += 40) g.drawLine(0, y, canvasW, y);
-
         // 2. Map viewport geometry: 1024x1024 centered square
         int mapX = 128;
         int mapY = 128;
@@ -378,8 +373,8 @@ public class ZoneIngameMapSnapshotSuiteTest {
         // Draw authentic in-game map texture
         g.drawImage(rawMapImg, mapX, mapY, mapW, mapH, null);
 
-        // 3. Render Authentic FFXI 8x8 Cartography Grid Overlay
-        drawCartographyGrid(canvas, g, mapX, mapY, mapW, mapH);
+        // 3. Render clean authentic map border
+        drawMapBorder(g, mapX, mapY, mapW, mapH);
 
         // 4. Render Landmark Markers & Pinpoint Reticles
         drawLandmarks(canvas, g, scenario.landmarks, zm, mapX, mapY, mapW, mapH);
@@ -401,74 +396,7 @@ public class ZoneIngameMapSnapshotSuiteTest {
                 scenario.zoneName, scenario.subtitle, scenario.zoneId, outFile.getName(), outFile.length());
     }
 
-    private void drawCartographyGrid(BufferedImage canvas, Graphics2D g, int mx, int my, int mw, int mh) {
-        float cellW = mw / 16.0f;
-        float cellH = mh / 16.0f;
-
-        // Grid lines inside map area (16x16 authentic FFXI cartography grid)
-        for (int col = 1; col < 16; col++) {
-            int cx = Math.round(mx + col * cellW);
-            if (col % 2 == 0) {
-                g.setStroke(new BasicStroke(1.2f));
-                g.setColor(new Color(100, 190, 240, 80));
-            } else {
-                g.setStroke(new BasicStroke(0.6f));
-                g.setColor(new Color(100, 190, 240, 35));
-            }
-            g.drawLine(cx, my, cx, my + mh);
-        }
-        for (int row = 1; row < 16; row++) {
-            int cy = Math.round(my + row * cellH);
-            if (row % 2 == 0) {
-                g.setStroke(new BasicStroke(1.2f));
-                g.setColor(new Color(100, 190, 240, 80));
-            } else {
-                g.setStroke(new BasicStroke(0.6f));
-                g.setColor(new Color(100, 190, 240, 35));
-            }
-            g.drawLine(mx, cy, mx + mw, cy);
-        }
-
-        // Crosshairs at major grid intersections (every 2 cells = 8x8 major intersections)
-        g.setColor(new Color(150, 225, 255, 140));
-        g.setStroke(new BasicStroke(1.2f));
-        int tick = 5;
-        for (int col = 2; col < 16; col += 2) {
-            int cx = Math.round(mx + col * cellW);
-            for (int row = 2; row < 16; row += 2) {
-                int cy = Math.round(my + row * cellH);
-                g.drawLine(cx - tick, cy, cx + tick, cy);
-                g.drawLine(cx, cy - tick, cx, cy + tick);
-            }
-        }
-
-        // Coordinate Column Headers (A to P) using authentic FontMojiRenderer
-        String[] cols = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"};
-
-        for (int i = 0; i < 16; i++) {
-            int colCenter = Math.round(mx + (i + 0.5f) * cellW);
-            int tw = measureTextWidth(cols[i], 1);
-
-            // Top letter
-            fontMoji.drawString(canvas, cols[i], colCenter - tw / 2, my - 24, FontMojiRenderer.COLOR_GOLD, 1);
-
-            // Bottom letter
-            fontMoji.drawString(canvas, cols[i], colCenter - tw / 2, my + mh + 8, FontMojiRenderer.COLOR_WHITE, 1);
-        }
-
-        // Coordinate Row Sidebars (1 to 16) using authentic FontMojiRenderer
-        for (int i = 0; i < 16; i++) {
-            int rowCenter = Math.round(my + (i + 0.5f) * cellH);
-            String rowStr = String.valueOf(i + 1);
-            int tw = measureTextWidth(rowStr, 1);
-
-            // Left number
-            fontMoji.drawString(canvas, rowStr, mx - tw - 12, rowCenter - 8, FontMojiRenderer.COLOR_GOLD, 1);
-
-            // Right number
-            fontMoji.drawString(canvas, rowStr, mx + mw + 8, rowCenter - 8, FontMojiRenderer.COLOR_WHITE, 1);
-        }
-
+    private void drawMapBorder(Graphics2D g, int mx, int my, int mw, int mh) {
         // Outer map border
         g.setStroke(new BasicStroke(2.0f));
         g.setColor(new Color(210, 180, 90));

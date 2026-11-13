@@ -61,9 +61,9 @@ CATEGORIES = {
         "subsections": [
             ("Default Behind View", ["camera_default_behind_facing_away.png"]),
             ("360° Polar Orbit (45° Intervals)", [
-                "camera_orbit_000_behind.png", "camera_orbit_045_rear_right.png", "camera_orbit_090_right_profile.png",
-                "camera_orbit_135_front_right.png", "camera_orbit_180_front.png", "camera_orbit_225_front_left.png",
-                "camera_orbit_270_left_profile.png", "camera_orbit_315_rear_left.png"
+                "camera_orbit_000_behind.png", "camera_orbit_045_rear_left.png", "camera_orbit_090_left_profile.png",
+                "camera_orbit_135_front_left.png", "camera_orbit_180_front.png", "camera_orbit_225_front_right.png",
+                "camera_orbit_270_right_profile.png", "camera_orbit_315_rear_right.png"
             ]),
             ("Vertical Pitch Elevation (-15° to +75°)", [
                 "camera_pitch_low_hero_neg15.png", "camera_pitch_level_00.png", "camera_pitch_elevated_25.png",
@@ -114,7 +114,7 @@ CATEGORIES = {
     "ingame_maps": {
         "title": "In-Game Maps & Cartography",
         "icon": "🗺️",
-        "desc": "Authentic retail in-game 2D maps decoded directly from ROM DATs (MENUMAP DXT3 & 256-color palette textures) featuring authentic 8x8 cartography coordinate grids (A-H, 1-8), key landmark POI reticles, world-space extents, origin offsets, and true North=-Z orientation.",
+        "desc": "Authentic retail in-game 2D maps decoded directly from ROM DATs (MENUMAP DXT3 & 256-color palette textures) featuring key landmark POI reticles, world-space extents, origin offsets, and true North=-Z orientation.",
         "pattern": "map_zone_*.png",
         "subsections": [
             ("Kingdom of San d'Oria (Zones 230 - 233)", [

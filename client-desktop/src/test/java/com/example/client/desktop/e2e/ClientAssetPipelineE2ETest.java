@@ -217,33 +217,10 @@ public class ClientAssetPipelineE2ETest {
     private byte[] loadDatFile(String filename) {
         String relRom = filename.contains("230") ? "ROM/1/31.DAT" : (filename.contains("100") ? "ROM/1/30.DAT" : null);
         if (relRom != null) {
-            java.util.Optional<Path> romOpt = FfxiPathConfig.resolveRomFile(relRom);
-            if (romOpt.isPresent() && Files.isRegularFile(romOpt.get())) {
-                try {
-                    return Files.readAllBytes(romOpt.get());
-                } catch (Exception ignored) {}
-            }
+            try {
+                return RomAssetLoader.getInstance().loadRomBytes(relRom);
+            } catch (Exception ignored) {}
         }
-
-        List<Path> candidates = List.of(
-                Path.of("game-asset-pipeline/src/test/resources/dats/zones", filename),
-                Path.of("../game-asset-pipeline/src/test/resources/dats/zones", filename),
-                Path.of("src/test/resources/dats/zones", filename)
-        );
-
-        for (Path p : candidates) {
-            if (Files.isRegularFile(p)) {
-                try {
-                    return Files.readAllBytes(p);
-                } catch (Exception ignored) {}
-            }
-        }
-
-        // Try classpath
-        try (InputStream is = getClass().getResourceAsStream("/dats/zones/" + filename)) {
-            if (is != null) return is.readAllBytes();
-        } catch (Exception ignored) {}
-
         return null;
     }
 }

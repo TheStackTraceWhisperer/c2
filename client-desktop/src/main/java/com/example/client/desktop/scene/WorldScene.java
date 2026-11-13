@@ -443,31 +443,6 @@ public class WorldScene implements AutoCloseable {
             }
         }
 
-        String specificResource = zoneId == 100
-                ? "/dats/zones/west_ronfaure_100.DAT"
-                : "/dats/zones/south_san_doria_230.DAT";
-        try (InputStream stream = getClass().getResourceAsStream(specificResource)) {
-            if (stream != null) {
-                return stream.readAllBytes();
-            }
-        } catch (Exception ignored) {}
-
-        List<Path> searchDirs = List.of(
-                Path.of("game-asset-pipeline/src/test/resources/dats/zones"),
-                Path.of("../game-asset-pipeline/src/test/resources/dats/zones"),
-                Path.of("src/test/resources/dats/zones")
-        );
-        String suffix = "_" + zoneId + ".DAT";
-        for (Path dir : searchDirs) {
-            if (Files.isDirectory(dir)) {
-                try (var stream = Files.list(dir)) {
-                    Optional<Path> found = stream.filter(p -> p.getFileName().toString().endsWith(suffix)).findFirst();
-                    if (found.isPresent()) {
-                        return Files.readAllBytes(found.get());
-                    }
-                } catch (Exception ignored) {}
-            }
-        }
         return null;
     }
 

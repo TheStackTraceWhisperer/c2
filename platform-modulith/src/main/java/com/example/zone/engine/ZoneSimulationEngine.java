@@ -480,27 +480,20 @@ public class ZoneSimulationEngine {
       }
     }
 
-    String resPath = (zoneId == 230) ? "/dats/zones/south_san_doria_230.DAT" : "/dats/zones/west_ronfaure_100.DAT";
-    try (InputStream stream = getClass().getResourceAsStream(resPath)) {
-      if (stream != null) {
-        return stream.readAllBytes();
-      }
-    } catch (Exception ignored) {}
-
+    // 2. Check configured custom asset directory if specified
     String configuredDir = properties.getAssetPath();
-    List<Path> candidates = List.of(
-      Path.of(configuredDir, "zones/south_san_doria_230.DAT"),
-      Path.of(configuredDir, "south_san_doria_230.DAT"),
-      Path.of("game-asset-pipeline/src/test/resources/dats/zones/south_san_doria_230.DAT"),
-      Path.of("../game-asset-pipeline/src/test/resources/dats/zones/south_san_doria_230.DAT"),
-      Path.of("src/test/resources/dats/zones/south_san_doria_230.DAT")
-    );
-
-    for (Path p : candidates) {
-      if (Files.isRegularFile(p)) {
-        try {
-          return Files.readAllBytes(p);
-        } catch (Exception ignored) {}
+    if (configuredDir != null && !configuredDir.isBlank()) {
+      String filename = (zoneId == 230) ? "south_san_doria_230.DAT" : ((zoneId == 100) ? "west_ronfaure_100.DAT" : "zone_" + zoneId + ".DAT");
+      List<Path> candidates = List.of(
+        Path.of(configuredDir, "zones", filename),
+        Path.of(configuredDir, filename)
+      );
+      for (Path p : candidates) {
+        if (Files.isRegularFile(p)) {
+          try {
+            return Files.readAllBytes(p);
+          } catch (Exception ignored) {}
+        }
       }
     }
     return null;

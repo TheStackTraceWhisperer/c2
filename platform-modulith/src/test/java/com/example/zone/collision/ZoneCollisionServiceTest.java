@@ -21,7 +21,6 @@ class ZoneCollisionServiceTest {
         props.setHost("127.0.0.1");
         props.setPort(9000);
         props.setZoneId(230); // South San d'Oria
-        props.setAssetPath("game-asset-pipeline/src/test/resources/dats");
         props.setCollisionEnabled(true);
         props.setMaxStepHeight(1.2f);
         props.setMaxJumpHeight(3.5f);

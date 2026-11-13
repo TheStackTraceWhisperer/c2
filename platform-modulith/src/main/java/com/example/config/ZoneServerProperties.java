@@ -22,7 +22,7 @@ public class ZoneServerProperties {
   @Min(1)
   private int zoneId;
 
-  private String assetPath = "game-asset-pipeline/src/test/resources/dats";
+  private String assetPath = "";
 
   private boolean collisionEnabled = true;
 

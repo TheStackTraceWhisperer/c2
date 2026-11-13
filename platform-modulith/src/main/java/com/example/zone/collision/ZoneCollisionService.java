@@ -165,37 +165,26 @@ public class ZoneCollisionService {
             }
         }
 
-        String filename = switch (zoneId) {
-            case 230 -> "south_san_doria_230.DAT";
-            case 100 -> "west_ronfaure_100.DAT";
-            default -> "zone_" + zoneId + ".DAT";
-        };
-
-        // Try classpath resource
-        String resPath = "/dats/zones/" + filename;
-        try (InputStream stream = getClass().getResourceAsStream(resPath)) {
-            if (stream != null) {
-                return stream.readAllBytes();
-            }
-        } catch (Exception ignored) {}
-
-        // Try candidate filesystem paths
+        // 2. Check configured custom asset directory if specified
         String configuredDir = properties.getAssetPath();
-        List<Path> candidates = List.of(
-                Path.of(configuredDir, "zones", filename),
-                Path.of(configuredDir, filename),
-                Path.of("game-asset-pipeline/src/test/resources/dats/zones", filename),
-                Path.of("../game-asset-pipeline/src/test/resources/dats/zones", filename),
-                Path.of("src/test/resources/dats/zones", filename)
-        );
-
-        for (Path p : candidates) {
-            if (Files.isRegularFile(p)) {
-                try {
-                    log.debug("[ZONE-COLLISION] Reading DAT asset from {}", p.toAbsolutePath());
-                    return Files.readAllBytes(p);
-                } catch (Exception e) {
-                    log.warn("[ZONE-COLLISION] Error reading DAT file at {}", p, e);
+        if (configuredDir != null && !configuredDir.isBlank()) {
+            String filename = switch (zoneId) {
+                case 230 -> "south_san_doria_230.DAT";
+                case 100 -> "west_ronfaure_100.DAT";
+                default -> "zone_" + zoneId + ".DAT";
+            };
+            List<Path> candidates = List.of(
+                    Path.of(configuredDir, "zones", filename),
+                    Path.of(configuredDir, filename)
+            );
+            for (Path p : candidates) {
+                if (Files.isRegularFile(p)) {
+                    try {
+                        log.debug("[ZONE-COLLISION] Reading DAT asset from {}", p.toAbsolutePath());
+                        return Files.readAllBytes(p);
+                    } catch (Exception e) {
+                        log.warn("[ZONE-COLLISION] Error reading DAT file at {}", p, e);
+                    }
                 }
             }
         }

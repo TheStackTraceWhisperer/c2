@@ -114,7 +114,6 @@ class ZoneSimulationEngineTest {
         props.setHost("127.0.0.1");
         props.setPort(9000);
         props.setZoneId(230); // South San d'Oria
-        props.setAssetPath("game-asset-pipeline/src/test/resources/dats");
         props.setCollisionEnabled(false);
 
         spatialGrid = new SpatialGrid();

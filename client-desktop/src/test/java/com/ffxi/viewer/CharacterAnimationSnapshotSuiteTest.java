@@ -68,7 +68,8 @@ public class CharacterAnimationSnapshotSuiteTest {
                 new AnimCapture("humem_retreat_back", "Hume Male - Backward Retreat", RaceModelLoader.CharacterRace.HUME_MALE, "mvb0", "mvb1", 0.35, -25.0f),
                 new AnimCapture("humem_strafe_left", "Hume Male - Strafe Left", RaceModelLoader.CharacterRace.HUME_MALE, "mvl0", "mvl1", 0.25, -25.0f),
                 new AnimCapture("humem_strafe_right", "Hume Male - Strafe Right", RaceModelLoader.CharacterRace.HUME_MALE, "mvr0", "mvr1", 0.25, -25.0f),
-                new AnimCapture("humem_sit_rest", "Hume Male - Rest / Meditation", RaceModelLoader.CharacterRace.HUME_MALE, "std0", "std1", 0.50, -25.0f),
+                new AnimCapture("humem_sit_rest", "Hume Male - Rest / Meditation", RaceModelLoader.CharacterRace.HUME_MALE, "rx10", "rx11", 0.10, -25.0f),
+                new AnimCapture("humem_sit_floor", "Hume Male - Seated on Ground", RaceModelLoader.CharacterRace.HUME_MALE, "si10", "si11", 0.10, -25.0f),
                 new AnimCapture("humem_defeat_collapse", "Hume Male - Defeat Fall", RaceModelLoader.CharacterRace.HUME_MALE, "ded0", "ded1", 0.60, -25.0f),
 
                 // 2. Combat & Action Poses
@@ -79,7 +80,7 @@ public class CharacterAnimationSnapshotSuiteTest {
                 new AnimCapture("humem_cast_release", "Hume Male - Spell Release", RaceModelLoader.CharacterRace.HUME_MALE, "mb20", "mb21", 0.25, -25.0f),
                 new AnimCapture("humem_item_use", "Hume Male - Item / Medicine Use", RaceModelLoader.CharacterRace.HUME_MALE, "mi00", "mi01", 0.30, -25.0f),
                 new AnimCapture("humem_weapon_skill", "Hume Male - Martial Weapon Skill", RaceModelLoader.CharacterRace.HUME_MALE, "mw00", "mw01", 0.30, -25.0f),
-                new AnimCapture("humem_hit_recoil", "Hume Male - Damage Recoil", RaceModelLoader.CharacterRace.HUME_MALE, "rx00", "rx01", 0.20, -25.0f),
+                new AnimCapture("humem_hit_recoil", "Hume Male - Damage Recoil", RaceModelLoader.CharacterRace.HUME_MALE, "bf10", "bf11", 0.15, -25.0f),
                 new AnimCapture("humem_jump", "Hume Male - Jump Leap", RaceModelLoader.CharacterRace.HUME_MALE, "jmp0", "jmp1", 0.20, -25.0f),
                 new AnimCapture("humem_cheer", "Hume Male - Cheer Emote", RaceModelLoader.CharacterRace.HUME_MALE, "sh00", "sh01", 0.25, -25.0f),
 

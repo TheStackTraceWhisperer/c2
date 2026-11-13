@@ -61,7 +61,7 @@ public final class AuthenticLocomotionController {
             registerStateAnimator(State.IDLE, skeleton, slot0Animations, slot1Animations, "idl", "idle");
             registerStateAnimator(State.WALK, skeleton, slot0Animations, slot1Animations, "wlk", "walk");
             registerStateAnimator(State.RUN, skeleton, slot0Animations, slot1Animations, "run");
-            registerStateAnimator(State.REST, skeleton, slot0Animations, slot1Animations, "std", "sit", "rest");
+            registerStateAnimator(State.REST, skeleton, slot0Animations, slot1Animations, "rx1", "rx0", "si1", "si0", "rest", "sit");
             registerStateAnimator(State.DEAD, skeleton, slot0Animations, slot1Animations, "ded", "die", "death");
             registerStateAnimator(State.COMBAT, skeleton, slot0Animations, slot1Animations, "cm0", "cm1", "atk", "com");
         }
@@ -99,6 +99,13 @@ public final class AuthenticLocomotionController {
     ) {
         SkeletonAnimationResource s0 = findAnim(slot0, prefixes);
         SkeletonAnimationResource s1 = findAnim(slot1, prefixes);
+        if (s1 == null && s0 != null && slot0 != null) {
+            String s0Id = s0.sectionId().trim().toLowerCase();
+            String upperName = s0Id.endsWith("0") ? s0Id.substring(0, s0Id.length() - 1) + "1" : null;
+            if (upperName != null) {
+                s1 = findAnim(slot0, upperName);
+            }
+        }
         if (s0 != null) {
             animators.put(state, new CharacterAnimator(skeleton, s0, s1));
         }

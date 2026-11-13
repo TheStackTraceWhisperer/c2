@@ -176,6 +176,7 @@ CATEGORIES = {
             ]),
             ("Emotes, Items & Reactions", [
                 "character_anim_humem_cheer.png", "character_anim_humem_sit_rest.png",
+                "character_anim_humem_sit_floor.png",
                 "character_anim_humem_item_use.png", "character_anim_humem_hit_recoil.png",
                 "character_anim_humem_defeat_collapse.png"
             ])

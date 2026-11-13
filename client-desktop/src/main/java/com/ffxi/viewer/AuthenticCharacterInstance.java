@@ -69,7 +69,7 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
                 .scale(1f, -1f, -1f)
                 .translate(character.modelOffset())
                 .translate(posX, -character.feetOffsetY() - posY, -posZ)
-                .rotateY((float) Math.toRadians(yawDegrees));
+                .rotateY((float) Math.toRadians(yawDegrees - 90.0f));
 
         shader.setMatrices(proj, view, charModelMat);
         shader.setDiscardThreshold(0.0f);

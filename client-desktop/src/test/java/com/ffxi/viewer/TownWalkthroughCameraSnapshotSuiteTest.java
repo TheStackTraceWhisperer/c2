@@ -284,25 +284,25 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                 ),
                 new WalkthroughStep(
                         "walkthrough_230_04_fountain_square_approach",
-                        "Approaching Fountain Square | 3/4 Shoulder View",
-                        "Player strides toward the grand plaza. PolarCamera orbits to 215° yaw over left shoulder showing continuous walking stride.",
-                        -5.0f, -12.0f, 180.0f,
+                        "Approaching Auction House Plaza | 3/4 Shoulder View",
+                        "Player strides toward Place de Saint d'Oraguille and the central Auction House in full WALK locomotion.",
+                        -3.0f, -5.0f, 180.0f,
                         MovementFlags.FORWARD, 2.5f, 0.20f,
                         215.0f, 18.0f, 6.0f
                 ),
                 new WalkthroughStep(
                         "walkthrough_230_05_blend_walk_to_idle_50",
-                        "Halting Before Fountain | 50% WALK to IDLE Deceleration",
-                        "Player releases movement as the fountain comes into view. Locomotion cross-fades 50% back into resting stance.",
-                        -5.0f, -22.0f, 0.0f,
+                        "Halting Before Auction House | 50% WALK to IDLE Deceleration",
+                        "Player decelerates along the plaza thoroughfare as the Auction House entrance approaches. Locomotion cross-fades 50% back into resting stance.",
+                        -5.0f, -15.0f, 180.0f,
                         0, 0.0f, 0.075f,
-                        0.0f, 16.0f, 5.6f
+                        180.0f, 16.0f, 5.6f
                 ),
                 new WalkthroughStep(
                         "walkthrough_230_06_grand_fountain_pause",
-                        "Grand Fountain of San d'Oria | Frontal Resting View",
-                        "Player fully halted in authentic IDLE posture before the iconic fountain, viewing cascading waters and arched architecture.",
-                        -5.0f, -26.0f, 0.0f,
+                        "Southern San d'Oria Auction House | Frontal Resting View",
+                        "Player fully halted in authentic IDLE posture before the grand Auction House entrance, viewing the stone masonry and central plaza.",
+                        -5.0f, -20.0f, 180.0f,
                         0, 0.0f, 0.15f,
                         0.0f, 14.0f, 5.5f
                 )
@@ -333,13 +333,15 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
             // 2. Query authentic floor elevation from zone collision mesh
             float floorY = 0.0f;
             if (zone.collisionSystem() != null) {
-                float hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, 200.0f);
+                // Raycast downwards from realistic pedestrian height (+2.0m) rather than +200m sky,
+                // preventing false hits on overhead signs, awnings, or arches
+                float hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, 2.0f);
                 if (Float.isFinite(hit)) {
                     floorY = hit;
                 } else {
                     float[] offsets = {-1.0f, 1.0f, -2.0f, 2.0f};
                     for (float ox : offsets) {
-                        float h = zone.collisionSystem().findFloorY(step.worldX + ox, step.worldZ, 200.0f);
+                        float h = zone.collisionSystem().findFloorY(step.worldX + ox, step.worldZ, 2.0f);
                         if (Float.isFinite(h)) {
                             floorY = h;
                             break;
@@ -452,7 +454,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                 .scale(1f, -1f, -1f)
                 .translate(playerCharacter.modelOffset())
                 .translate(charX, -playerCharacter.feetOffsetY() - charY, -charZ)
-                .rotateY((float) Math.toRadians(charYaw));
+                .rotateY((float) Math.toRadians(charYaw - 90.0f));
 
         Vector4f scratch = new Vector4f();
         Vector4f accum = new Vector4f();

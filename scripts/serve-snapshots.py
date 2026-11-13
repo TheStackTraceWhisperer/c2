@@ -43,7 +43,7 @@ CATEGORIES = {
                 "walkthrough_231_10_cathedral_steps_hero.png",
                 "walkthrough_231_11_cathedral_court_tactical.png"
             ]),
-            ("Southern San d'Oria (Zone 230) - Outer Gate to Grand Fountain with Locomotion Blending", [
+            ("Southern San d'Oria (Zone 230) - Outer Thoroughfare to Auction House Plaza with Locomotion Blending", [
                 "walkthrough_230_01_spawn_ronfaure_gate.png",
                 "walkthrough_230_02_blend_idle_to_walk_50.png",
                 "walkthrough_230_03_walk_commercial_avenue.png",

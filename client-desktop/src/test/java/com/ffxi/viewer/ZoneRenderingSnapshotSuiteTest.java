@@ -387,6 +387,10 @@ public class ZoneRenderingSnapshotSuiteTest {
             float centerZ = cam.eye().z();
             float altitude = cam.eye().y();
 
+            float halfW;
+            float halfH;
+            float far;
+
             if (orthoSize <= 0.0f) {
                 // Auto compute bounding box across all chunks
                 float minX = Float.POSITIVE_INFINITY, maxX = Float.NEGATIVE_INFINITY;
@@ -409,17 +413,31 @@ public class ZoneRenderingSnapshotSuiteTest {
                 centerZ = (minZ + maxZ) * 0.5f;
                 float sizeX = maxX - minX;
                 float sizeZ = maxZ - minZ;
-                orthoSize = Math.max(sizeX, sizeZ) * 1.05f;
-                altitude = maxY + 150.0f;
+
+                // Ensure the entire zone geometry fits within the viewport bounds
+                // with 6% margin on all sides, maintaining undistorted square pixels (aspect = width / height).
+                float margin = 1.06f;
+                float aspect = (float) width / (float) height;
+                float reqHalfW = (sizeX * 0.5f) * margin;
+                float reqHalfH = (sizeZ * 0.5f) * margin;
+
+                halfH = Math.max(reqHalfH, reqHalfW / aspect);
+                halfW = halfH * aspect;
+
+                altitude = maxY + 200.0f;
+                far = Math.max(2000.0f, (maxY - minY) + 500.0f);
+                System.out.printf("[ZONE-ORTHO] %s (Zone %d) bounds: X=[%.1f, %.1f] (%.1fm), Z=[%.1f, %.1f] (%.1fm), Y=[%.1f, %.1f] -> View Extents: W=%.1fm x H=%.1fm%n",
+                        zone.zoneName(), zone.zoneId(), minX, maxX, sizeX, minZ, maxZ, sizeZ, minY, maxY, halfW * 2.0f, halfH * 2.0f);
+            } else {
+                halfW = orthoSize * 0.5f;
+                halfH = (orthoSize * height / (float) width) * 0.5f;
+                far = Math.max(1000.0f, altitude + 1000.0f);
             }
 
-            float halfW = orthoSize * 0.5f;
-            float halfH = (orthoSize * height / (float) width) * 0.5f;
-            float far = Math.max(1000.0f, altitude + 1000.0f);
             proj = new Matrix4f().ortho(-halfW, halfW, -halfH, halfH, 1.0f, far);
             view = new Matrix4f().lookAt(
                     new Vector3f(centerX, altitude, centerZ),
-                    new Vector3f(centerX, -200.0f, centerZ),
+                    new Vector3f(centerX, altitude - 100.0f, centerZ),
                     cam.up()
             );
         } else {

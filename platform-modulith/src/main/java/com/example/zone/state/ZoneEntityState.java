@@ -35,6 +35,24 @@ public class ZoneEntityState {
 
   private boolean npc;
 
+  // Authentic NPC appearance, animation, and behavior metadata
+  private int animationSub;
+  private int namePrefix;
+  private int moving;
+  private String lookType;
+  private int raceId;
+  private int faceId;
+  private int head;
+  private int body;
+  private int hands;
+  private int legs;
+  private int feet;
+  private int mainWeapon;
+  private int subShield;
+  private int ranged;
+  private int modelId;
+  private boolean widescan;
+
   // Observed entity set for AoI differencing
   private final Set<Long> knownEntities = ConcurrentHashMap.newKeySet();
 
@@ -76,6 +94,35 @@ public class ZoneEntityState {
     state.setLevel(1);
     state.setNpc(true);
     state.setDirty(false);
+    return state;
+  }
+
+  public static ZoneEntityState createNpc(com.example.server.entity.NpcRecord record) {
+    ZoneEntityState state = createNpc(
+      record.id(),
+      record.zoneId(),
+      record.name(),
+      record.posX(),
+      record.posY(),
+      record.posZ(),
+      record.yawDegrees()
+    );
+    state.setAnimationSub(record.animationSub());
+    state.setNamePrefix(record.namePrefix());
+    state.setMoving(record.moving());
+    state.setLookType(record.lookType());
+    state.setRaceId(record.raceId());
+    state.setFaceId(record.faceId());
+    state.setHead(record.head());
+    state.setBody(record.body());
+    state.setHands(record.hands());
+    state.setLegs(record.legs());
+    state.setFeet(record.feet());
+    state.setMainWeapon(record.mainWeapon());
+    state.setSubShield(record.subShield());
+    state.setRanged(record.ranged());
+    state.setModelId(record.modelId());
+    state.setWidescan(record.widescan());
     return state;
   }
 }

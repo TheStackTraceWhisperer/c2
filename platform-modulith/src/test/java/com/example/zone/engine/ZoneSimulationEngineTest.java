@@ -4,7 +4,9 @@ import com.example.config.ZoneServerProperties;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.CharacterStateSnapshot;
+import com.example.server.entity.NpcRecord;
 import com.example.server.repository.CharacterRepository;
+import com.example.server.repository.NpcJdbcRepository;
 import com.example.server.repository.ZoneLineJdbcRepository;
 import com.example.zone.collision.ZoneCollisionService;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -249,5 +251,74 @@ class ZoneSimulationEngineTest {
         assertThat(updated.posZ()).isEqualTo(zoneline.destZ());
 
         channel.close();
+    }
+
+    @Test
+    @DisplayName("LSB Validation: Authentic LandSandBoat NPCs loaded from database repository into spatial grid")
+    void testAuthenticLandSandBoatNpcsLoadedAndSpawned() {
+        NpcJdbcRepository mockNpcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> {
+                    if ("findByZoneId".equals(method.getName())) {
+                        int zoneId = (int) args[0];
+                        if (zoneId == 230) {
+                            return List.of(
+                                    new NpcRecord(
+                                            17719297L, "Ceraule",
+                                            -86.077f, 1.999f, -34.793f, (short) 115,
+                                            230, "normal", 27, (short) 1, (short) 32, (short) 14,
+                                            "equipped", (short) 3, (short) 2,
+                                            4108, 8204, 12300, 16396, 20492, 24576, 28672, 0, 0, true
+                                    ),
+                                    new NpcRecord(
+                                            17719298L, "Aubejart",
+                                            2.900f, -1.999f, 46.644f, (short) 64,
+                                            230, "normal", 27, (short) 1, (short) 32, (short) 8,
+                                            "equipped", (short) 3, (short) 8,
+                                            4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true
+                                    )
+                            );
+                        }
+                    }
+                    return null;
+                }
+        );
+
+        ZoneSimulationEngine engineWithNpcs = new ZoneSimulationEngine(
+                props,
+                spatialGrid,
+                charRepo,
+                zoneLineRepo,
+                dispatcher,
+                collisionService,
+                new NpcPatrolSimulation(),
+                mockNpcRepo
+        );
+        engineWithNpcs.start();
+
+        try {
+            assertThat(engineWithNpcs.getEntity(17719297L)).isNotNull();
+            ZoneEntityState ceraule = engineWithNpcs.getEntity(17719297L);
+            assertThat(ceraule.getName()).isEqualTo("Ceraule");
+            assertThat(ceraule.getX()).isEqualTo(-86.077f);
+            assertThat(ceraule.getY()).isEqualTo(1.999f);
+            assertThat(ceraule.getZ()).isEqualTo(-34.793f);
+            assertThat(ceraule.getYaw()).isEqualTo(115 * 360.0f / 256.0f);
+            assertThat(ceraule.getAnimationSub()).isEqualTo(1); // Sitting / resting pose
+            assertThat(ceraule.isNpc()).isTrue();
+
+            assertThat(engineWithNpcs.getEntity(17719298L)).isNotNull();
+            ZoneEntityState aubejart = engineWithNpcs.getEntity(17719298L);
+            assertThat(aubejart.getName()).isEqualTo("Aubejart");
+            assertThat(aubejart.getYaw()).isEqualTo(64 * 360.0f / 256.0f);
+            assertThat(aubejart.getAnimationSub()).isEqualTo(1);
+
+            // Verify spatial grid indexing
+            Set<Long> nearby = spatialGrid.getNearbyEntities(-86.0f, -34.0f);
+            assertThat(nearby).contains(17719297L);
+        } finally {
+            engineWithNpcs.stop();
+        }
     }
 }

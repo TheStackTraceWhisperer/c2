@@ -6,9 +6,12 @@ import com.example.server.SessionContext;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.CharacterStateSnapshot;
+import com.example.server.entity.NpcRecord;
 import com.example.server.entity.ZoneLineRecord;
 import com.example.server.repository.CharacterRepository;
+import com.example.server.repository.NpcJdbcRepository;
 import com.example.server.repository.ZoneLineJdbcRepository;
+import io.micronaut.core.annotation.Nullable;
 import com.example.zone.collision.ZoneCollisionService;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
@@ -55,6 +58,7 @@ public class ZoneSimulationEngine {
   private final VirtualThreadTaskDispatcher dispatcher;
   private final ZoneCollisionService collisionService;
   @Getter private final NpcPatrolSimulation patrolSimulation;
+  @Nullable private final NpcJdbcRepository npcRepository;
 
   @Getter private final AtomicLong currentTick = new AtomicLong(0L);
 
@@ -63,6 +67,17 @@ public class ZoneSimulationEngine {
   private final Queue<QueuedMovement> movementQueue = new ConcurrentLinkedQueue<>();
   private final List<ZoneLineRecord> cachedZoneLines = new CopyOnWriteArrayList<>();
   private ScheduledExecutorService tickExecutor;
+
+  public ZoneSimulationEngine(
+      ZoneServerProperties properties,
+      SpatialGrid spatialGrid,
+      CharacterRepository characterRepository,
+      ZoneLineJdbcRepository zoneLineRepository,
+      VirtualThreadTaskDispatcher dispatcher,
+      ZoneCollisionService collisionService,
+      NpcPatrolSimulation patrolSimulation) {
+    this(properties, spatialGrid, characterRepository, zoneLineRepository, dispatcher, collisionService, patrolSimulation, null);
+  }
 
   public record QueuedMovement(
     ChannelHandlerContext ctx,
@@ -87,6 +102,26 @@ public class ZoneSimulationEngine {
 
     tickExecutor.scheduleAtFixedRate(this::tick, 0, TICK_INTERVAL_MS, TimeUnit.MILLISECONDS);
     log.info("[ZONE-ENGINE] 20 Hz Authoritative Spatial Simulation initialized for Zone #{}", properties.getZoneId());
+
+    loadAuthenticNpcs();
+  }
+
+  private void loadAuthenticNpcs() {
+    if (npcRepository == null) {
+      return;
+    }
+    List<NpcRecord> npcs = npcRepository.findByZoneId(properties.getZoneId());
+    int loaded = 0;
+    for (NpcRecord r : npcs) {
+      // Cutscene-only / event-only NPCs with 0,0,0 coordinates remain in DB until summoned by cutscene logic
+      if ("cutscene_only".equalsIgnoreCase(r.status()) && r.posX() == 0f && r.posY() == 0f && r.posZ() == 0f) {
+        continue;
+      }
+      ZoneEntityState npcState = ZoneEntityState.createNpc(r);
+      registerNpc(npcState);
+      loaded++;
+    }
+    log.info("[ZONE-ENGINE] Spawned {} authentic LandSandBoat NPCs into Zone #{}", loaded, properties.getZoneId());
   }
 
   public int getAuthoritativeZoneId() {

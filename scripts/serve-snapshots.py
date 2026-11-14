@@ -24,6 +24,19 @@ SNAPSHOT_DIRS = [
 ]
 
 CATEGORIES = {
+    "integration": {
+        "title": "Live Server-Client E2E Integration",
+        "icon": "🌐",
+        "desc": "End-to-end integration: authoritative 20 Hz ZoneSimulationEngine, LandSandBoat authentic NPC spatial synchronization, ClientState remote entity tracking, and in-engine 1080p camera rendering in Southern San d'Oria (Zone 230).",
+        "pattern": "e2e_live_*.png",
+        "subsections": [
+            ("Authoritative Spawning, Movement & LSB NPC Rendezvous", [
+                "e2e_live_01_south_sandoria_world_spawn.png",
+                "e2e_live_02_south_sandoria_npc_plaza.png",
+                "e2e_live_03_south_sandoria_ceraule_rest.png"
+            ])
+        ]
+    },
     "walkthrough": {
         "title": "City Walkthrough & Player Controller",
         "icon": "🚶‍♂️",

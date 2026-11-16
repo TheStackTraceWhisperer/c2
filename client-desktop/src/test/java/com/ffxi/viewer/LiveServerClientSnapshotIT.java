@@ -82,6 +82,18 @@ public class LiveServerClientSnapshotIT {
     private static LoadedZone loadedZone230;
     private static Map<String, DecodedTextureBuffer> decodedZoneTextures;
 
+    private static Matrix4f[] idlePose;
+    private static Matrix4f[] walkPose;
+    private static Matrix4f[] restPose;
+
+    private record SceneActor(
+            LoadedCharacter character,
+            Map<String, DecodedTextureBuffer> textures,
+            Matrix4f[] jointMatrices,
+            float x, float y, float z, float yaw,
+            String name, Color nameColor
+    ) {}
+
     private static ZoneSimulationEngine serverEngine;
     private static List<Object> clientOutboundPackets;
     private static ChannelHandlerContext clientCtx;
@@ -154,6 +166,24 @@ public class LiveServerClientSnapshotIT {
                 }
             } catch (Exception ignored) {}
         }
+
+        AuthenticLocomotionController idleCtrl = new AuthenticLocomotionController(
+                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        );
+        idleCtrl.update(0.1f, 0, 0.0f);
+        idlePose = idleCtrl.computePoseMatrices();
+
+        AuthenticLocomotionController walkCtrl = new AuthenticLocomotionController(
+                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        );
+        walkCtrl.update(0.20f, (int) MovementFlags.FORWARD, 2.5f);
+        walkPose = walkCtrl.computePoseMatrices();
+
+        AuthenticLocomotionController restCtrl = new AuthenticLocomotionController(
+                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        );
+        restCtrl.update(1.0f, 32, 0.0f);
+        restPose = restCtrl.computePoseMatrices();
 
         // 3. Load authentic Southern San d'Oria zone geometry
         loadedZone230 = ZoneModelLoader.loadZone(FFXI_ROOT, 230);
@@ -277,7 +307,7 @@ public class LiveServerClientSnapshotIT {
         assertThat(clientState.getRemoteEntities()).containsKey(17719298L); // Aubejart
         assertThat(clientState.getRemoteEntities()).containsKey(17719299L); // Ephauge
 
-        // Position camera behind player
+        // Position camera behind player facing gate
         PolarCamera camera = new PolarCamera();
         camera.setTarget(0.0f, 2.0f, 42.0f);
         camera.setTargetOffsetY(1.0f);
@@ -285,13 +315,14 @@ public class LiveServerClientSnapshotIT {
         camera.setPitch(22.0f);
         camera.setDistance(6.0f);
 
-        AuthenticLocomotionController locomotion = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        List<SceneActor> actors = List.of(
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 0.0f, 2.0f, 42.0f, 180.0f, "Aldo", new Color(140, 220, 255)),
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 2.900f, 2.0f, 46.644f, 90.0f, "Aubejart", new Color(100, 240, 140)),
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -2.900f, 2.0f, 46.644f, 270.0f, "Ephauge", new Color(100, 240, 140))
         );
 
         BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, locomotion,
-                0.0f, 2.0f, 42.0f, 180.0f,
+                loadedZone230, decodedZoneTextures, camera, actors,
                 "e2e_live_01_south_sandoria_world_spawn",
                 "World Spawn at West Ronfaure Gate | Authoritative Spatial Sync",
                 "Client connected to authoritative 20 Hz ZoneSimulationEngine #230. Streamed player spawn and authentic LSB gate sentries into ClientState.",
@@ -336,6 +367,15 @@ public class LiveServerClientSnapshotIT {
             assertThat(ent.getZ()).isCloseTo(-5.0f, within(0.5f));
         });
 
+        // Ingest server deltas into ClientState
+        for (Object p : clientOutboundPackets) {
+            if (p instanceof ZoneStateDeltaMessage delta) {
+                for (EntitySpawnRecord spawn : delta.spawns()) {
+                    clientState.addOrUpdateRemoteEntity(spawn);
+                }
+            }
+        }
+
         PolarCamera camera = new PolarCamera();
         camera.setTarget(-3.0f, -2.0f, -5.0f);
         camera.setTargetOffsetY(1.0f);
@@ -343,14 +383,12 @@ public class LiveServerClientSnapshotIT {
         camera.setPitch(18.0f);
         camera.setDistance(6.0f);
 
-        AuthenticLocomotionController locomotion = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        List<SceneActor> actors = List.of(
+                new SceneActor(playerCharacter, decodedCharTextures, walkPose, -3.0f, -2.0f, -5.0f, 180.0f, "Aldo", new Color(140, 220, 255))
         );
-        locomotion.update(0.20f, (int) MovementFlags.FORWARD, 2.5f);
 
         BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, locomotion,
-                -3.0f, -2.0f, -5.0f, 180.0f,
+                loadedZone230, decodedZoneTextures, camera, actors,
                 "e2e_live_02_south_sandoria_npc_plaza",
                 "King's Square Avenue Stride | Server-Validated Kinematics",
                 "Authoritative swept-movement validation across zone geometry. PolarCamera 3/4 shoulder view following player toward central plaza.",
@@ -394,6 +432,15 @@ public class LiveServerClientSnapshotIT {
             assertThat(ent.getX()).isCloseTo(-84.0f, within(0.5f));
         });
 
+        // Ingest server deltas into ClientState
+        for (Object p : clientOutboundPackets) {
+            if (p instanceof ZoneStateDeltaMessage delta) {
+                for (EntitySpawnRecord spawn : delta.spawns()) {
+                    clientState.addOrUpdateRemoteEntity(spawn);
+                }
+            }
+        }
+
         // Verify Ceraule entity state in authoritative server engine
         var cerauleState = serverEngine.getEntity(17719297L);
         assertThat(cerauleState).isNotNull();
@@ -401,20 +448,21 @@ public class LiveServerClientSnapshotIT {
         assertThat(cerauleState.getAnimationSub()).isEqualTo(1); // Sitting / resting pose
         assertThat(cerauleState.getYaw()).isEqualTo(115 * 360.0f / 256.0f);
 
+        // Position camera to capture both Aldo and Ceraule side-by-side in 3/4 perspective
         PolarCamera camera = new PolarCamera();
-        camera.setTarget(-84.0f, 1.999f, -32.5f);
+        camera.setTarget(-85.0f, 1.999f, -33.6f);
         camera.setTargetOffsetY(1.0f);
-        camera.setYaw(140.0f);
+        camera.setYaw(80.0f);
         camera.setPitch(16.0f);
         camera.setDistance(5.5f);
 
-        AuthenticLocomotionController locomotion = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+        List<SceneActor> actors = List.of(
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -84.0f, 1.999f, -32.5f, 318.0f, "Aldo", new Color(140, 220, 255)),
+                new SceneActor(playerCharacter, decodedCharTextures, restPose, -86.077f, 1.999f, -34.793f, 161.7f, "Ceraule", new Color(100, 240, 140))
         );
 
         BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, locomotion,
-                -84.0f, 1.999f, -32.5f, 135.0f,
+                loadedZone230, decodedZoneTextures, camera, actors,
                 "e2e_live_03_south_sandoria_ceraule_rest",
                 "Ceraule Rendezvous | Canonical NPC Placement & Resting Pose",
                 "Player halting before LandSandBoat NPC Ceraule (#17719297). Verifying exact LSB coordinates (-86.1, 2.0, -34.8), yaw (161.7°), and animation_sub=1.",
@@ -429,8 +477,7 @@ public class LiveServerClientSnapshotIT {
 
     private static BufferedImage renderLiveE2EFrame(
             LoadedZone zone, Map<String, DecodedTextureBuffer> decodedZoneTextures, PolarCamera camera,
-            AuthenticLocomotionController locomotion,
-            float charX, float charY, float charZ, float charYaw,
+            List<SceneActor> actors,
             String snapshotId, String title, String subtitle, int activeNpcCount
     ) {
         BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
@@ -464,27 +511,64 @@ public class LiveServerClientSnapshotIT {
         int[] pixels = new int[WIDTH * HEIGHT];
         image.getRGB(0, 0, WIDTH, HEIGHT, pixels, 0, WIDTH);
 
-        // 1. Zone geometry (Opaque)
+        // 1. Zone geometry (Opaque pass)
         rasterizeZoneGeometry(zone, decodedZoneTextures, viewProj, pixels, zBuffer, false);
 
-        // 2. Character Model with Locomotion Pose
-        Matrix4f[] jointMatrices = locomotion.computePoseMatrices();
-        Matrix4f charModelMat = new Matrix4f()
-                .translate(charX, charY, charZ)
-                .rotateY((float) Math.toRadians(-charYaw));
-
-        rasterizeCharacter(playerCharacter, decodedCharTextures, jointMatrices, charModelMat, viewProj, pixels, zBuffer);
+        // 2. Dynamic Actors (Player and NPCs)
+        for (SceneActor actor : actors) {
+            rasterizeDynamicActor(actor.character(), actor.textures(), actor.jointMatrices(),
+                    actor.x(), actor.y(), actor.z(), actor.yaw(), viewProj, pixels, zBuffer);
+        }
 
         // 3. Zone geometry (Blended alpha pass)
         rasterizeZoneGeometry(zone, decodedZoneTextures, viewProj, pixels, zBuffer, true);
 
         image.setRGB(0, 0, WIDTH, HEIGHT, pixels, 0, WIDTH);
 
-        // 4. Stamped HUD Overlays
-        renderLiveIntegrationHud(image, g2, camera, charX, charY, charZ, charYaw, title, subtitle, activeNpcCount);
+        // 4. Overhead Nameplates
+        Vector4f headClip = new Vector4f();
+        for (SceneActor actor : actors) {
+            float headY = (actor.jointMatrices() == restPose) ? actor.y() + 1.25f : actor.y() + 1.95f;
+            headClip.set(actor.x(), headY, actor.z(), 1.0f);
+            viewProj.transform(headClip);
+            if (headClip.w > 0.1f) {
+                float sx = (headClip.x / headClip.w * 0.5f + 0.5f) * WIDTH;
+                float sy = (0.5f - headClip.y / headClip.w * 0.5f) * HEIGHT;
+                if (sx >= 20 && sx < WIDTH - 20 && sy >= 20 && sy < HEIGHT - 20) {
+                    drawActorNameplate(image, g2, sx, sy, actor.name(), actor.nameColor());
+                }
+            }
+        }
+
+        // 5. Stamped HUD Overlays
+        SceneActor primaryActor = actors.isEmpty() ? null : actors.get(0);
+        float px = primaryActor != null ? primaryActor.x() : 0.0f;
+        float py = primaryActor != null ? primaryActor.y() : 0.0f;
+        float pz = primaryActor != null ? primaryActor.z() : 0.0f;
+        float pyaw = primaryActor != null ? primaryActor.yaw() : 0.0f;
+
+        renderLiveIntegrationHud(image, g2, camera, px, py, pz, pyaw, title, subtitle, activeNpcCount);
         g2.dispose();
 
         return image;
+    }
+
+    private static void drawActorNameplate(BufferedImage dest, Graphics2D g, float sx, float sy, String name, Color nameColor) {
+        if (name == null || name.isEmpty()) return;
+        int textWidth = name.length() * 9;
+        int padX = 8;
+        int boxW = textWidth + padX * 2;
+        int boxH = 20;
+        int boxX = (int) sx - boxW / 2;
+        int boxY = (int) sy - boxH;
+
+        g.setColor(new Color(10, 16, 26, 210));
+        g.fillRoundRect(boxX, boxY, boxW, boxH, 8, 8);
+        g.setColor(new Color(60, 95, 140, 220));
+        g.setStroke(new BasicStroke(1.2f));
+        g.drawRoundRect(boxX, boxY, boxW, boxH, 8, 8);
+
+        drawText(dest, name, boxX + padX, boxY + 3, nameColor, 1);
     }
 
     private static void renderLiveIntegrationHud(
@@ -503,7 +587,7 @@ public class LiveServerClientSnapshotIT {
         drawText(dest, title, 40, 32, new Color(255, 215, 80), 2);
         drawText(dest, subtitle, 40, 64, new Color(200, 220, 240), 1);
 
-        String tele1 = String.format("SERVER: Authoritative 20 Hz ZoneSimulationEngine #230 | QUIC State: IN_ZONE | Session #99001 | Fory Protocol");
+        String tele1 = "SERVER: Authoritative 20 Hz ZoneSimulationEngine #230 | QUIC State: IN_ZONE | Session #99001 | Fory Protocol";
         String tele2 = String.format("SPATIAL AoI: %d Authentic LSB NPCs Streamed to ClientState (Ceraule, Aubejart, Ephauge, Machielle, Cahaurme...)", activeNpcCount);
         String tele3 = String.format("AVATAR: Aldo @ (%5.1f, %5.2f, %5.1f) | Facing=%5.1f° [%s] | Cam: Yaw=%5.1f° Pitch=%5.1f° Dist=%4.1fm",
                 charX, charY, charZ, charYaw, resolveCardinal(charYaw), cam.getYaw(), cam.getPitch(), cam.getDistance());
@@ -606,6 +690,7 @@ public class LiveServerClientSnapshotIT {
                 }
             }
 
+            float discardThresh = inst.discardThreshold();
             boolean invertCull = inst.invertCull();
             boolean mirrored = modelMatrix.determinant() < 0.0f;
 
@@ -656,6 +741,13 @@ public class LiveServerClientSnapshotIT {
                     if (mirrored && cross <= 0.0f) continue;
                 }
 
+                float minXF = Math.min(x0, Math.min(x1, x2));
+                float maxXF = Math.max(x0, Math.max(x1, x2));
+                float minYF = Math.min(y0, Math.min(y1, y2));
+                float maxYF = Math.max(y0, Math.max(y1, y2));
+
+                if (maxXF < 0f || minXF >= WIDTH || maxYF < 0f || minYF >= HEIGHT) continue;
+
                 ZoneMeshVertex v0 = verts.get(i0);
                 ZoneMeshVertex v1 = verts.get(i1);
                 ZoneMeshVertex v2 = verts.get(i2);
@@ -665,7 +757,7 @@ public class LiveServerClientSnapshotIT {
                         x0, y0, z0, w0, v0.u(), v0.v(), v0.colorR(), v0.colorG(), v0.colorB(), v0.colorA(),
                         x1, y1, z1, w1, v1.u(), v1.v(), v1.colorR(), v1.colorG(), v1.colorB(), v1.colorA(),
                         x2, y2, z2, w2, v2.u(), v2.v(), v2.colorR(), v2.colorG(), v2.colorB(), v2.colorA(),
-                        tex, blendPass
+                        tex, discardThresh, blendPass
                 );
             }
         }
@@ -676,7 +768,7 @@ public class LiveServerClientSnapshotIT {
             float x0, float y0, float z0, float w0, float u0, float v0, int cr0, int cg0, int cb0, int ca0,
             float x1, float y1, float z1, float w1, float u1, float v1, int cr1, int cg1, int cb1, int ca1,
             float x2, float y2, float z2, float w2, float u2, float v2, int cr2, int cg2, int cb2, int ca2,
-            DecodedTextureBuffer texture, boolean blendPass
+            DecodedTextureBuffer tex, float discardThresh, boolean blendPass
     ) {
         int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
         int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
@@ -686,10 +778,24 @@ public class LiveServerClientSnapshotIT {
         float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
         if (Math.abs(denom) < 1e-5f) return;
 
-        float invW0 = 1.0f / w0, invW1 = 1.0f / w1, invW2 = 1.0f / w2;
+        float invW0 = 1.0f / w0;
+        float invW1 = 1.0f / w1;
+        float invW2 = 1.0f / w2;
+
         float u0W = u0 * invW0, v0W = v0 * invW0;
         float u1W = u1 * invW1, v1W = v1 * invW1;
         float u2W = u2 * invW2, v2W = v2 * invW2;
+
+        float r0W = (cr0 / 255.0f) * invW0, g0W = (cg0 / 255.0f) * invW0, b0W = (cb0 / 255.0f) * invW0;
+        float r1W = (cr1 / 255.0f) * invW1, g1W = (cg1 / 255.0f) * invW1, b1W = (cb1 / 255.0f) * invW1;
+        float r2W = (cr2 / 255.0f) * invW2, g2W = (cg2 / 255.0f) * invW2, b2W = (cb2 / 255.0f) * invW2;
+
+        float a0W = (ca0 / 255.0f) * invW0;
+        float a1W = (ca1 / 255.0f) * invW1;
+        float a2W = (ca2 / 255.0f) * invW2;
+
+        boolean useAlphaDiscard = discardThresh > 0.0f;
+        int alphaThresholdByte = Math.max(1, (int) (discardThresh * 255.0f));
 
         for (int y = minY; y <= maxY; y++) {
             float py = y + 0.5f;
@@ -711,29 +817,61 @@ public class LiveServerClientSnapshotIT {
                         float u = (b0 * u0W + b1 * u1W + b2 * u2W) * w;
                         float v = (b0 * v0W + b1 * v1W + b2 * v2W) * w;
 
-                        int texColor = sampleTexture(texture, u, v);
-                        int alpha = (texColor >>> 24);
+                        float vr = (b0 * r0W + b1 * r1W + b2 * r2W) * w;
+                        float vg = (b0 * g0W + b1 * g1W + b2 * g2W) * w;
+                        float vb = (b0 * b0W + b1 * b1W + b2 * b2W) * w;
+
+                        if (vr < 0.01f && vg < 0.01f && vb < 0.01f) {
+                            vr = 0.5f; vg = 0.5f; vb = 0.5f;
+                        }
+
+                        float va = (b0 * a0W + b1 * a1W + b2 * a2W) * w;
+                        if (va <= 0.001f && ca0 == 0 && ca1 == 0 && ca2 == 0) {
+                            va = 1.0f;
+                        }
+
+                        int r, g, b, a;
+                        if (tex != null && tex.rgba() != null && tex.rgba().length > 0) {
+                            int tw = tex.width();
+                            int th = tex.height();
+                            int tx = Math.floorMod((int) (u * tw), tw);
+                            int ty = Math.floorMod((int) (v * th), th);
+                            int texIdx = (ty * tw + tx) * 4;
+
+                            int tr = tex.rgba()[texIdx] & 0xFF;
+                            int tg = tex.rgba()[texIdx + 1] & 0xFF;
+                            int tb = tex.rgba()[texIdx + 2] & 0xFF;
+                            int ta = tex.rgba()[texIdx + 3] & 0xFF;
+
+                            if (useAlphaDiscard && ta < alphaThresholdByte) {
+                                continue;
+                            }
+
+                            r = Math.min(255, (int) (tr * vr * 2.0f));
+                            g = Math.min(255, (int) (tg * vg * 2.0f));
+                            b = Math.min(255, (int) (tb * vb * 2.0f));
+                            a = (int) (ta * va);
+                        } else {
+                            r = Math.min(255, (int) (vr * 255.0f * 1.5f));
+                            g = Math.min(255, (int) (vg * 255.0f * 1.5f));
+                            b = Math.min(255, (int) (vb * 255.0f * 1.5f));
+                            a = (int) (va * 255.0f);
+                        }
 
                         if (!blendPass) {
-                            if (alpha >= 128) {
-                                pixels[idx] = texColor;
-                                zBuffer[idx] = z;
-                            }
+                            pixels[idx] = (255 << 24) | (r << 16) | (g << 8) | b;
+                            zBuffer[idx] = z;
                         } else {
-                            if (alpha > 8 && alpha < 250) {
-                                int existing = pixels[idx];
-                                int er = (existing >> 16) & 0xFF;
-                                int eg = (existing >> 8) & 0xFF;
-                                int eb = existing & 0xFF;
+                            if (a > 5) {
+                                float alpha = a / 255.0f;
+                                int bg = pixels[idx];
+                                int bgr = (bg >> 16) & 0xFF;
+                                int bgg = (bg >> 8) & 0xFF;
+                                int bgb = bg & 0xFF;
 
-                                int tr = (texColor >> 16) & 0xFF;
-                                int tg = (texColor >> 8) & 0xFF;
-                                int tb = texColor & 0xFF;
-
-                                float a = alpha / 255.0f;
-                                int outR = (int) (tr * a + er * (1.0f - a));
-                                int outG = (int) (tg * a + eg * (1.0f - a));
-                                int outB = (int) (tb * a + eb * (1.0f - a));
+                                int outR = (int) (r * alpha + bgr * (1.0f - alpha));
+                                int outG = (int) (g * alpha + bgg * (1.0f - alpha));
+                                int outB = (int) (b * alpha + bgb * (1.0f - alpha));
 
                                 pixels[idx] = (255 << 24) | (outR << 16) | (outG << 8) | outB;
                             }
@@ -744,21 +882,30 @@ public class LiveServerClientSnapshotIT {
         }
     }
 
-    private static void rasterizeCharacter(
-            LoadedCharacter character, Map<String, DecodedTextureBuffer> decodedTextures,
-            Matrix4f[] jointMatrices, Matrix4f charModelMat, Matrix4f viewProj,
-            int[] pixels, float[] zBuffer
+    private static void rasterizeDynamicActor(
+            LoadedCharacter character, Map<String, DecodedTextureBuffer> textures,
+            Matrix4f[] jointMatrices,
+            float charX, float charY, float charZ, float charYaw,
+            Matrix4f viewProj, int[] pixels, float[] zBuffer
     ) {
+        if (character == null || character.meshes().isEmpty()) return;
+
+        Matrix4f charModelMat = new Matrix4f()
+                .scale(1f, -1f, -1f)
+                .translate(character.modelOffset())
+                .translate(charX, -character.feetOffsetY() - charY, -charZ)
+                .rotateY((float) Math.toRadians(charYaw - 90.0f));
+
+        Vector4f scratch = new Vector4f();
+        Vector4f accum = new Vector4f();
         Vector4f worldPos = new Vector4f();
         Vector4f clipPos = new Vector4f();
-        Vector4f accum = new Vector4f();
-        Vector4f scratch = new Vector4f();
 
         for (SkeletonMeshMesh mesh : character.meshes()) {
-            DecodedTextureBuffer tex = decodedTextures.get(normalizeName(mesh.textureName()));
+            DecodedTextureBuffer tex = textures.get(CharacterTextureLoader.normalizeName(mesh.textureName()));
             if (tex == null && mesh.textureName() != null && !mesh.textureName().isBlank()) {
-                String norm = normalizeName(mesh.textureName());
-                for (Map.Entry<String, DecodedTextureBuffer> e : decodedTextures.entrySet()) {
+                String norm = CharacterTextureLoader.normalizeName(mesh.textureName());
+                for (Map.Entry<String, DecodedTextureBuffer> e : textures.entrySet()) {
                     if (e.getKey().endsWith(" " + norm) || e.getKey().startsWith(norm + " ") || e.getKey().contains(norm)) {
                         tex = e.getValue();
                         break;
@@ -842,7 +989,10 @@ public class LiveServerClientSnapshotIT {
         float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
         if (Math.abs(denom) < 1e-5f) return;
 
-        float invW0 = 1.0f / w0, invW1 = 1.0f / w1, invW2 = 1.0f / w2;
+        float invW0 = 1.0f / w0;
+        float invW1 = 1.0f / w1;
+        float invW2 = 1.0f / w2;
+
         float u0W = u0 * invW0, v0W = v0 * invW0;
         float u1W = u1 * invW1, v1W = v1 * invW1;
         float u2W = u2 * invW2, v2W = v2 * invW2;
@@ -867,7 +1017,7 @@ public class LiveServerClientSnapshotIT {
                         float u = (b0 * u0W + b1 * u1W + b2 * u2W) * w;
                         float v = (b0 * v0W + b1 * v1W + b2 * v2W) * w;
 
-                        int color = sampleTexture(texture, u, v);
+                        int color = sampleCharTexture(texture, u, v);
                         if ((color >>> 24) > 64) {
                             pixels[idx] = color;
                             zBuffer[idx] = z;
@@ -876,6 +1026,33 @@ public class LiveServerClientSnapshotIT {
                 }
             }
         }
+    }
+
+    private static int sampleCharTexture(DecodedTextureBuffer texture, float u, float v) {
+        if (texture == null) return 0xFFCCCCCC;
+
+        int tw = texture.width();
+        int th = texture.height();
+        if (tw <= 0 || th <= 0) return 0xFFCCCCCC;
+
+        float uFrac = u - (float) Math.floor(u);
+        float vFrac = v - (float) Math.floor(v);
+
+        int tx = Math.min(tw - 1, Math.max(0, (int) (uFrac * tw)));
+        int ty = Math.min(th - 1, Math.max(0, (int) (vFrac * th)));
+
+        int byteOffset = (ty * tw + tx) * 4;
+        byte[] rgba = texture.rgba();
+        if (byteOffset + 3 >= rgba.length) return 0xFFCCCCCC;
+
+        int a = rgba[byteOffset + 3] & 0xFF;
+        if (a < 64) return 0;
+
+        int r = rgba[byteOffset] & 0xFF;
+        int g = rgba[byteOffset + 1] & 0xFF;
+        int b = rgba[byteOffset + 2] & 0xFF;
+
+        return (255 << 24) | (r << 16) | (g << 8) | b;
     }
 
     private static Vector3f computeSkinnedPosition(
@@ -965,32 +1142,6 @@ public class LiveServerClientSnapshotIT {
         System.arraycopy(fi, 0, trimFi, 0, out);
         System.arraycopy(ri, 0, trimRi, 0, out);
         return new ExpandedMesh(trimFi, trimRi);
-    }
-
-    private static int sampleTexture(DecodedTextureBuffer texture, float u, float v) {
-        if (texture == null) return 0xFFCCCCCC;
-        int tw = texture.width();
-        int th = texture.height();
-        if (tw <= 0 || th <= 0) return 0xFFCCCCCC;
-
-        float uFrac = u - (float) Math.floor(u);
-        float vFrac = v - (float) Math.floor(v);
-
-        int tx = Math.min(tw - 1, Math.max(0, (int) (uFrac * tw)));
-        int ty = Math.min(th - 1, Math.max(0, (int) (vFrac * th)));
-
-        int byteOffset = (ty * tw + tx) * 4;
-        byte[] rgba = texture.rgba();
-        if (byteOffset + 3 >= rgba.length) return 0xFFCCCCCC;
-
-        int a = rgba[byteOffset + 3] & 0xFF;
-        if (a < 8) return 0;
-
-        int r = rgba[byteOffset] & 0xFF;
-        int g = rgba[byteOffset + 1] & 0xFF;
-        int b = rgba[byteOffset + 2] & 0xFF;
-
-        return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
     private static String normalizeName(String s) {

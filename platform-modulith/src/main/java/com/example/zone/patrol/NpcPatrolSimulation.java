@@ -67,16 +67,29 @@ public class NpcPatrolSimulation {
                 continue;
             }
 
-            // Handle dwell pause timer
-            if (agent.getPauseTimer() > 0.0f) {
-                agent.decrementPauseTimer(dt);
-                if (entity.getVx() != 0f || entity.getVz() != 0f) {
+            NpcPatrolRoute route = agent.getRoute();
+            if (route == null || route.waypoints().isEmpty()) {
+                if (entity.getVx() != 0f || entity.getVy() != 0f || entity.getVz() != 0f || entity.getMoveFlags() != 0) {
                     entity.setVx(0f);
                     entity.setVy(0f);
                     entity.setVz(0f);
                     entity.setMoveFlags(0);
                     entity.setLastUpdatedTick(tickNumber);
-                    entity.setDirty(true);
+                    entity.setNetworkDirty(true);
+                }
+                continue;
+            }
+
+            // Handle dwell pause timer
+            if (agent.getPauseTimer() > 0.0f) {
+                agent.decrementPauseTimer(dt);
+                if (entity.getVx() != 0f || entity.getVy() != 0f || entity.getVz() != 0f || entity.getMoveFlags() != 0) {
+                    entity.setVx(0f);
+                    entity.setVy(0f);
+                    entity.setVz(0f);
+                    entity.setMoveFlags(0);
+                    entity.setLastUpdatedTick(tickNumber);
+                    entity.setNetworkDirty(true);
                 }
                 continue;
             }
@@ -97,12 +110,14 @@ public class NpcPatrolSimulation {
                 }
                 agent.advanceWaypoint();
 
-                entity.setVx(0f);
-                entity.setVy(0f);
-                entity.setVz(0f);
-                entity.setMoveFlags(0);
-                entity.setLastUpdatedTick(tickNumber);
-                entity.setDirty(true);
+                if (entity.getVx() != 0f || entity.getVy() != 0f || entity.getVz() != 0f || entity.getMoveFlags() != 0) {
+                    entity.setVx(0f);
+                    entity.setVy(0f);
+                    entity.setVz(0f);
+                    entity.setMoveFlags(0);
+                    entity.setLastUpdatedTick(tickNumber);
+                    entity.setNetworkDirty(true);
+                }
                 continue;
             }
 
@@ -114,6 +129,10 @@ public class NpcPatrolSimulation {
             float nextX = curX + dirX * step;
             float nextZ = curZ + dirZ * step;
 
+            // Smooth vertical interpolation toward waypoint Y
+            float fraction = (dist > 1e-6f) ? Math.min(1.0f, step / dist) : 1.0f;
+            float nextY = curY + (wp.y() - curY) * fraction;
+
             // Facing heading in degrees: 0 = North (-Z), 90 = East (+X)
             double yawRad = Math.atan2(dirX, -dirZ);
             float yawDeg = (float) Math.toDegrees(yawRad);
@@ -121,32 +140,56 @@ public class NpcPatrolSimulation {
                 yawDeg += 360.0f;
             }
 
-            // Height clamping via collision service
-            float nextY = wp.y();
+            float vx = dirX * agent.getMoveSpeed();
+            float vy = (dt > 0.0f) ? (nextY - curY) / dt : 0f;
+            float vz = dirZ * agent.getMoveSpeed();
+            int moveFlags = 1; // Moving forward
+            boolean wallBlocked = false;
+
+            // Height clamping and wall validation via collision service
             if (collisionService != null && collisionService.hasCollision(zoneId)) {
                 ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                         zoneId,
                         curX, curY, curZ,
-                        nextX, curY, nextZ
+                        nextX, nextY, nextZ
                 );
                 nextX = res.x();
                 nextY = res.y();
                 nextZ = res.z();
+                vy = (dt > 0.0f) ? (nextY - curY) / dt : 0f;
+                if (res.reconciled() && "WALL_BLOCKED".equals(res.reason())) {
+                    wallBlocked = true;
+                }
             }
 
-            float vx = dirX * agent.getMoveSpeed();
-            float vz = dirZ * agent.getMoveSpeed();
+            if (wallBlocked) {
+                vx = 0f;
+                vy = 0f;
+                vz = 0f;
+                moveFlags = 0;
+            }
+
+            boolean changed = Float.compare(entity.getX(), nextX) != 0
+                    || Float.compare(entity.getY(), nextY) != 0
+                    || Float.compare(entity.getZ(), nextZ) != 0
+                    || Float.compare(entity.getVx(), vx) != 0
+                    || Float.compare(entity.getVy(), vy) != 0
+                    || Float.compare(entity.getVz(), vz) != 0
+                    || Float.compare(entity.getYaw(), yawDeg) != 0
+                    || entity.getMoveFlags() != moveFlags;
 
             entity.setX(nextX);
             entity.setY(nextY);
             entity.setZ(nextZ);
             entity.setVx(vx);
-            entity.setVy(0f);
+            entity.setVy(vy);
             entity.setVz(vz);
             entity.setYaw(yawDeg);
-            entity.setMoveFlags(1); // Moving forward
+            entity.setMoveFlags(moveFlags);
             entity.setLastUpdatedTick(tickNumber);
-            entity.setDirty(true);
+            if (changed) {
+                entity.setNetworkDirty(true);
+            }
 
             spatialGrid.updatePosition(npcId, nextX, nextZ);
         }

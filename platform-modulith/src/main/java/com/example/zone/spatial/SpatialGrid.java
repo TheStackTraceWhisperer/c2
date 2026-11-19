@@ -1,11 +1,9 @@
 package com.example.zone.spatial;
 
 import jakarta.inject.Singleton;
-import lombok.Getter;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 @Singleton
 public class SpatialGrid {
@@ -34,14 +32,21 @@ public class SpatialGrid {
     long newKey = packCellKey(cellX, cellZ);
 
     Long oldKey = entityCells.put(characterId, newKey);
-    if (oldKey != null && oldKey != newKey) {
-      Set<Long> oldCell = cells.get(oldKey);
-      if (oldCell != null) {
-        oldCell.remove(characterId);
+    if (oldKey != null && oldKey.longValue() == newKey) {
+      Set<Long> currentCell = cells.get(newKey);
+      if (currentCell != null && currentCell.contains(characterId)) {
+        return;
       }
     }
+    if (oldKey != null && oldKey.longValue() != newKey) {
+      pruneFromCell(oldKey, characterId);
+    }
 
-    cells.computeIfAbsent(newKey, k -> new CopyOnWriteArraySet<>()).add(characterId);
+    cells.compute(newKey, (k, existing) -> {
+      Set<Long> set = (existing != null) ? existing : ConcurrentHashMap.newKeySet();
+      set.add(characterId);
+      return set;
+    });
   }
 
   /**
@@ -67,11 +72,19 @@ public class SpatialGrid {
   public void removeEntity(long characterId) {
     Long cellKey = entityCells.remove(characterId);
     if (cellKey != null) {
-      Set<Long> cell = cells.get(cellKey);
-      if (cell != null) {
-        cell.remove(characterId);
-      }
+      pruneFromCell(cellKey, characterId);
     }
+  }
+
+  private void pruneFromCell(long cellKey, long characterId) {
+    cells.computeIfPresent(cellKey, (k, cell) -> {
+      cell.remove(characterId);
+      return cell.isEmpty() ? null : cell;
+    });
+  }
+
+  public int getCellCount() {
+    return cells.size();
   }
 
   public void clear() {

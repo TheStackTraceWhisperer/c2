@@ -33,14 +33,10 @@ public abstract class AbstractBackendServer {
   private Channel channel;
 
   protected AbstractBackendServer(String serviceName, String bindHost, int port) {
-    this(serviceName, bindHost, port, new IndexedPacketRouter());
-  }
-
-  protected AbstractBackendServer(String serviceName, String bindHost, int port, IndexedPacketRouter router) {
     this.serviceName = serviceName;
     this.bindHost = bindHost;
     this.port = port;
-    this.router = router;
+    this.router = new IndexedPacketRouter();
   }
 
   public void start() throws Exception {

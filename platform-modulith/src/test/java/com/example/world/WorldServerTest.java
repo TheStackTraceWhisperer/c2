@@ -1,6 +1,5 @@
 package com.example.world;
 
-import com.example.common.handler.IndexedPacketRouter;
 import com.example.config.WorldServerProperties;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
@@ -114,7 +113,7 @@ class WorldServerTest {
     );
     WorldServer server = new WorldServer(
       properties, zoneRegistry, sessionRegistry, charRepo, syncDispatcher,
-      new IndexedPacketRouter(), joinHandler, disconnectHandler, zoneLineRepo
+      joinHandler, disconnectHandler, zoneLineRepo
     );
     server.registerHandlers();
 
@@ -161,9 +160,15 @@ class WorldServerTest {
       assertThat(out).isEmpty();
       assertThat(sessionRegistry.getSession(56L).getCurrentZoneId()).isEqualTo(230);
 
-      // Disconnect handler removes session from WorldSessionRegistry
-      disconnectHandler.handle(ctx, new SessionDisconnectedEvent(56L, System.currentTimeMillis()));
+      // Zone transfer disconnect event must NOT evict live session from WorldSessionRegistry
+      ch.attr(com.example.server.SessionContext.SESSION_ID).set(56L);
+      disconnectHandler.handle(ctx, new SessionDisconnectedEvent(56L, System.currentTimeMillis(), true));
+      assertThat(sessionRegistry.getSession(56L)).isNotNull();
+
+      // Full disconnect handler removes session from WorldSessionRegistry (without evicting session 55)
+      disconnectHandler.handle(ctx, new SessionDisconnectedEvent(56L, System.currentTimeMillis(), false));
       assertThat(sessionRegistry.getSession(56L)).isNull();
+      assertThat(sessionRegistry.getSession(55L)).isNotNull();
     } finally {
       ch.close();
     }

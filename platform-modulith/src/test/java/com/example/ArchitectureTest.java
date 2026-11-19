@@ -18,13 +18,13 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone.patrol..", "com.example.zone.state..", "com.example.zone",
         "com.example.gateway.."
       );
 
   @ArchTest
   static final ArchRule zone_should_not_depend_on_other_services =
-    noClasses().that().resideInAnyPackage("com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone")
+    noClasses().that().resideInAnyPackage("com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone.patrol..", "com.example.zone.state..", "com.example.zone")
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
@@ -38,7 +38,7 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.login.handler..", "com.example.login.auth..", "com.example.login",
         "com.example.world.handler..", "com.example.world.registry..", "com.example.world",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone.patrol..", "com.example.zone.state..", "com.example.zone",
         "com.example.gateway.."
       );
 
@@ -48,7 +48,7 @@ public class ArchitectureTest {
       .should().dependOnClassesThat().resideInAnyPackage(
         "com.example.lobby.handler..", "com.example.lobby.registry..", "com.example.lobby",
         "com.example.world.handler..", "com.example.world.registry..", "com.example.world",
-        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone",
+        "com.example.zone.handler..", "com.example.zone.engine..", "com.example.zone.spatial..", "com.example.zone.collision..", "com.example.zone.patrol..", "com.example.zone.state..", "com.example.zone",
         "com.example.gateway.."
       );
 
@@ -59,9 +59,13 @@ public class ArchitectureTest {
     noClasses().that().resideInAPackage("..gateway..")
       .should().dependOnClassesThat().resideInAnyPackage(
         "..login.handler..",
+        "..login.auth..",
         "..lobby.handler..",
         "..world.handler..",
-        "..zone.handler.."
+        "..zone.handler..",
+        "..registry..",
+        "..zone.engine..",
+        "..server.repository.."
       );
 
   // --- 3. Client vs Server Layer Boundaries ---
@@ -71,7 +75,7 @@ public class ArchitectureTest {
     noClasses().that().resideOutsideOfPackage("com.example.client..")
       .should().dependOnClassesThat().resideInAPackage("com.example.client..");
 
-  // --- 4. Common Protocol Purity (Cannot depend on server runtime internals) ---
+  // --- 4. Common Protocol Purity (Cannot depend on server runtime internals or Micronaut) ---
 
   @ArchTest
   static final ArchRule common_protocol_must_not_depend_on_server_infrastructure =
@@ -88,6 +92,13 @@ public class ArchitectureTest {
         "com.example.zone.handler..",
         "com.example.zone.engine..",
         "com.example.zone.spatial..",
-        "com.example.zone.collision.."
+        "com.example.zone.collision..",
+        "com.example.zone.patrol..",
+        "com.example.zone.state.."
       );
+
+  @ArchTest
+  static final ArchRule common_protocol_must_not_depend_on_micronaut =
+    noClasses().that().resideInAPackage("com.example.common..")
+      .should().dependOnClassesThat().resideInAPackage("io.micronaut..");
 }

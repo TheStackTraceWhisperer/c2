@@ -1,6 +1,5 @@
 package com.example.world;
 
-import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
 import com.example.config.WorldServerProperties;
 import com.example.server.AbstractBackendServer;
@@ -55,11 +54,10 @@ public class WorldServer extends AbstractBackendServer {
     WorldSessionRegistry sessionRegistry,
     CharacterRepository characterRepository,
     VirtualThreadTaskDispatcher dispatcher,
-    IndexedPacketRouter router,
     JoinWorldRequestHandler joinWorldHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler,
     @Nullable ZoneLineJdbcRepository zoneLineRepository) {
-    super("WORLD", properties.getHost(), properties.getPort(), router);
+    super("WORLD", properties.getHost(), properties.getPort());
     this.realmId = properties.getRealmId();
     this.zoneRegistry = zoneRegistry;
     this.sessionRegistry = sessionRegistry;
@@ -76,10 +74,9 @@ public class WorldServer extends AbstractBackendServer {
     WorldSessionRegistry sessionRegistry,
     CharacterRepository characterRepository,
     VirtualThreadTaskDispatcher dispatcher,
-    IndexedPacketRouter router,
     JoinWorldRequestHandler joinWorldHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler) {
-    this(properties, zoneRegistry, sessionRegistry, characterRepository, dispatcher, router, joinWorldHandler, sessionDisconnectedHandler, null);
+    this(properties, zoneRegistry, sessionRegistry, characterRepository, dispatcher, joinWorldHandler, sessionDisconnectedHandler, null);
   }
 
   @PostConstruct
@@ -96,6 +93,9 @@ public class WorldServer extends AbstractBackendServer {
     router.register(MessageType.JOIN_WORLD_REQUEST, joinWorldHandler);
     router.register(MessageType.SESSION_DISCONNECTED, sessionDisconnectedHandler);
     sessionDisconnectedHandler.onDisconnect(e -> {
+      if (e.zoneTransfer()) {
+        return;
+      }
       log.info("[WORLD-SERVER] Evicting session #{} from WorldSessionRegistry", e.sessionId());
       sessionRegistry.removeSession(e.sessionId());
     });

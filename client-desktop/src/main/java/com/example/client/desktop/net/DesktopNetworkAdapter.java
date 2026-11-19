@@ -219,15 +219,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
     }
 
     public void onZoneStateDelta(ZoneStateDeltaMessage delta) {
-        if (delta.spawns() != null) {
-            delta.spawns().forEach(clientState::addOrUpdateRemoteEntity);
-        }
-        if (delta.updates() != null) {
-            delta.updates().forEach(clientState::updateRemoteEntityMovement);
-        }
-        if (delta.despawns() != null) {
-            delta.despawns().forEach(clientState::removeRemoteEntity);
-        }
+        clientState.applyZoneStateDelta(delta);
     }
 
     public void onPlayerMovementResponse(PlayerMovementResponse resp) {

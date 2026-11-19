@@ -1,6 +1,5 @@
 package com.example.zone;
 
-import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
 import com.example.config.ZoneServerProperties;
 import com.example.server.AbstractBackendServer;
@@ -23,11 +22,10 @@ public class ZoneServer extends AbstractBackendServer {
 
   public ZoneServer(
     ZoneServerProperties properties,
-    IndexedPacketRouter router,
     PlayerMovementRequestHandler movementHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler,
     ZoneSimulationEngine simulationEngine) {
-    super("ZONE-" + properties.getZoneId(), properties.getHost(), properties.getPort(), router);
+    super("ZONE-" + properties.getZoneId(), properties.getHost(), properties.getPort());
     this.movementHandler = movementHandler;
     this.sessionDisconnectedHandler = sessionDisconnectedHandler;
     this.simulationEngine = simulationEngine;

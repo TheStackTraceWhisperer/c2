@@ -190,6 +190,20 @@
           <artifactId>exec-maven-plugin</artifactId>
           <version>3.6.3</version>
         </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <configuration>
+            <argLine>-Dio.netty.leakDetection.level=PARANOID -Djdk.tracePinnedThreads=full</argLine>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <configuration>
+            <argLine>-Dio.netty.leakDetection.level=PARANOID -Djdk.tracePinnedThreads=full</argLine>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
   </build>

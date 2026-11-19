@@ -91,6 +91,9 @@ public class InGameMapPanel implements AutoCloseable {
             List<ZoneInteraction> zoneInteractions,
             Collection<ClientState.RemoteEntityState> remoteEntities
     ) {
+        if (this.activeZoneId != zoneId) {
+            this.activeSubZoneId = 0;
+        }
         render(zoneId, activeSubZoneId, playerX, playerY, playerZ, playerYaw, zoneInteractions, remoteEntities);
     }
 
@@ -141,13 +144,21 @@ public class InGameMapPanel implements AutoCloseable {
         List<ZoneMap> mapsForZone = (zoneMapTable != null) ? zoneMapTable.getAllForZone(zoneId) : List.of();
         if (mapsForZone.size() > 1) {
             String[] floorNames = new String[mapsForZone.size()];
+            int currentIdx = 0;
             for (int i = 0; i < mapsForZone.size(); i++) {
-                floorNames[i] = "Floor #" + mapsForZone.get(i).subZoneId();
+                int subId = mapsForZone.get(i).subZoneId();
+                floorNames[i] = "Floor #" + subId;
+                if (subId == activeSubZoneId) {
+                    currentIdx = i;
+                }
             }
-            ImInt selSub = new ImInt(activeSubZoneId);
+            ImInt selSub = new ImInt(currentIdx);
             if (ImGui.combo("##FloorSelector", selSub, floorNames)) {
-                this.activeSubZoneId = selSub.get();
-                loadZoneTexture(zoneId, activeSubZoneId);
+                int selIdx = selSub.get();
+                if (selIdx >= 0 && selIdx < mapsForZone.size()) {
+                    this.activeSubZoneId = mapsForZone.get(selIdx).subZoneId();
+                    loadZoneTexture(zoneId, activeSubZoneId);
+                }
             }
             ImGui.sameLine();
         }
@@ -310,7 +321,7 @@ public class InGameMapPanel implements AutoCloseable {
         float scaleMeters = span / 16.0f;
         ImGui.textColored(0.85f, 0.85f, 0.85f, 1.0f,
                 String.format("Span: %.0fm (%.1fm/cell) | Offsets: X=%.0f, Y=%.0f | Active Markers: %d | Retail Engine: N=-Z, E=+X",
-                        span, xOff, yOff, scaleMeters, markers.size()));
+                        span, scaleMeters, xOff, yOff, markers.size()));
 
         ImGui.end();
     }

@@ -10,6 +10,7 @@ import com.example.client.state.ClientState;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
 @Prototype
@@ -44,15 +45,23 @@ public class CharacterSelectedState implements ApplicationState {
 
     @Override
     public void onUpdate(float dt) {
-        GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        try {
+            GL.getCapabilities();
+            GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        } catch (IllegalStateException ignored) {
+            // Headless unit test without active OpenGL context
+        }
 
         panel.render(clientState);
         debugLog.render();
 
         boolean deselect = panel.isDeselectRequested();
-        processIntents();
+        boolean transitioned = processIntents();
         panel.clearIntents();
+        if (transitioned) {
+            return;
+        }
 
         if (deselect || clientState.getSelectedCharacterId() == null) {
             clientState.resetZoneSession();
@@ -89,13 +98,14 @@ public class CharacterSelectedState implements ApplicationState {
     @Override
     public void onExit() {}
 
-    private void processIntents() {
+    private boolean processIntents() {
         if (panel.isRefreshRequested()) {
             networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
         }
         if (panel.isSignOutRequested()) {
             networkAdapter.sendLogout();
             stateService.changeState(unauthProvider::get);
+            return true;
         }
         if (panel.getSelectCharacterId() != null) {
             networkAdapter.sendCharacterSelect(clientState.getAuthToken(), panel.getSelectCharacterId());
@@ -123,5 +133,6 @@ public class CharacterSelectedState implements ApplicationState {
             debugLog.log("Entering world as " + characterName + " (Zone #" + currentZoneId + ")...");
             networkAdapter.sendPlay(clientState.getAuthToken());
         }
+        return false;
     }
 }

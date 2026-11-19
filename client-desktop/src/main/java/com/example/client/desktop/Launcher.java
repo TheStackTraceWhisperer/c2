@@ -13,14 +13,6 @@ public final class Launcher {
     }
 
     public static void run(Class<?> primarySource, String[] args) {
-        if (args != null) {
-            for (String arg : args) {
-                if ("--offline".equalsIgnoreCase(arg) || "-o".equalsIgnoreCase(arg)) {
-                    System.setProperty("c2.offline", "true");
-                    break;
-                }
-            }
-        }
         try (ApplicationContext ctx = Micronaut.build(args)
                 .mainClass(primarySource)
                 .banner(false)

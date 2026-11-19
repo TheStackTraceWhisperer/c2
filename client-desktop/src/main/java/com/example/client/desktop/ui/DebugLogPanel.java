@@ -8,22 +8,31 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 @Slf4j
 @Singleton
 public class DebugLogPanel {
 
+    static final int MAX_LINES = 500;
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
-    private final List<String> lines = new ArrayList<>();
+    private final Deque<String> lines = new ArrayDeque<>(MAX_LINES);
     private final ImBoolean autoScroll = new ImBoolean(true);
 
-    public void log(String message) {
-        lines.add("[" + LocalTime.now().format(FMT) + "] " + message);
+    public synchronized void log(String message) {
+        if (lines.size() >= MAX_LINES) {
+            lines.removeFirst();
+        }
+        lines.addLast("[" + LocalTime.now().format(FMT) + "] " + message);
     }
 
-    public void render() {
+    public synchronized List<String> getLinesSnapshot() {
+        return List.copyOf(lines);
+    }
+
+    public synchronized void render() {
         ImGui.setNextWindowPos(920, 20, ImGuiCond.Once);
         ImGui.setNextWindowSize(340, 680, ImGuiCond.Once);
         ImGui.begin("Debug Log");

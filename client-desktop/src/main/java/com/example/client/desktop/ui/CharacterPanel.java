@@ -52,8 +52,9 @@ public class CharacterPanel {
         ImGui.setNextWindowSize(760, 560, ImGuiCond.Once);
         ImGui.begin("Character Select");
 
-        if (clientState.getLastErrorMessage() != null) {
-            ImGui.textColored(1.0f, 0.2f, 0.2f, 1.0f, "Error: " + clientState.getLastErrorMessage());
+        String err = clientState.getLastErrorMessage();
+        if (err != null && !err.isEmpty()) {
+            ImGui.textColored(1.0f, 0.2f, 0.2f, 1.0f, "Error: " + err);
             ImGui.separator();
         }
 

@@ -19,6 +19,7 @@ public class ImGuiService implements IService {
 
     private ImGuiImplGlfw implGlfw;
     private ImGuiImplGl3 implGl3;
+    private boolean initialized = false;
 
     @Override
     public int executionOrder() {
@@ -28,14 +29,20 @@ public class ImGuiService implements IService {
     @Override
     public void start() {
         ImGui.createContext();
-        ImGuiIO io = ImGui.getIO();
-        io.setIniFilename(null);
+        try {
+            ImGuiIO io = ImGui.getIO();
+            io.setIniFilename(null);
 
-        implGlfw = new ImGuiImplGlfw();
-        implGl3 = new ImGuiImplGl3();
-        implGlfw.init(windowService.getHandle(), true);
-        implGl3.init("#version 460");
-        log.info("Dear ImGui initialized");
+            implGlfw = new ImGuiImplGlfw();
+            implGl3 = new ImGuiImplGl3();
+            implGlfw.init(windowService.getHandle(), true);
+            implGl3.init("#version 460");
+            initialized = true;
+            log.info("Dear ImGui initialized");
+        } catch (Throwable t) {
+            disposeResources();
+            throw t;
+        }
     }
 
     @Override
@@ -52,6 +59,15 @@ public class ImGuiService implements IService {
 
     @Override
     public void stop() {
+        if (!initialized) {
+            return;
+        }
+        disposeResources();
+        initialized = false;
+        log.info("Dear ImGui disposed");
+    }
+
+    private void disposeResources() {
         if (implGl3 != null) {
             implGl3.dispose();
             implGl3 = null;
@@ -61,6 +77,5 @@ public class ImGuiService implements IService {
             implGlfw = null;
         }
         ImGui.destroyContext();
-        log.info("Dear ImGui disposed");
     }
 }

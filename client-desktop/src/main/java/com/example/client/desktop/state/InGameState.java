@@ -36,6 +36,7 @@ import com.ffxi.viewer.model.CharacterModelLoader;
 import com.ffxi.viewer.model.LoadedCharacter;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImInt;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
@@ -82,6 +83,10 @@ public class InGameState implements ApplicationState {
     @Getter private final ScreenFader screenFader = new ScreenFader();
     private final WorldScene worldScene = new WorldScene();
 
+    private boolean f1Pressed = false;
+    private boolean f2Pressed = false;
+    private boolean f3Pressed = false;
+    private boolean f4Pressed = false;
     private boolean mKeyPressed = false;
     private List<ZoneInteraction> zoneInteractions = List.of();
     @Getter private WeatherType currentWeather = WeatherType.CLEAR;
@@ -108,7 +113,6 @@ public class InGameState implements ApplicationState {
     @Override
     public void onEnter() {
         clientState.clearRemoteEntities();
-        networkAdapter.setPongListener(this::handlePongPacket);
         keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
         movementHandler.setPosition(clientState.getX(), clientState.getY(), clientState.getZ());
         camera.setTarget(clientState.getX(), clientState.getY(), clientState.getZ());
@@ -164,29 +168,48 @@ public class InGameState implements ApplicationState {
         // 1. Process camera orientation and inputs
         camera.update(handle, dt);
 
+        boolean uiWantsKeyboard = false;
         if (handle != 0L) {
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS) {
+            try {
+                var imguiCtx = ImGui.getCurrentContext();
+                if (imguiCtx != null && imguiCtx.isValidPtr()) {
+                    uiWantsKeyboard = ImGui.getIO().getWantCaptureKeyboard();
+                }
+            } catch (Throwable ignored) {}
+
+            boolean f1Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS;
+            if (f1Down && !f1Pressed) {
                 wireframe = !wireframe;
             }
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS) {
+            f1Pressed = f1Down;
+
+            boolean f2Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS;
+            if (f2Down && !f2Pressed) {
                 showVisualZone = !showVisualZone;
             }
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS) {
+            f2Pressed = f2Down;
+
+            boolean f3Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS;
+            if (f3Down && !f3Pressed) {
                 showCharacterModels = !showCharacterModels;
             }
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS) {
+            f3Pressed = f3Down;
+
+            boolean f4Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS;
+            if (f4Down && !f4Pressed) {
                 showCollisionCylinders = !showCollisionCylinders;
             }
+            f4Pressed = f4Down;
 
             float zoomRate = 50.0f;
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_UP) == GLFW.GLFW_PRESS) {
+            if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_UP) == GLFW.GLFW_PRESS) {
                 radarPanel.getConfig().zoomSmooth(-zoomRate * dt);
             }
-            if (GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_DOWN) == GLFW.GLFW_PRESS) {
+            if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_DOWN) == GLFW.GLFW_PRESS) {
                 radarPanel.getConfig().zoomSmooth(zoomRate * dt);
             }
 
-            boolean mDown = GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
+            boolean mDown = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
             if (mDown && !mKeyPressed && inGameMapPanel != null) {
                 inGameMapPanel.toggle();
             }
@@ -205,8 +228,9 @@ public class InGameState implements ApplicationState {
                     clientState.getLastServerTick()
             );
         } else {
+            long movementHandle = uiWantsKeyboard ? 0L : handle;
             var moveResult = movementHandler.pollAndCompute(
-                    handle,
+                    movementHandle,
                     camera,
                     clientState.getX(),
                     clientState.getY(),
@@ -354,6 +378,9 @@ public class InGameState implements ApplicationState {
             debugLog.log("PING sent");
             keepAlive.sendPing();
         }
+        if (panel.isMapToggleRequested() && inGameMapPanel != null) {
+            inGameMapPanel.toggle();
+        }
         if (panel.isLogoutRequested()) {
             doLogout();
         }
@@ -388,8 +415,9 @@ public class InGameState implements ApplicationState {
     }
 
     private void renderClockBanner(VanadielTime vTime) {
-        ImGui.setNextWindowPos(20, 20, ImGuiCond.Always);
-        ImGui.setNextWindowSize(520, 0, ImGuiCond.Always);
+        float bannerX = Math.max(390.0f, (ImGui.getIO().getDisplaySizeX() - 520.0f) * 0.5f);
+        ImGui.setNextWindowPos(bannerX, 20, ImGuiCond.Once);
+        ImGui.setNextWindowSize(520, 0, ImGuiCond.Once);
         ImGui.begin("Vana'diel Environment");
         ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, vTime.formatClockSummary());
         ImGui.sameLine();
@@ -433,7 +461,7 @@ public class InGameState implements ApplicationState {
                 proj, view, fbWidth, fbHeight
         );
         if (playerScreen != null) {
-            drawBillboardLabel(playerScreen[0], playerScreen[1], characterName, 0.4f, 0.8f, 1.0f);
+            drawBillboardLabel(playerScreen[0], playerScreen[1], "##nameplate_local", characterName, 0.4f, 0.8f, 1.0f);
         }
 
         for (var entity : clientState.getRemoteEntities().values()) {
@@ -456,22 +484,24 @@ public class InGameState implements ApplicationState {
                 float r = isNpc ? 0.95f : 0.40f;
                 float g = isNpc ? 0.80f : 0.80f;
                 float b = isNpc ? 0.25f : 1.00f;
-                drawBillboardLabel(screen[0], screen[1], label, r, g, b);
+                drawBillboardLabel(screen[0], screen[1], "##nameplate_" + entity.characterId(), label, r, g, b);
             }
         }
     }
 
-    private void drawBillboardLabel(float screenX, float screenY, String text, float r, float g, float b) {
+    private void drawBillboardLabel(float screenX, float screenY, String windowId, String text, float r, float g, float b) {
+        int flags = ImGuiWindowFlags.NoDecoration
+                | ImGuiWindowFlags.NoInputs
+                | ImGuiWindowFlags.NoBackground
+                | ImGuiWindowFlags.AlwaysAutoResize;
         ImGui.setNextWindowPos(screenX - 60, screenY, ImGuiCond.Always);
-        ImGui.setNextWindowSize(160, 32, ImGuiCond.Always);
-        ImGui.begin("##nameplate_" + text.hashCode());
+        ImGui.begin(windowId, flags);
         ImGui.textColored(r, g, b, 1.0f, text);
         ImGui.end();
     }
 
     @Override
     public void onExit() {
-        networkAdapter.setPongListener(null);
         keepAlive.stop();
         movementHandler.reset();
         clientState.resetZoneSession();
@@ -532,8 +562,11 @@ public class InGameState implements ApplicationState {
     }
 
     private void handleMovementResponse(PlayerMovementResponse moveResp) {
-        float dx = movementHandler.getSimX() - moveResp.x();
-        float dz = movementHandler.getSimZ() - moveResp.z();
+        float preSimX = movementHandler.getSimX();
+        float preSimY = movementHandler.getSimY();
+        float preSimZ = movementHandler.getSimZ();
+        float dx = preSimX - moveResp.x();
+        float dz = preSimZ - moveResp.z();
         float dist = (float) Math.hypot(dx, dz);
 
         movementHandler.reconcile(moveResp.x(), moveResp.y(), moveResp.z(), moveResp.reconciled());
@@ -542,7 +575,7 @@ public class InGameState implements ApplicationState {
         if (moveResp.reconciled() || dist > 2.0f) {
             log.warn("Authoritative position reconciliation (dist={}): server=({}, {}, {}), sim=({}, {}, {})",
                     dist, moveResp.x(), moveResp.y(), moveResp.z(),
-                    movementHandler.getSimX(), movementHandler.getSimY(), movementHandler.getSimZ());
+                    preSimX, preSimY, preSimZ);
             debugLog.log(String.format("Position reconciled with server (delta=%.2fm)", dist));
         }
     }

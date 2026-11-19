@@ -12,6 +12,8 @@ import java.util.function.Consumer;
 @Singleton
 public class TaskSchedulerService implements TaskScheduler, AutoCloseable {
 
+    public static final int MAX_FOREGROUND_TASKS_PER_FRAME = 256;
+
     private final ExecutorService backgroundExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService schedulerWatchdog = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "task-scheduler-watchdog");
@@ -19,10 +21,6 @@ public class TaskSchedulerService implements TaskScheduler, AutoCloseable {
         return t;
     });
     private final Queue<Runnable> foregroundQueue = new ConcurrentLinkedQueue<>();
-
-    public void start() {
-        log.info("TaskSchedulerService started with virtual thread background executor.");
-    }
 
     @PreDestroy
     public void stop() {
@@ -86,16 +84,15 @@ public class TaskSchedulerService implements TaskScheduler, AutoCloseable {
         handle.setRawFuture(rawFuture);
 
         if (timeoutMs > 0) {
-            schedulerWatchdog.schedule(() -> {
-                if (handle.getStatus() == TaskStatus.PENDING || handle.getStatus() == TaskStatus.RUNNING) {
-                    if (handle.setTimedOut()) {
-                        log.warn("Task id={} timed out after {}ms", handle.getId(), timeoutMs);
-                        if (onError != null) {
-                            runOnMainThread(() -> onError.accept(new TimeoutException("Task timed out")));
-                        }
+            ScheduledFuture<?> timeoutFuture = schedulerWatchdog.schedule(() -> {
+                if (handle.setTimedOut()) {
+                    log.warn("Task id={} timed out after {}ms", handle.getId(), timeoutMs);
+                    if (onError != null) {
+                        runOnMainThread(() -> onError.accept(handle.getError()));
                     }
                 }
             }, timeoutMs, TimeUnit.MILLISECONDS);
+            handle.setTimeoutFuture(timeoutFuture);
         }
 
         return handle;
@@ -109,8 +106,10 @@ public class TaskSchedulerService implements TaskScheduler, AutoCloseable {
 
     @Override
     public void processForegroundTasks() {
+        int processed = 0;
         Runnable task;
-        while ((task = foregroundQueue.poll()) != null) {
+        while (processed < MAX_FOREGROUND_TASKS_PER_FRAME && (task = foregroundQueue.poll()) != null) {
+            processed++;
             try {
                 task.run();
             } catch (Throwable t) {

@@ -242,4 +242,42 @@ class MovementInputHandlerTest {
         assertEquals(0.0f, handler.getErrorOffsetX(), 0.001f);
         assertEquals(0.0f, handler.getErrorOffsetZ(), 0.001f);
     }
+
+    @Test
+    @DisplayName("Y-reconciliation has zero drift across multiple ticks when fed smoothed visible position")
+    void testYReconciliationZeroDriftAcrossMultipleTicks() {
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(0.0f, 0.0f, 0.0f);
+
+        // Server reconciles Y from 0.0 to 2.0
+        handler.reconcile(0.0f, 2.0f, 0.0f, true);
+        assertEquals(2.0f, handler.getSimY(), 0.0001f);
+        assertEquals(2.0f, handler.getErrorOffsetY(), 0.0001f);
+
+        float visibleX = 0.0f;
+        float visibleY = 0.0f; // Still at pre-reconcile visible Y when frame 1 starts
+        float visibleZ = 0.0f;
+        float prevY = -0.001f;
+
+        for (int i = 0; i < 20; i++) {
+            var res = handler.compute(
+                    true, false, false, false, false, null,
+                    visibleX, visibleY, visibleZ,
+                    0.0f, 0.0f,
+                    0.05f, 50L * (i + 1)
+            );
+            assertEquals(2.0f, handler.getSimY(), 0.0001f, "simY must not be overwritten by smoothed visibleY");
+            assertEquals(2.0f, res.simY(), 0.0001f);
+            assertTrue(res.y() >= prevY, "visibleY should monotonically approach serverY without drifting backward");
+            assertTrue(res.y() <= 2.0001f, "visibleY must not overshoot serverY");
+            prevY = res.y();
+            visibleX = res.x();
+            visibleY = res.y();
+            visibleZ = res.z();
+        }
+
+        assertEquals(2.0f, visibleY, 0.001f);
+        assertEquals(0.0f, handler.getErrorOffsetY(), 0.001f);
+        assertEquals(-6.0f, visibleZ, 0.01f); // 1.0s forward north (-Z) at 6 m/s
+    }
 }

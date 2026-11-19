@@ -4,6 +4,7 @@ import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiInputTextFlags;
 import imgui.type.ImString;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
@@ -11,9 +12,18 @@ import lombok.Getter;
 @Prototype
 public class LoginPanel {
 
-    private final ImString username = new ImString("dev", 64);
-    private final ImString password = new ImString("dev", 64);
+    private final ImString username = new ImString(resolveDefault("c2.login.username", "C2_LOGIN_USERNAME"), 64);
+    private final ImString password = new ImString(resolveDefault("c2.login.password", "C2_LOGIN_PASSWORD"), 64);
     @Getter private boolean loginRequested;
+
+    private static String resolveDefault(String sysProp, String envVar) {
+        String val = System.getProperty(sysProp);
+        if (val != null) {
+            return val;
+        }
+        val = System.getenv(envVar);
+        return val != null ? val : "";
+    }
 
     public void render(ClientState clientState) {
         ImGui.setNextWindowPos(20, 20, ImGuiCond.Once);
@@ -27,7 +37,7 @@ public class LoginPanel {
         }
 
         ImGui.inputText("Username", username);
-        ImGui.inputText("Password##pw", password);
+        ImGui.inputText("Password##pw", password, ImGuiInputTextFlags.Password);
 
         if (clientState.getConnectionState() == ClientConnectionState.CONNECTING) {
             ImGui.textDisabled("Connecting & Authenticating...");

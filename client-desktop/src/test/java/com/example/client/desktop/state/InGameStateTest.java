@@ -67,6 +67,48 @@ class InGameStateTest {
         assertDoesNotThrow(state::onExit);
     }
 
+    @Test
+    @DisplayName("InGameState wires panel.isMapToggleRequested() to inGameMapPanel.toggle() and handles PongMessage cleanly")
+    void testMapToggleIntentAndSinglePongHandling() {
+        InGamePanel panel = Mockito.mock(InGamePanel.class);
+        Mockito.when(panel.isMapToggleRequested()).thenReturn(true);
+        Mockito.when(panel.getWarpRequestedZoneId()).thenReturn(-1);
+        WorldRadarPanel radarPanel = Mockito.mock(WorldRadarPanel.class);
+        Mockito.when(radarPanel.getConfig()).thenReturn(new com.example.client.desktop.ui.radar.RadarViewportConfig());
+        DebugLogPanel debugLog = Mockito.mock(DebugLogPanel.class);
+        DesktopKeepAliveService keepAlive = Mockito.mock(DesktopKeepAliveService.class);
+        ClientState clientState = new ClientState();
+        DesktopNetworkAdapter networkAdapter = Mockito.mock(DesktopNetworkAdapter.class);
+        ApplicationStateService stateService = Mockito.mock(ApplicationStateService.class);
+        WindowService windowService = Mockito.mock(WindowService.class);
+        Mockito.when(windowService.getHandle()).thenReturn(0L);
+        MovementInputHandler movementHandler = new MovementInputHandler();
+        Camera camera = new PolarCamera();
+        @SuppressWarnings("unchecked")
+        BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
+        @SuppressWarnings("unchecked")
+        BeanProvider<AuthenticatedState> authProvider = Mockito.mock(BeanProvider.class);
+        @SuppressWarnings("unchecked")
+        BeanProvider<CharacterSelectedState> selectedProvider = Mockito.mock(BeanProvider.class);
+        com.example.client.desktop.ui.map.InGameMapPanel mapPanel = Mockito.mock(com.example.client.desktop.ui.map.InGameMapPanel.class);
+
+        InGameState state = new InGameState(
+                panel, radarPanel, debugLog, keepAlive, clientState,
+                networkAdapter, stateService, windowService, movementHandler,
+                camera, unauthProvider, authProvider, selectedProvider,
+                mapPanel
+        );
+        state.init(100L, 200L, "Aldo", 230, 5000L);
+        state.onEnter();
+        state.onUpdate(0.016f);
+
+        Mockito.verify(mapPanel, Mockito.times(1)).toggle();
+
+        com.example.common.dto.PongMessage pong = new com.example.common.dto.PongMessage(1000L, "ping-200");
+        state.onHandlePacket(pong);
+        Mockito.verify(keepAlive, Mockito.times(1)).handlePong(pong);
+    }
+
     @SuppressWarnings("unchecked")
     private InGameState createTestState(long windowHandle) {
         InGamePanel panel = Mockito.mock(InGamePanel.class);

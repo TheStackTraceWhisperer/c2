@@ -8,9 +8,13 @@ import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.KeyFactory;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -30,42 +34,64 @@ public class RsaKeyProvider {
     @Nullable @Value("${app.auth.private-key}") String privKeyPem,
     @Nullable @Value("${app.auth.public-key}") String pubKeyPem) {
 
+    boolean hasPrivPath = privPath != null && !privPath.isBlank();
+    boolean hasPubPath = pubPath != null && !pubPath.isBlank();
+    boolean hasPrivPem = privKeyPem != null && !privKeyPem.isBlank();
+    boolean hasPubPem = pubKeyPem != null && !pubKeyPem.isBlank();
+
     RSAKey key = null;
 
     // 1. Try file mounts (/certs/jwt/tls.key, /certs/jwt/tls.crt)
-    if (privPath != null && pubPath != null) {
-      File privFile = new File(privPath);
-      File pubFile = new File(pubPath);
-      if (privFile.exists() && pubFile.exists()) {
+    if (hasPubPath || hasPrivPath) {
+      File pubFile = hasPubPath ? new File(pubPath) : null;
+      File privFile = hasPrivPath ? new File(privPath) : null;
+
+      if (pubFile != null && pubFile.exists()) {
         try {
-          log.info("[AUTH] Loading RSA keypair from mounted files: {} and {}", privPath, pubPath);
-          String privContent = Files.readString(privFile.toPath());
-          String pubContent = Files.readString(pubFile.toPath());
-          RSAPrivateKey privateKey = parsePrivateKey(privContent);
-          RSAPublicKey publicKey = parsePublicKey(pubContent);
-          key = new RSAKey.Builder(publicKey).privateKey(privateKey).keyID("cluster-auth-key-1").build();
+          RSAPublicKey publicKey = parsePublicKey(Files.readString(pubFile.toPath()));
+          if (privFile != null && privFile.exists()) {
+            log.info("[AUTH] Loading RSA keypair from mounted files: {} and {}", privPath, pubPath);
+            RSAPrivateKey privateKey = parsePrivateKey(Files.readString(privFile.toPath()));
+            key = new RSAKey.Builder(publicKey).privateKey(privateKey).keyID("cluster-auth-key-1").build();
+          } else {
+            log.info("[AUTH] Loading RSA public key in verifier-only mode from mounted file: {}", pubPath);
+            key = new RSAKey.Builder(publicKey).keyID("cluster-auth-key-1").build();
+          }
         } catch (Exception e) {
-          log.error("[AUTH] Failed to load keys from files: {}", e.getMessage(), e);
+          throw new IllegalStateException("Failed to load RSA key(s) from configured path(s)", e);
         }
+      } else if (privFile != null && privFile.exists()) {
+        throw new IllegalStateException("Private key file exists at '" + privPath
+          + "' but public key file is missing at '" + pubPath + "'");
+      } else if (!hasPubPem && !hasPrivPem) {
+        throw new IllegalStateException("Configured RSA key path(s) do not exist: pub=" + pubPath + ", priv=" + privPath);
       }
     }
 
     // 2. Try raw PEM strings passed via env variables
-    if (key == null && privKeyPem != null && pubKeyPem != null && !privKeyPem.isBlank() && !pubKeyPem.isBlank()) {
+    if (key == null && (hasPubPem || hasPrivPem)) {
+      if (!hasPubPem) {
+        throw new IllegalStateException("Configured private key PEM without public key PEM");
+      }
       try {
-        log.info("[AUTH] Loading RSA keypair from environment string variables.");
-        RSAPrivateKey privateKey = parsePrivateKey(privKeyPem);
         RSAPublicKey publicKey = parsePublicKey(pubKeyPem);
-        key = new RSAKey.Builder(publicKey).privateKey(privateKey).keyID("cluster-auth-key-1").build();
+        if (hasPrivPem) {
+          log.info("[AUTH] Loading RSA keypair from environment string variables.");
+          RSAPrivateKey privateKey = parsePrivateKey(privKeyPem);
+          key = new RSAKey.Builder(publicKey).privateKey(privateKey).keyID("cluster-auth-key-1").build();
+        } else {
+          log.info("[AUTH] Loading RSA public key in verifier-only mode from environment string variable.");
+          key = new RSAKey.Builder(publicKey).keyID("cluster-auth-key-1").build();
+        }
       } catch (Exception e) {
-        log.error("[AUTH] Failed to parse keys from environment strings: {}", e.getMessage(), e);
+        throw new IllegalStateException("Failed to parse RSA key(s) from configured PEM strings", e);
       }
     }
 
-    // 3. Fallback: Ephemeral in-memory generation
+    // 3. Fallback: Ephemeral in-memory generation ONLY when no key paths/PEMs are configured
     if (key == null) {
       try {
-        log.warn("[AUTH] Generating ephemeral in-memory RSA keypair.");
+        log.warn("[AUTH] No RSA key paths or PEMs configured; generating ephemeral in-memory RSA keypair.");
         key = new RSAKeyGenerator(2048).keyID("cluster-auth-key-1").generate();
       } catch (Exception e) {
         throw new IllegalStateException("Failed to generate fallback RSA keypair", e);
@@ -90,6 +116,13 @@ public class RsaKeyProvider {
   }
 
   private static RSAPublicKey parsePublicKey(String pem) throws Exception {
+    if (pem.contains("-----BEGIN CERTIFICATE-----")) {
+      CertificateFactory cf = CertificateFactory.getInstance("X.509");
+      X509Certificate cert = (X509Certificate) cf.generateCertificate(
+        new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
+      return (RSAPublicKey) cert.getPublicKey();
+    }
+
     String clean = pem
       .replace("-----BEGIN PUBLIC KEY-----", "")
       .replace("-----END PUBLIC KEY-----", "")
@@ -113,9 +146,19 @@ public class RsaKeyProvider {
 
   public RSAPrivateKey getPrivateKey() {
     try {
-      return rsaJWK.toRSAPrivateKey();
+      RSAPrivateKey privateKey = rsaJWK.toRSAPrivateKey();
+      if (privateKey == null) {
+        throw new IllegalStateException("RsaKeyProvider is in verifier-only mode (no private key configured)");
+      }
+      return privateKey;
+    } catch (IllegalStateException e) {
+      throw e;
     } catch (Exception e) {
       throw new IllegalStateException("Failed to extract private key", e);
     }
+  }
+
+  public boolean hasPrivateKey() {
+    return rsaJWK.isPrivate();
   }
 }

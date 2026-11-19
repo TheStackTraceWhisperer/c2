@@ -76,7 +76,7 @@ public class QuicGateway {
       .initialMaxData(10000000)
       .initialMaxStreamDataBidirectionalLocal(1000000)
       .initialMaxStreamDataBidirectionalRemote(1000000)
-      .initialMaxStreamsBidirectional(100)
+      .initialMaxStreamsBidirectional(4)
       .tokenHandler(InsecureQuicTokenHandler.INSTANCE)
       .handler(new ChannelInitializer<QuicChannel>() {
         @Override
@@ -137,12 +137,13 @@ public class QuicGateway {
 
     session.getBackendStreams().forEach((endpointKey, backendStream) -> {
       if (backendStream.isActive()) {
-        short svcId = (short) (endpointKey >>> 48);
+        short svcId = endpointKey.serviceId();
         ByteBuf payloadBuf = backendStream.alloc().buffer(disconnectBytes.length).writeBytes(disconnectBytes);
-        BackendEnvelope envelope = new BackendEnvelope(sessionId, characterId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf.retain());
+        BackendEnvelope envelope = new BackendEnvelope(sessionId, characterId, svcId, MessageType.SESSION_DISCONNECTED, payloadBuf);
         backendStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
           if (!f.isSuccess()) {
-            payloadBuf.release();
+            log.warn("[GATEWAY] Failed to send disconnect event to svc {} for Session #{}: {}",
+              svcId, sessionId, f.cause() != null ? f.cause().getMessage() : "unknown");
           }
           backendStream.close();
         });

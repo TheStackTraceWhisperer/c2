@@ -7,10 +7,12 @@ import com.example.common.protocol.ServiceType;
 import com.example.gateway.session.ClientSession;
 import com.example.server.codec.BackendForySerializationProvider;
 import com.example.server.protocol.BackendEnvelope;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.incubator.codec.quic.QuicStreamChannel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,20 +29,14 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
     if (msg.serviceId() == ServiceType.GATEWAY) {
       log.info("[GATEWAY-RELAY] Consuming control message ID: {} for Session #{}", msg.messageId(), msg.sessionId());
 
-      try {
-        if (msg.payload() != null && msg.payload().isReadable()) {
-          byte[] bytes = new byte[msg.payload().readableBytes()];
-          msg.payload().readBytes(bytes);
-          Object controlMsg = BackendForySerializationProvider.get().deserialize(bytes);
+      if (msg.payload() != null && msg.payload().isReadable()) {
+        byte[] bytes = new byte[msg.payload().readableBytes()];
+        msg.payload().readBytes(bytes);
+        Object controlMsg = BackendForySerializationProvider.get().deserialize(bytes);
 
-          if (controlMsg instanceof PacketMessage packetMessage) {
-            ctx.channel().attr(ClientSession.KEY).set(session);
-            controlRouter.route(ctx, packetMessage);
-          }
-        }
-      } finally {
-        if (msg.payload() != null) {
-          msg.payload().release();
+        if (controlMsg instanceof PacketMessage packetMessage) {
+          ctx.channel().attr(ClientSession.KEY).set(session);
+          controlRouter.route(ctx, packetMessage);
         }
       }
       return;
@@ -51,25 +47,21 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
     if (!clientStreamChannel.isActive()) {
       log.warn("[GATEWAY-RELAY] Client channel inactive, dropping relay packet");
-      if (msg.payload() != null && msg.payload().refCnt() > 0) {
-        msg.payload().release();
-      }
       return;
     }
 
-    // Pass the payload directly without double-retaining; ClientEnvelopeCodec.encode releases it
+    // Retain once for ClientEnvelope pass-through; SimpleChannelInboundHandler auto-releases msg
+    ByteBuf retainedPayload = (msg.payload() != null) ? msg.payload().retain() : null;
     ClientEnvelope clientEnvelope = new ClientEnvelope(
       msg.serviceId(),
       msg.messageId(),
-      msg.payload().retain()
+      retainedPayload
     );
 
     clientStreamChannel.writeAndFlush(clientEnvelope).addListener((ChannelFutureListener) future -> {
       if (!future.isSuccess()) {
-        log.error("[GATEWAY-RELAY] Failed to relay to client stream: {}", future.cause().getMessage());
-        if (clientEnvelope.payload() != null) {
-          clientEnvelope.payload().release();
-        }
+        log.error("[GATEWAY-RELAY] Failed to relay to client stream: {}",
+          future.cause() != null ? future.cause().getMessage() : "unknown");
       }
     });
 
@@ -80,16 +72,50 @@ public class GatewayBackendRelayHandler extends SimpleChannelInboundHandler<Back
 
   @Override
   public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-    // Backend stream writability recovered: resume client stream auto-read only when client is also writable
-    if (ctx.channel().isWritable() && clientStreamChannel.isActive() && clientStreamChannel.isWritable()) {
-      clientStreamChannel.config().setAutoRead(true);
+    if (ctx.channel().isWritable()) {
+      if (clientStreamChannel.isActive() && allBackendStreamsWritable(session)) {
+        setClientAutoRead(true);
+      }
+    } else if (clientStreamChannel.isActive()) {
+      setClientAutoRead(false);
     }
     super.channelWritabilityChanged(ctx);
   }
 
   @Override
-  public void channelInactive(ChannelHandlerContext ctx) {
+  public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     log.info("[GATEWAY-RELAY] Backend stream inactive.");
+    if (clientStreamChannel.isActive() && allBackendStreamsWritable(session)) {
+      setClientAutoRead(true);
+    }
+    super.channelInactive(ctx);
+  }
+
+  static boolean allBackendStreamsWritable(ClientSession session) {
+    if (session == null) {
+      return true;
+    }
+    for (QuicStreamChannel stream : session.getBackendStreams().values()) {
+      if (stream.isActive() && !stream.isWritable()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private void setClientAutoRead(boolean autoRead) {
+    if (!clientStreamChannel.isActive()) {
+      return;
+    }
+    if (clientStreamChannel.eventLoop() != null && !clientStreamChannel.eventLoop().inEventLoop()) {
+      clientStreamChannel.eventLoop().execute(() -> {
+        if (clientStreamChannel.isActive()) {
+          clientStreamChannel.config().setAutoRead(autoRead);
+        }
+      });
+    } else {
+      clientStreamChannel.config().setAutoRead(autoRead);
+    }
   }
 
   @Override

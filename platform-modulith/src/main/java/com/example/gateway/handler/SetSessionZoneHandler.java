@@ -35,14 +35,28 @@ public class SetSessionZoneHandler implements PacketHandler<SetSessionZoneContro
         session.getSessionId(), previousZoneId, msg.zoneId(), msg.host(), msg.port());
 
       if (oldEndpoint != null) {
-        long oldKey = BackendConnectionManager.makeKey(ServiceType.ZONE, oldEndpoint.host(), oldEndpoint.port());
+        BackendConnectionManager.EndpointKey oldKey =
+          new BackendConnectionManager.EndpointKey(ServiceType.ZONE, oldEndpoint.host(), oldEndpoint.port());
         QuicStreamChannel oldStream = session.getBackendStreams().remove(oldKey);
         if (oldStream != null && oldStream.isActive()) {
-          SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(session.getSessionId(), System.currentTimeMillis());
+          SessionDisconnectedEvent disconnectEvent =
+            new SessionDisconnectedEvent(session.getSessionId(), System.currentTimeMillis(), true);
           byte[] bytes = BackendForySerializationProvider.get().serialize(disconnectEvent);
           ByteBuf payloadBuf = oldStream.alloc().buffer(bytes.length).writeBytes(bytes);
-          BackendEnvelope envelope = new BackendEnvelope(session.getSessionId(), session.getCharacterId(), ServiceType.ZONE, MessageType.SESSION_DISCONNECTED, payloadBuf);
-          oldStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> oldStream.close());
+          BackendEnvelope envelope = new BackendEnvelope(
+            session.getSessionId(),
+            session.getCharacterId(),
+            ServiceType.ZONE,
+            MessageType.SESSION_DISCONNECTED,
+            payloadBuf
+          );
+          oldStream.writeAndFlush(envelope).addListener((ChannelFutureListener) f -> {
+            if (!f.isSuccess()) {
+              log.warn("[GATEWAY-CTRL] Failed to send zone-transfer disconnect for Session #{}: {}",
+                session.getSessionId(), f.cause() != null ? f.cause().getMessage() : "unknown");
+            }
+            oldStream.close();
+          });
         }
       }
 

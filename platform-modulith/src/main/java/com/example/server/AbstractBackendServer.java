@@ -16,14 +16,12 @@ import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.incubator.codec.quic.*;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-@RequiredArgsConstructor
 public abstract class AbstractBackendServer {
 
   protected final String serviceName;
@@ -33,6 +31,17 @@ public abstract class AbstractBackendServer {
 
   private EventLoopGroup group;
   private Channel channel;
+
+  protected AbstractBackendServer(String serviceName, String bindHost, int port) {
+    this(serviceName, bindHost, port, new IndexedPacketRouter());
+  }
+
+  protected AbstractBackendServer(String serviceName, String bindHost, int port, IndexedPacketRouter router) {
+    this.serviceName = serviceName;
+    this.bindHost = bindHost;
+    this.port = port;
+    this.router = router;
+  }
 
   public void start() throws Exception {
     group = new NioEventLoopGroup(1);
@@ -48,7 +57,7 @@ public abstract class AbstractBackendServer {
       .initialMaxData(10000000)
       .initialMaxStreamDataBidirectionalLocal(1000000)
       .initialMaxStreamDataBidirectionalRemote(1000000)
-      .initialMaxStreamsBidirectional(100)
+      .initialMaxStreamsBidirectional(4096)
       .tokenHandler(InsecureQuicTokenHandler.INSTANCE)
       .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
         @Override

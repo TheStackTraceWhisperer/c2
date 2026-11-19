@@ -23,10 +23,11 @@ public class LoginResponseHandler implements PacketHandler<LoginResponse> {
     if (packet.success()) {
       clientState.setAccountId(packet.accountId());
       clientState.setAuthToken(packet.token());
+      clientState.setLastErrorMessage("", false);
       clientState.setConnectionState(ClientConnectionState.AUTHENTICATED);
-      clientState.notifyListeners();
     } else {
       log.error("[CLIENT-HANDLER] Login rejected: {}", packet.errorMessage());
+      clientState.setLastErrorMessage(packet.errorMessage(), false);
       clientState.setConnectionState(ClientConnectionState.CONNECTED);
     }
   }

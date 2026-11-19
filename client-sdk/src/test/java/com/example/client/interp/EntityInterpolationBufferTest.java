@@ -79,4 +79,37 @@ class EntityInterpolationBufferTest {
         assertTrue(state.extrapolating());
         assertTrue(state.x() > 10.0f, "Should extrapolate forward along positive X velocity");
     }
+
+    @Test
+    @DisplayName("Extrapolation integrates decayed velocity monotonically without reversing backward")
+    void testMonotonicExtrapolation() {
+        EntityInterpolationBuffer buffer = new EntityInterpolationBuffer();
+        buffer.pushSnapshot(new InterpolationSnapshot(1000L, 0.0f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1));
+        buffer.pushSnapshot(new InterpolationSnapshot(1050L, 0.5f, 0.0f, 0.0f, 10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1));
+
+        float prevX = 0.5f;
+        for (long dt = 25L; dt <= 300L; dt += 25L) {
+            InterpolatedEntityState s = buffer.sample(1050L + 100L + dt, 100L);
+            assertTrue(s.extrapolating());
+            assertTrue(s.x() >= prevX, "Extrapolated x reversed backward at dt=" + dt + ": " + s.x() + " < " + prevX);
+            prevX = s.x();
+        }
+        // At full MAX_EXTRAPOLATION_MS (250ms): 0.5 + 10 * 0.25 * 0.5 = 1.75
+        assertEquals(1.75f, buffer.sample(1050L + 100L + 250L, 100L).x(), 0.001f);
+        assertEquals(0.0f, buffer.sample(1050L + 100L + 250L, 100L).vx(), 0.001f);
+    }
+
+    @Test
+    @DisplayName("Pitch interpolates linearly and clamps to [-90, 90] without 360-degree wrapping")
+    void testPitchInterpolationAndClamping() {
+        EntityInterpolationBuffer buffer = new EntityInterpolationBuffer();
+        buffer.pushSnapshot(new InterpolationSnapshot(1000L, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -20.0f, 0));
+        buffer.pushSnapshot(new InterpolationSnapshot(1050L, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -10.0f, 0));
+
+        InterpolatedEntityState mid = buffer.sample(1125L, 100L);
+        assertEquals(-15.0f, mid.pitch(), 0.001f);
+
+        assertEquals(-90.0f, EntityInterpolationBuffer.interpolatePitchDegrees(-120.0f, -100.0f, 0.5f), 0.001f);
+        assertEquals(90.0f, EntityInterpolationBuffer.interpolatePitchDegrees(100.0f, 120.0f, 0.5f), 0.001f);
+    }
 }

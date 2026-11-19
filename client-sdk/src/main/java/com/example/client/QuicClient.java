@@ -1,6 +1,7 @@
 package com.example.client;
 
 import com.example.client.handler.*;
+import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.handler.InboundDispatchHandler;
 import com.example.common.handler.IndexedPacketRouter;
@@ -19,6 +20,7 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.incubator.codec.quic.*;
+import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.Promise;
 import jakarta.annotation.PreDestroy;
@@ -49,10 +51,10 @@ public class QuicClient implements AutoCloseable {
   private final ZoneStateDeltaHandler defaultZoneStateDeltaHandler;
   private final GatewayErrorResponseHandler defaultGatewayErrorHandler;
 
-  private EventLoopGroup group;
-  private Channel datagramChannel;
-  private QuicChannel quicChannel;
-  private QuicStreamChannel streamChannel;
+  private volatile EventLoopGroup group;
+  private volatile Channel datagramChannel;
+  private volatile QuicChannel quicChannel;
+  private volatile QuicStreamChannel streamChannel;
 
   public QuicClient(
     ClientConfiguration properties,
@@ -107,95 +109,128 @@ public class QuicClient implements AutoCloseable {
   }
 
   public Future<Void> connect() throws Exception {
-    group = new NioEventLoopGroup(1);
+    if (group != null || datagramChannel != null || quicChannel != null || streamChannel != null) {
+      close();
+    }
 
-    QuicSslContext sslContext = QuicSslContextBuilder.forClient()
-      .trustManager(InsecureTrustManagerFactory.INSTANCE)
-      .applicationProtocols(ProtocolConstants.ALPN_PROTOCOL)
-      .build();
+    EventLoopGroup localGroup = new NioEventLoopGroup(1);
+    this.group = localGroup;
 
-    ChannelHandler codec = new QuicClientCodecBuilder()
-      .sslContext(sslContext)
-      .maxIdleTimeout(30, TimeUnit.SECONDS)
-      .initialMaxData(10000000)
-      .initialMaxStreamDataBidirectionalLocal(1000000)
-      .initialMaxStreamDataBidirectionalRemote(1000000)
-      .build();
+    try {
+      QuicSslContext sslContext = QuicSslContextBuilder.forClient()
+        .trustManager(InsecureTrustManagerFactory.INSTANCE)
+        .applicationProtocols(ProtocolConstants.ALPN_PROTOCOL)
+        .build();
 
-    datagramChannel = new Bootstrap()
-      .group(group)
-      .channel(NioDatagramChannel.class)
-      .handler(codec)
-      .bind(0)
-      .sync()
-      .channel();
+      ChannelHandler codec = new QuicClientCodecBuilder()
+        .sslContext(sslContext)
+        .maxIdleTimeout(30, TimeUnit.SECONDS)
+        .initialMaxData(10000000)
+        .initialMaxStreamDataBidirectionalLocal(1000000)
+        .initialMaxStreamDataBidirectionalRemote(1000000)
+        .build();
 
-    ClientConfiguration.GatewayEndpoint gatewayProperties = properties.getGateway();
-    int port = gatewayProperties.getPort();
-    String host = gatewayProperties.getHostname();
-    log.info("[CLIENT] Connecting to QUIC gateway at {}:{}...", host, port);
+      Channel localDatagram = new Bootstrap()
+        .group(localGroup)
+        .channel(NioDatagramChannel.class)
+        .handler(codec)
+        .bind(0)
+        .sync()
+        .channel();
+      this.datagramChannel = localDatagram;
 
-    Promise<Void> connectPromise = group.next().newPromise();
+      ClientConfiguration.GatewayEndpoint gatewayProperties = properties.getGateway();
+      int port = gatewayProperties.getPort();
+      String host = gatewayProperties.getHostname();
+      log.info("[CLIENT] Connecting to QUIC gateway at {}:{}...", host, port);
 
-    QuicChannel.newBootstrap(datagramChannel)
-      .handler(new ChannelInboundHandlerAdapter() {
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) {
-          log.info("[CLIENT] QuicChannel inactive.");
-          if (streamChannel != null && streamChannel.isActive()) {
-            streamChannel.close();
-          }
-          ctx.fireChannelInactive();
-        }
+      Promise<Void> connectPromise = localGroup.next().newPromise();
 
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-          log.error("[CLIENT] Connection error: {}", cause.getMessage());
-          ctx.close();
-        }
-      })
-      .remoteAddress(new InetSocketAddress(host, port))
-      .connect()
-      .addListener((Future<QuicChannel> future) -> {
-        if (!future.isSuccess()) {
-          connectPromise.setFailure(future.cause());
-          return;
-        }
-
-        quicChannel = future.getNow();
-        log.info("[CLIENT] QUIC Handshake successful. Opening bidirectional stream...");
-
-        quicChannel.createStream(QuicStreamType.BIDIRECTIONAL, new ChannelInitializer<QuicStreamChannel>() {
+      QuicChannel.newBootstrap(localDatagram)
+        .handler(new ChannelInboundHandlerAdapter() {
           @Override
-          protected void initChannel(QuicStreamChannel ch) {
-            ch.pipeline().addLast(
-              new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
-              new LengthFieldPrepender(4),
-              new ClientEnvelopeCodec(),
-              new ClientEnvelopePayloadDecoder(),
-              new ClientMessageEncoder(),
-              new InboundDispatchHandler(router)
-            );
+          public void channelInactive(ChannelHandlerContext ctx) {
+            log.info("[CLIENT] QuicChannel inactive.");
+            QuicStreamChannel stream = streamChannel;
+            if (stream != null && stream.isActive()) {
+              stream.close();
+            }
+            state.setConnectionState(ClientConnectionState.DISCONNECTED);
+            ctx.fireChannelInactive();
           }
-        }).addListener((Future<QuicStreamChannel> streamFuture) -> {
-          if (streamFuture.isSuccess()) {
-            streamChannel = streamFuture.getNow();
-            log.info("[CLIENT] Bidirectional stream ready.");
-            connectPromise.setSuccess(null);
-          } else {
-            connectPromise.setFailure(streamFuture.cause());
-          }
-        });
-      });
 
-    return connectPromise;
+          @Override
+          public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+            log.error("[CLIENT] Connection error: {}", cause.getMessage());
+            ctx.close();
+          }
+        })
+        .remoteAddress(new InetSocketAddress(host, port))
+        .connect()
+        .addListener((Future<QuicChannel> future) -> {
+          if (!future.isSuccess()) {
+            cleanupFailedConnect(null, localDatagram, localGroup);
+            connectPromise.tryFailure(future.cause());
+            return;
+          }
+
+          QuicChannel localQuic = future.getNow();
+          this.quicChannel = localQuic;
+          log.info("[CLIENT] QUIC Handshake successful. Opening bidirectional stream...");
+
+          localQuic.createStream(QuicStreamType.BIDIRECTIONAL, new ChannelInitializer<QuicStreamChannel>() {
+            @Override
+            protected void initChannel(QuicStreamChannel ch) {
+              ch.pipeline().addLast(
+                new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
+                new LengthFieldPrepender(4),
+                new ClientEnvelopeCodec(),
+                new ClientEnvelopePayloadDecoder(),
+                new ClientMessageEncoder(),
+                new InboundDispatchHandler(router)
+              );
+            }
+          }).addListener((Future<QuicStreamChannel> streamFuture) -> {
+            if (streamFuture.isSuccess()) {
+              this.streamChannel = streamFuture.getNow();
+              log.info("[CLIENT] Bidirectional stream ready.");
+              connectPromise.trySuccess(null);
+            } else {
+              cleanupFailedConnect(localQuic, localDatagram, localGroup);
+              connectPromise.tryFailure(streamFuture.cause());
+            }
+          });
+        });
+
+      return connectPromise;
+    } catch (Exception e) {
+      close();
+      throw e;
+    }
+  }
+
+  private void cleanupFailedConnect(QuicChannel quic, Channel datagram, EventLoopGroup eventGroup) {
+    this.streamChannel = null;
+    this.quicChannel = null;
+    this.datagramChannel = null;
+    this.group = null;
+    if (quic != null && quic.isOpen()) {
+      quic.close();
+    }
+    if (datagram != null && datagram.isOpen()) {
+      datagram.close();
+    }
+    if (eventGroup != null && !eventGroup.isShutdown()) {
+      eventGroup.shutdownGracefully(0, 50, TimeUnit.MILLISECONDS);
+    }
   }
 
   public ChannelFuture send(PacketMessage message) {
-    if (streamChannel == null || !streamChannel.isActive()) {
+    QuicStreamChannel stream = this.streamChannel;
+    if (stream == null || !stream.isActive()) {
       throw new IllegalStateException("Client is not connected. Call connect() first.");
     }
-    return streamChannel.writeAndFlush(message).addListener((ChannelFutureListener) future -> {
+    return stream.writeAndFlush(message).addListener((ChannelFutureListener) future -> {
       if (!future.isSuccess()) {
         log.error("[CLIENT] Failed to send message (svc: {}, msg: {}): {}",
           message.serviceId(), message.messageId(), future.cause().getMessage(), future.cause());
@@ -204,11 +239,12 @@ public class QuicClient implements AutoCloseable {
   }
 
   public ChannelFuture sendRaw(ByteBuf byteBuf) {
-    if (streamChannel == null || !streamChannel.isActive()) {
+    QuicStreamChannel stream = this.streamChannel;
+    if (stream == null || !stream.isActive()) {
       byteBuf.release();
       throw new IllegalStateException("Client is not connected. Call connect() first.");
     }
-    return streamChannel.writeAndFlush(byteBuf).addListener((ChannelFutureListener) future -> {
+    return stream.writeAndFlush(byteBuf).addListener((ChannelFutureListener) future -> {
       if (!future.isSuccess()) {
         log.error("[CLIENT] Failed to send raw frame: {}", future.cause().getMessage(), future.cause());
       }
@@ -216,8 +252,10 @@ public class QuicClient implements AutoCloseable {
   }
 
   public boolean isConnected() {
-    return streamChannel != null && streamChannel.isActive()
-      && quicChannel != null && quicChannel.isActive();
+    QuicStreamChannel stream = this.streamChannel;
+    QuicChannel quic = this.quicChannel;
+    return stream != null && stream.isActive()
+      && quic != null && quic.isActive();
   }
 
   public ChannelFuture reconnect(String authToken) {
@@ -228,17 +266,41 @@ public class QuicClient implements AutoCloseable {
   @PreDestroy
   public void close() {
     log.info("[CLIENT] Shutting down client...");
-    if (streamChannel != null && streamChannel.isActive()) {
-      streamChannel.close().syncUninterruptibly();
+    QuicStreamChannel stream = this.streamChannel;
+    QuicChannel quic = this.quicChannel;
+    Channel datagram = this.datagramChannel;
+    EventLoopGroup eventGroup = this.group;
+
+    this.streamChannel = null;
+    this.quicChannel = null;
+    this.datagramChannel = null;
+    this.group = null;
+
+    closeChannel(stream);
+    closeChannel(quic);
+    closeChannel(datagram);
+
+    if (eventGroup != null && !eventGroup.isShutdown()) {
+      boolean inEventLoop = false;
+      for (EventExecutor exec : eventGroup) {
+        if (exec.inEventLoop()) {
+          inEventLoop = true;
+          break;
+        }
+      }
+      Future<?> shutdownFuture = eventGroup.shutdownGracefully(0, 50, TimeUnit.MILLISECONDS);
+      if (!inEventLoop) {
+        shutdownFuture.syncUninterruptibly();
+      }
     }
-    if (quicChannel != null && quicChannel.isActive()) {
-      quicChannel.close().syncUninterruptibly();
-    }
-    if (datagramChannel != null && datagramChannel.isActive()) {
-      datagramChannel.close().syncUninterruptibly();
-    }
-    if (group != null && !group.isShutdown()) {
-      group.shutdownGracefully(0, 50, TimeUnit.MILLISECONDS).syncUninterruptibly();
+  }
+
+  private static void closeChannel(Channel ch) {
+    if (ch != null && ch.isOpen()) {
+      ChannelFuture future = ch.close();
+      if (!ch.eventLoop().inEventLoop()) {
+        future.syncUninterruptibly();
+      }
     }
   }
 }

@@ -7,7 +7,9 @@ import com.example.server.SessionContext;
 import com.example.server.auth.TokenClaims;
 import com.example.server.auth.TokenVerifier;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
+import com.example.server.entity.ActiveSessionRecord;
 import com.example.server.protocol.SetSessionAuthStateControlMessage;
+import com.example.server.protocol.SetSessionCharacterControlMessage;
 import com.example.server.repository.ActiveSessionJdbcRepository;
 import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
@@ -48,19 +50,39 @@ public class ReconnectRequestHandler implements PacketHandler<ReconnectRequest> 
       TokenClaims claims = claimsOpt.get();
       long accountId = claims.accountId();
 
-      // Rebind active session to new session ID
+      Optional<ActiveSessionRecord> existingOpt = activeSessionRepository.findByAccountId(accountId);
+      long restoredCharacterId = 0L;
+      if (existingOpt.isPresent()) {
+        ActiveSessionRecord existing = existingOpt.get();
+        if (existing.sessionId() != newSessionId) {
+          log.warn("[LOGIN-SERVER] Reconnection rejected for Session #{}: Account #{} is active on Session #{}",
+            newSessionId, accountId, existing.sessionId());
+          ctx.writeAndFlush(new ReconnectResponse(false, 0L, 0L, "Account is already logged in on another connection"));
+          return;
+        }
+        if (existing.characterId() != null && existing.characterId() > 0L) {
+          restoredCharacterId = existing.characterId();
+        }
+      }
+
+      Long characterIdToStore = (restoredCharacterId > 0L) ? restoredCharacterId : null;
+      Instant now = Instant.now();
       activeSessionRepository.upsert(
         accountId,
         newSessionId,
         1,
-        null,
-        Instant.now(),
-        Instant.now()
+        characterIdToStore,
+        existingOpt.map(ActiveSessionRecord::loginTime).orElse(now),
+        now
       );
 
-      log.info("[LOGIN-SERVER] Reconnection approved for Session #{}: accountId={}", newSessionId, accountId);
+      log.info("[LOGIN-SERVER] Reconnection approved for Session #{}: accountId={}, characterId={}",
+        newSessionId, accountId, restoredCharacterId);
       ctx.write(new SetSessionAuthStateControlMessage(true, accountId));
-      ctx.writeAndFlush(new ReconnectResponse(true, accountId, 0L, ""));
+      if (restoredCharacterId > 0L) {
+        ctx.write(new SetSessionCharacterControlMessage(restoredCharacterId));
+      }
+      ctx.writeAndFlush(new ReconnectResponse(true, accountId, restoredCharacterId, ""));
     });
   }
 }

@@ -1,8 +1,10 @@
 package com.example.serialization;
 
+import com.example.common.codec.ForySerializationProvider;
 import com.example.common.dto.GatewayErrorResponse;
 import com.example.common.dto.PingMessage;
 import com.example.common.dto.PongMessage;
+import com.example.common.protocol.PacketMessage;
 import com.example.lobby.dto.*;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
@@ -51,7 +53,7 @@ public class ForySyncIT {
       new GatewayErrorResponse((short) 1001, (short) 2, (short) 200, "Unauthenticated"),
 
       // Backend-only event (99)
-      new SessionDisconnectedEvent(555L, System.currentTimeMillis()),
+      new SessionDisconnectedEvent(555L, System.currentTimeMillis(), true),
 
       // Auth (100 - 103)
       new LoginRequest("admin", "secret"),
@@ -78,7 +80,12 @@ public class ForySyncIT {
       new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 10L, true),
       new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f),
       new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1),
-      new ZoneStateDeltaMessage(500L, List.of(), List.of(), List.of())
+      new ZoneStateDeltaMessage(
+        500L,
+        List.of(new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f)),
+        List.of(new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1)),
+        List.of(2002L)
+      )
     );
 
     for (Object original : allPayloads) {
@@ -92,9 +99,64 @@ public class ForySyncIT {
   }
 
   @Test
-  @DisplayName("Security: BackendForySerializationProvider enforces strict class registration")
+  @DisplayName("Cross-Provider Sync: ForySerializationProvider <-> BackendForySerializationProvider interoperate for every common DTO")
+  void testCrossProviderSerializationSync() {
+    ThreadSafeFory clientFory = ForySerializationProvider.get();
+    ThreadSafeFory backendFory = BackendForySerializationProvider.get();
+
+    CharacterSummary summary = new CharacterSummary(
+      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0
+    );
+    EntitySpawnRecord spawn = new EntitySpawnRecord(
+      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f
+    );
+    EntityMovementUpdate move = new EntityMovementUpdate(
+      1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1
+    );
+
+    List<Object> commonDtos = List.of(
+      new PingMessage(123456789L, "ping"),
+      new PongMessage(123456789L, "pong"),
+      new GatewayErrorResponse((short) 1001, (short) 2, (short) 200, "Unauthenticated"),
+      new LoginRequest("admin", "secret"),
+      new LoginResponse(true, 100L, "token-xyz", "ok"),
+      new ReconnectRequest("token-xyz"),
+      new ReconnectResponse(true, 100L, 555L, "reconnected"),
+      new CharacterListRequest(100L, "token-xyz"),
+      new CharacterListResponse(100L, List.of(summary)),
+      summary,
+      new SelectCharacterRequest("token-xyz", 1001L),
+      new SelectCharacterResponse(true, 1001L, "selected"),
+      new CreateCharacterRequest("token-xyz", 1, "NewHero", (short) 1, (short) 1, (short) 1, (short) 1, (short) 1, (short) 1, (short) 1),
+      new CreateCharacterResponse(true, 1002L, "created"),
+      new JoinWorldRequest("token-xyz"),
+      new JoinWorldResponse(true, 230, "zone-host", 9001, "joined"),
+      new ZoneTransferNotification(231, "zone-host-2", 9002, 1.0f, 2.0f, 3.0f),
+      new PlayerMovementRequest(1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 10L),
+      new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 10L, true),
+      spawn,
+      move,
+      new ZoneStateDeltaMessage(500L, List.of(spawn), List.of(move), List.of(2002L))
+    );
+
+    for (Object dto : commonDtos) {
+      byte[] clientBytes = clientFory.serialize(dto);
+      assertThat(backendFory.deserialize(clientBytes))
+        .as("BackendFory deserializing ClientFory bytes for %s", dto.getClass().getSimpleName())
+        .isEqualTo(dto);
+
+      byte[] backendBytes = backendFory.serialize(dto);
+      assertThat(clientFory.deserialize(backendBytes))
+        .as("ClientFory deserializing BackendFory bytes for %s", dto.getClass().getSimpleName())
+        .isEqualTo(dto);
+    }
+  }
+
+  @Test
+  @DisplayName("Security: ForySerializationProvider & BackendForySerializationProvider enforce strict isolation & registration")
   void testStrictClassRegistrationEnforced() {
     ThreadSafeFory backendFory = BackendForySerializationProvider.get();
+    ThreadSafeFory clientFory = ForySerializationProvider.get();
 
     record UnregisteredPayload(String secret) {}
 
@@ -103,5 +165,33 @@ public class ForySyncIT {
     assertThatThrownBy(() -> backendFory.serialize(unregistered))
       .as("Serializing unregistered class in BackendForySerializationProvider must fail")
       .isInstanceOf(RuntimeException.class);
+
+    assertThatThrownBy(() -> clientFory.serialize(unregistered))
+      .as("Serializing unregistered class in ForySerializationProvider must fail")
+      .isInstanceOf(RuntimeException.class);
+
+    SessionDisconnectedEvent disconnectEvent = new SessionDisconnectedEvent(1L, 100L, false);
+    assertThatThrownBy(() -> clientFory.serialize(disconnectEvent))
+      .as("Client Fory must reject serializing backend-only SessionDisconnectedEvent")
+      .isInstanceOf(RuntimeException.class);
+
+    byte[] forgedDisconnect = backendFory.serialize(disconnectEvent);
+    Object decodedDisconnect = clientFory.deserialize(forgedDisconnect);
+    assertThat(decodedDisconnect)
+      .as("Client Fory must never instantiate SessionDisconnectedEvent or PacketMessage from internal type ID 99")
+      .isNotInstanceOf(SessionDisconnectedEvent.class)
+      .isNotInstanceOf(PacketMessage.class);
+
+    SetSessionAuthStateControlMessage ctrlMsg = new SetSessionAuthStateControlMessage(true, 1L);
+    assertThatThrownBy(() -> clientFory.serialize(ctrlMsg))
+      .as("Client Fory must reject serializing backend-only SetSessionAuthStateControlMessage")
+      .isInstanceOf(RuntimeException.class);
+
+    byte[] forgedControl = backendFory.serialize(ctrlMsg);
+    Object decodedControl = clientFory.deserialize(forgedControl);
+    assertThat(decodedControl)
+      .as("Client Fory must never instantiate SetSessionAuthStateControlMessage or PacketMessage from internal type ID 1")
+      .isNotInstanceOf(SetSessionAuthStateControlMessage.class)
+      .isNotInstanceOf(PacketMessage.class);
   }
 }

@@ -2,11 +2,9 @@ package com.example.common.handler;
 
 import com.example.common.protocol.PacketMessage;
 import io.netty.channel.ChannelHandlerContext;
-import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@Singleton
 public class IndexedPacketRouter {
 
   private static final int MAX_MESSAGE_ID = 512;
@@ -20,15 +18,19 @@ public class IndexedPacketRouter {
   }
 
   @SuppressWarnings("unchecked")
-  public void route(ChannelHandlerContext ctx, PacketMessage msg) throws Exception {
+  public boolean route(ChannelHandlerContext ctx, PacketMessage msg) throws Exception {
+    if (msg == null) {
+      return false;
+    }
     short id = msg.messageId();
     if (id >= 0 && id < MAX_MESSAGE_ID) {
       PacketHandler<PacketMessage> handler = (PacketHandler<PacketMessage>) handlers[id];
       if (handler != null) {
         handler.handle(ctx, msg);
-        return;
+        return true;
       }
     }
     log.warn("No handler registered for messageId: {}", id);
+    return false;
   }
 }

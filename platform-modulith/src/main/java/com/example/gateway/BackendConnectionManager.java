@@ -28,15 +28,12 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class BackendConnectionManager {
 
+  public record EndpointKey(short serviceId, String host, int port) {}
+
   private final LoginServerProperties loginProperties;
   private final LobbyServerProperties lobbyProperties;
-  private final Map<Long, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
+  private final Map<EndpointKey, Future<QuicChannel>> connectionFutures = new ConcurrentHashMap<>();
   private Channel outboundDatagramChannel;
-
-  public static long makeKey(short serviceId, String host, int port) {
-    int hostHash = (host != null) ? host.hashCode() : 0;
-    return (((long) serviceId) << 48) ^ (((long) (hostHash & 0xFFFF)) << 32) ^ (port & 0xFFFFFFFFL);
-  }
 
   public void init(EventLoopGroup group) throws Exception {
     QuicSslContext clientSslContext = QuicSslContextBuilder.forClient()
@@ -74,7 +71,7 @@ public class BackendConnectionManager {
   }
 
   public Future<QuicChannel> getConnection(short serviceId, String host, int port, EventLoop eventLoop) {
-    long key = makeKey(serviceId, host, port);
+    EndpointKey key = new EndpointKey(serviceId, host, port);
 
     Future<QuicChannel> existingFuture = connectionFutures.get(key);
     if (existingFuture != null && existingFuture.isSuccess() && existingFuture.getNow().isActive()) {
@@ -85,39 +82,46 @@ public class BackendConnectionManager {
       if (currentFuture != null && (!currentFuture.isDone() || (currentFuture.isSuccess() && currentFuture.getNow().isActive()))) {
         return currentFuture;
       }
-      return initiateConnection(serviceId, host, port, key, eventLoop);
+      return initiateConnection(key, eventLoop);
     });
   }
 
-  private Future<QuicChannel> initiateConnection(short serviceId, String host, int port, long key, EventLoop eventLoop) {
+  private Future<QuicChannel> initiateConnection(EndpointKey key, EventLoop eventLoop) {
     Promise<QuicChannel> promise = eventLoop.newPromise();
-    log.info("[BACKEND-CONN-MGR] Connecting to service {} at {}:{}...", serviceId, host, port);
+    log.info("[BACKEND-CONN-MGR] Connecting to service {} at {}:{}...", key.serviceId(), key.host(), key.port());
+
+    if (outboundDatagramChannel == null || !outboundDatagramChannel.isActive()) {
+      connectionFutures.remove(key, promise);
+      promise.setFailure(new IllegalStateException("Outbound QUIC datagram channel is not active"));
+      return promise;
+    }
 
     QuicChannel.newBootstrap(outboundDatagramChannel)
       .handler(new ChannelInboundHandlerAdapter() {
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-          log.info("[BACKEND-CONN-MGR] Connection to service {} ({}:{}) closed. Evicting.", serviceId, host, port);
-          connectionFutures.remove(key);
+          log.info("[BACKEND-CONN-MGR] Connection to service {} ({}:{}) closed. Evicting.",
+            key.serviceId(), key.host(), key.port());
+          connectionFutures.remove(key, promise);
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
           log.error("[BACKEND-CONN-MGR] Error on service {} connection ({}:{}): {}",
-            serviceId, host, port, cause.getMessage());
+            key.serviceId(), key.host(), key.port(), cause.getMessage());
           ctx.close();
         }
       })
-      .remoteAddress(new InetSocketAddress(host, port))
+      .remoteAddress(new InetSocketAddress(key.host(), key.port()))
       .connect()
       .addListener((Future<QuicChannel> future) -> {
         if (future.isSuccess()) {
-          log.info("[BACKEND-CONN-MGR] Connected to service {} at {}:{}", serviceId, host, port);
+          log.info("[BACKEND-CONN-MGR] Connected to service {} at {}:{}", key.serviceId(), key.host(), key.port());
           promise.setSuccess(future.getNow());
         } else {
           log.error("[BACKEND-CONN-MGR] Failed connection to service {} ({}:{}): {}",
-            serviceId, host, port, future.cause().getMessage());
-          connectionFutures.remove(key);
+            key.serviceId(), key.host(), key.port(), future.cause().getMessage());
+          connectionFutures.remove(key, promise);
           promise.setFailure(future.cause());
         }
       });

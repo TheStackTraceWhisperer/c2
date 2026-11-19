@@ -1,63 +1,68 @@
 package com.example.gateway.ratelimit;
 
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Objects;
+import java.util.function.LongSupplier;
 
 /**
- * High-performance, lock-free Token Bucket rate limiter.
- * State packed into a single 64-bit atomic word:
- * - High 32 bits: available fractional tokens (fixed-point Q16.16)
- * - Low 32 bits: last refill timestamp in milliseconds (wrapped to 32-bit offset)
+ * Thread-safe Token Bucket rate limiter backed by monotonic {@link System#nanoTime()}.
+ * Tracks tokens in sub-nanosecond precision (1 token = 1_000_000_000 nano-tokens)
+ * so refill calculations remain overflow-safe across arbitrary idle intervals.
  */
 public class TokenBucket {
 
-  private static final long TIME_MASK = 0xFFFFFFFFL;
-  private static final long FP_SHIFT = 16L; // Q16.16 fixed-point
-  private static final long ONE_TOKEN_FP = 1L << FP_SHIFT; // 65,536
+  public static final long MAX_CAPACITY_EXCLUSIVE = 65536L;
+  private static final long NANO_PER_TOKEN = 1_000_000_000L;
 
-  private final long capacityFp;
-  private final long refillPerMsFp; // Tokens refilled per millisecond in Q16.16
-  private final AtomicLong state;
+  private final long capacityNanoTokens;
+  private final long refillTokensPerSecond;
+  private final LongSupplier nanoClock;
+
+  private long availableNanoTokens;
+  private long lastRefillNanos;
 
   public TokenBucket(long capacity, long refillTokensPerSecond) {
-    if (capacity <= 0 || refillTokensPerSecond <= 0) {
-      throw new IllegalArgumentException("Capacity and refill rate must be positive");
-    }
-    this.capacityFp = capacity << FP_SHIFT;
-    this.refillPerMsFp = (refillTokensPerSecond << FP_SHIFT) / 1000L;
+    this(capacity, refillTokensPerSecond, System::nanoTime);
+  }
 
-    long nowMs = System.currentTimeMillis() & TIME_MASK;
-    this.state = new AtomicLong((capacityFp << 32) | nowMs);
+  TokenBucket(long capacity, long refillTokensPerSecond, LongSupplier nanoClock) {
+    if (capacity <= 0 || capacity >= MAX_CAPACITY_EXCLUSIVE) {
+      throw new IllegalArgumentException("Capacity must be in (0, 65536): " + capacity);
+    }
+    if (refillTokensPerSecond <= 0) {
+      throw new IllegalArgumentException("Refill rate must be positive: " + refillTokensPerSecond);
+    }
+    this.nanoClock = Objects.requireNonNull(nanoClock, "nanoClock");
+    this.capacityNanoTokens = capacity * NANO_PER_TOKEN;
+    this.refillTokensPerSecond = refillTokensPerSecond;
+    this.availableNanoTokens = this.capacityNanoTokens;
+    this.lastRefillNanos = this.nanoClock.getAsLong();
   }
 
   /**
    * Attempts to consume 1 token. Returns true if allowed, false if rate limited.
    */
-  public boolean tryConsume() {
-    while (true) {
-      long current = state.get();
-      long currentTokensFp = current >>> 32;
-      long lastTimeMs = current & TIME_MASK;
+  public synchronized boolean tryConsume() {
+    long now = nanoClock.getAsLong();
+    long elapsedNanos = now - lastRefillNanos;
 
-      long nowMs = System.currentTimeMillis() & TIME_MASK;
-      long elapsedMs = (nowMs >= lastTimeMs) ? (nowMs - lastTimeMs) : (nowMs + (1L << 32) - lastTimeMs);
-
-      long newTokensFp = currentTokensFp;
-      if (elapsedMs > 0) {
-        long refilledFp = elapsedMs * refillPerMsFp;
-        newTokensFp = Math.min(capacityFp, currentTokensFp + refilledFp);
+    if (elapsedNanos > 0) {
+      long deficit = capacityNanoTokens - availableNanoTokens;
+      if (deficit > 0) {
+        long fullRefillThresholdNanos = deficit / refillTokensPerSecond;
+        if (elapsedNanos > fullRefillThresholdNanos) {
+          availableNanoTokens = capacityNanoTokens;
+        } else {
+          availableNanoTokens += elapsedNanos * refillTokensPerSecond;
+        }
       }
-
-      if (newTokensFp < ONE_TOKEN_FP) {
-        return false; // Rate limit exceeded
-      }
-
-      long nextTokensFp = newTokensFp - ONE_TOKEN_FP;
-      long nextState = (nextTokensFp << 32) | nowMs;
-
-      if (state.compareAndSet(current, nextState)) {
-        return true;
-      }
-      Thread.onSpinWait();
+      lastRefillNanos = now;
     }
+
+    if (availableNanoTokens < NANO_PER_TOKEN) {
+      return false;
+    }
+
+    availableNanoTokens -= NANO_PER_TOKEN;
+    return true;
   }
 }

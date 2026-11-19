@@ -1,6 +1,5 @@
 package com.example.lobby;
 
-import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
 import com.example.config.LobbyServerProperties;
 import com.example.lobby.handler.CharacterListRequestHandler;
@@ -25,12 +24,11 @@ public class LobbyServer extends AbstractBackendServer {
 
   public LobbyServer(
     LobbyServerProperties properties,
-    IndexedPacketRouter router,
     CharacterListRequestHandler characterListHandler,
     SelectCharacterRequestHandler selectCharacterHandler,
     CreateCharacterRequestHandler createCharacterHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler) {
-    super("LOBBY", properties.getHost(), properties.getPort(), router);
+    super("LOBBY", properties.getHost(), properties.getPort());
     this.characterListHandler = characterListHandler;
     this.selectCharacterHandler = selectCharacterHandler;
     this.createCharacterHandler = createCharacterHandler;

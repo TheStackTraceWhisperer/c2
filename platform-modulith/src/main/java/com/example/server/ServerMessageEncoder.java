@@ -1,8 +1,11 @@
 package com.example.server;
 
-import com.example.server.protocol.BackendEnvelope;
-import com.example.server.codec.BackendForySerializationProvider;
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.protocol.MessageType;
 import com.example.common.protocol.PacketMessage;
+import com.example.common.protocol.ServiceType;
+import com.example.server.codec.BackendForySerializationProvider;
+import com.example.server.protocol.BackendEnvelope;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageEncoder;
@@ -23,7 +26,11 @@ public class ServerMessageEncoder extends MessageToMessageEncoder<PacketMessage>
     Long characterId = ctx.channel().attr(SessionContext.CHARACTER_ID).get();
     long cid = (characterId != null) ? characterId : 0L;
 
-    byte[] bytes = BackendForySerializationProvider.get().serialize(msg);
+    boolean internalFrame = msg.serviceId() == ServiceType.GATEWAY
+      || msg.messageId() == MessageType.SESSION_DISCONNECTED;
+    byte[] bytes = internalFrame
+      ? BackendForySerializationProvider.get().serialize(msg)
+      : ForySerializationProvider.get().serialize(msg);
     ByteBuf payloadBuf = ctx.alloc().buffer(bytes.length).writeBytes(bytes);
 
     out.add(new BackendEnvelope(sid, cid, msg.serviceId(), msg.messageId(), payloadBuf));

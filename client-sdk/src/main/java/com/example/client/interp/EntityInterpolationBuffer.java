@@ -87,21 +87,20 @@ public class EntityInterpolationBuffer {
             InterpolationSnapshot newest = snapshots.getLast();
             // Extrapolation when packet arrives late or network jitter occurs
             if (targetTimeMs > newest.timestampMs()) {
-                long deltaAheadMs = targetTimeMs - newest.timestampMs();
-                if (deltaAheadMs > MAX_EXTRAPOLATION_MS) {
-                    deltaAheadMs = MAX_EXTRAPOLATION_MS;
-                }
+                long deltaAheadMs = Math.min(targetTimeMs - newest.timestampMs(), MAX_EXTRAPOLATION_MS);
                 float dtSec = (float) deltaAheadMs / 1000.0f;
-                float decay = Math.max(0.0f, 1.0f - ((float) deltaAheadMs / (float) MAX_EXTRAPOLATION_MS));
+                float ratio = (float) deltaAheadMs / (float) MAX_EXTRAPOLATION_MS;
+                float decay = Math.max(0.0f, 1.0f - ratio);
+                float effectiveDt = dtSec * (1.0f - 0.5f * ratio);
 
-                float extX = newest.x() + (newest.vx() * dtSec * decay);
-                float extY = newest.y() + (newest.vy() * dtSec * decay);
-                float extZ = newest.z() + (newest.vz() * dtSec * decay);
+                float extX = newest.x() + (newest.vx() * effectiveDt);
+                float extY = newest.y() + (newest.vy() * effectiveDt);
+                float extZ = newest.z() + (newest.vz() * effectiveDt);
 
                 return new InterpolatedEntityState(
                         extX, extY, extZ,
                         newest.vx() * decay, newest.vy() * decay, newest.vz() * decay,
-                        newest.yaw(), newest.pitch(),
+                        newest.yaw(), Math.clamp(newest.pitch(), -90.0f, 90.0f),
                         newest.moveFlags(),
                         true
                 );
@@ -151,9 +150,9 @@ public class EntityInterpolationBuffer {
             float ivy = s0.vy() + alpha * (s1.vy() - s0.vy());
             float ivz = s0.vz() + alpha * (s1.vz() - s0.vz());
 
-            // Shortest-arc spherical angular interpolation for yaw and pitch
+            // Shortest-arc spherical angular interpolation for yaw, linear clamped interpolation for pitch
             float iYaw = interpolateAngleDegrees(s0.yaw(), s1.yaw(), alpha);
-            float iPitch = interpolateAngleDegrees(s0.pitch(), s1.pitch(), alpha);
+            float iPitch = interpolatePitchDegrees(s0.pitch(), s1.pitch(), alpha);
 
             return new InterpolatedEntityState(
                     ix, iy, iz,
@@ -174,6 +173,12 @@ public class EntityInterpolationBuffer {
         }
         float res = a0 + alpha * diff;
         return (res % 360.0f + 360.0f) % 360.0f;
+    }
+
+    public static float interpolatePitchDegrees(float p0, float p1, float alpha) {
+        float c0 = Math.clamp(p0, -90.0f, 90.0f);
+        float c1 = Math.clamp(p1, -90.0f, 90.0f);
+        return Math.clamp(c0 + alpha * (c1 - c0), -90.0f, 90.0f);
     }
 
     public int getSnapshotCount() {

@@ -25,8 +25,7 @@ public class ZoneTransferNotificationHandler implements PacketHandler<ZoneTransf
     clientState.setX(packet.spawnX());
     clientState.setY(packet.spawnY());
     clientState.setZ(packet.spawnZ());
-    clientState.getRemoteEntities().clear();
-    clientState.setConnectionState(ClientConnectionState.IN_ZONE);
-    clientState.notifyListeners();
+    clientState.setConnectionState(ClientConnectionState.IN_ZONE, false);
+    clientState.clearRemoteEntities();
   }
 }

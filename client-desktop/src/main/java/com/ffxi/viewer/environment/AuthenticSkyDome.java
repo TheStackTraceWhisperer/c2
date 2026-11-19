@@ -1,12 +1,13 @@
 package com.ffxi.viewer.environment;
 
+import com.ffxi.viewer.shader.GlShaderUtil;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,7 +36,6 @@ public final class AuthenticSkyDome implements AutoCloseable {
 
             void main() {
                 vColor = aColor;
-                // Center sky dome around camera so it never shifts during navigation
                 vec4 worldPos = vec4(aPos + uCameraPos, 1.0);
                 gl_Position = uProjMatrix * uViewMatrix * worldPos;
             }
@@ -69,30 +69,7 @@ public final class AuthenticSkyDome implements AutoCloseable {
         this.radius = Math.max(100.0f, radius);
         this.spokeCount = Math.max(8, spokeCount);
 
-        // Compile sky dome shader
-        int vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, SKY_VERT_SRC);
-        glCompileShader(vs);
-        if (glGetShaderi(vs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile SkyDome vertex shader: " + glGetShaderInfoLog(vs));
-        }
-
-        int fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, SKY_FRAG_SRC);
-        glCompileShader(fs);
-        if (glGetShaderi(fs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile SkyDome fragment shader: " + glGetShaderInfoLog(fs));
-        }
-
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vs);
-        glAttachShader(shaderProgram, fs);
-        glLinkProgram(shaderProgram);
-        if (glGetProgrami(shaderProgram, GL_LINK_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to link SkyDome program: " + glGetProgramInfoLog(shaderProgram));
-        }
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        shaderProgram = GlShaderUtil.createProgram(SKY_VERT_SRC, SKY_FRAG_SRC, "AuthenticSkyDome");
 
         uProjLoc = glGetUniformLocation(shaderProgram, "uProjMatrix");
         uViewLoc = glGetUniformLocation(shaderProgram, "uViewMatrix");
@@ -118,7 +95,6 @@ public final class AuthenticSkyDome implements AutoCloseable {
         List<WeatherPreset.SkySlice> slices = preset.skySlices();
         float thetaStep = (float) (2.0 * Math.PI / spokeCount);
 
-        // Compute 3D positions for each layer
         List<List<Vector3f>> layers = new ArrayList<>(8);
         for (int i = 0; i < 8; i++) {
             float phi = (float) (0.5 * Math.PI * slices.get(i).elevation());
@@ -135,8 +111,6 @@ public final class AuthenticSkyDome implements AutoCloseable {
             layers.add(layer);
         }
 
-        // Generate triangle strip ribbons: 7 bands connecting layers[i] to layers[i+1]
-        // Stride: 3 floats pos + 4 floats color = 7 floats (28 bytes)
         int verticesPerBand = (spokeCount + 1) * 2;
         int totalVerts = 7 * verticesPerBand;
         ByteBuffer buffer = BufferUtils.createByteBuffer(totalVerts * 28);
@@ -149,16 +123,13 @@ public final class AuthenticSkyDome implements AutoCloseable {
                 Vector3f p0 = layers.get(i).get(j);
                 Vector3f p1 = layers.get(i + 1).get(j);
 
-                // Vertex on lower ring
                 buffer.putFloat(p0.x).putFloat(p0.y).putFloat(p0.z);
                 buffer.putFloat(c0.x).putFloat(c0.y).putFloat(c0.z).putFloat(c0.w);
 
-                // Vertex on upper ring
                 buffer.putFloat(p1.x).putFloat(p1.y).putFloat(p1.z);
                 buffer.putFloat(c1.x).putFloat(c1.y).putFloat(c1.z).putFloat(c1.w);
             }
 
-            // Close the loop
             Vector3f p0 = layers.get(i).get(0);
             Vector3f p1 = layers.get(i + 1).get(0);
             buffer.putFloat(p0.x).putFloat(p0.y).putFloat(p0.z);
@@ -172,11 +143,9 @@ public final class AuthenticSkyDome implements AutoCloseable {
         glBindBuffer(GL_ARRAY_BUFFER, vboId);
         glBufferData(GL_ARRAY_BUFFER, buffer, GL_DYNAMIC_DRAW);
 
-        // aPos (location = 0)
         glVertexAttribPointer(0, 3, GL_FLOAT, false, 28, 0);
         glEnableVertexAttribArray(0);
 
-        // aColor (location = 1)
         glVertexAttribPointer(1, 4, GL_FLOAT, false, 28, 12);
         glEnableVertexAttribArray(1);
 
@@ -196,20 +165,16 @@ public final class AuthenticSkyDome implements AutoCloseable {
         glDisable(GL_CULL_FACE);
         glUseProgram(shaderProgram);
 
-        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
-        projMatrix.get(fb);
-        glUniformMatrix4fv(uProjLoc, false, fb);
-
-        fb.clear();
-        viewMatrix.get(fb);
-        glUniformMatrix4fv(uViewLoc, false, fb);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uProjLoc, false, projMatrix.get(stack.mallocFloat(16)));
+            glUniformMatrix4fv(uViewLoc, false, viewMatrix.get(stack.mallocFloat(16)));
+        }
 
         glUniform3f(uCameraPosLoc, cameraPos.x, cameraPos.y, cameraPos.z);
         glUniform1f(uBrightnessLoc, brightness);
 
         glBindVertexArray(vaoId);
 
-        // Render each of the 7 bands as a triangle strip
         int verticesPerBand = (spokeCount + 1) * 2;
         for (int i = 0; i < 7; i++) {
             glDrawArrays(GL_TRIANGLE_STRIP, i * verticesPerBand, verticesPerBand);

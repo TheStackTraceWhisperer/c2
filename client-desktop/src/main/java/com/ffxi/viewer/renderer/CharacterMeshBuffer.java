@@ -1,5 +1,6 @@
 package com.ffxi.viewer.renderer;
 
+import lombok.extern.slf4j.Slf4j;
 import com.ffxi.model.BgraColor;
 import com.ffxi.model.SkeletonMeshFaceVertex;
 import com.ffxi.model.SkeletonMeshMesh;
@@ -27,6 +28,7 @@ import static org.lwjgl.opengl.GL33C.glGenVertexArrays;
 import static org.lwjgl.opengl.GL30C.glVertexAttribIPointer;
 import static org.lwjgl.opengl.GL33C.glVertexAttribPointer;
 
+@Slf4j
 public final class CharacterMeshBuffer implements AutoCloseable {
     public static final int STRIDE_BYTES = 0x44;
 
@@ -53,12 +55,7 @@ public final class CharacterMeshBuffer implements AutoCloseable {
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-        System.out.printf("[MESH] %-30s  srcVerts=%d  expandedVerts=%d  triangles=%d  strip=%b%n",
-                textureName.isBlank() ? "(no texture)" : textureName,
-                mesh.vertices().size(),
-                expanded.count(),
-                expanded.count() / 3,
-                expanded.wasStrip());
+        log.info(String.format("[MESH] %-30s  srcVerts=%d  expandedVerts=%d  triangles=%d  strip=%b", textureName.isBlank() ? "(no texture)" : textureName, mesh.vertices().size(), expanded.count(), expanded.count() / 3, expanded.wasStrip()));
     }
 
     public String textureName() {

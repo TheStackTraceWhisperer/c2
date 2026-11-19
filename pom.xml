@@ -21,6 +21,7 @@
     <module>client-sdk</module>
     <module>platform-modulith</module>
     <module>client-desktop</module>
+    <module>ffxi-tools</module>
   </modules>
 
   <properties>
@@ -67,6 +68,11 @@
       <dependency>
         <groupId>com.example</groupId>
         <artifactId>client-desktop</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>ffxi-tools</artifactId>
         <version>${project.version}</version>
       </dependency>
 

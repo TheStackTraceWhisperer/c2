@@ -5,7 +5,7 @@ import com.ffxi.export.TextureDecoder;
 import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshVertex;
 import com.ffxi.viewer.model.LoadedZone;
-import com.ffxi.viewer.model.ZoneMeshMath;
+import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import org.joml.Matrix4f;

@@ -2,7 +2,7 @@ package com.ffxi.viewer.shader;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
 
@@ -66,36 +66,16 @@ public final class ShadowMapRenderer implements AutoCloseable {
     private final Matrix4f lightView = new Matrix4f();
 
     public ShadowMapRenderer() {
-        // 1. Compile depth pass shader
-        int vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, DEPTH_VERT_SRC);
-        glCompileShader(vs);
-        if (glGetShaderi(vs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile ShadowMap vertex shader: " + glGetShaderInfoLog(vs));
-        }
-
-        int fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, DEPTH_FRAG_SRC);
-        glCompileShader(fs);
-        if (glGetShaderi(fs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile ShadowMap fragment shader: " + glGetShaderInfoLog(fs));
-        }
-
-        depthProgram = glCreateProgram();
-        glAttachShader(depthProgram, vs);
-        glAttachShader(depthProgram, fs);
-        glLinkProgram(depthProgram);
-        if (glGetProgrami(depthProgram, GL_LINK_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to link ShadowMap depth program: " + glGetProgramInfoLog(depthProgram));
-        }
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        depthProgram = GlShaderUtil.createProgram(DEPTH_VERT_SRC, DEPTH_FRAG_SRC, "ShadowMap");
 
         uLightSpaceLoc = glGetUniformLocation(depthProgram, "uLightSpaceMatrix");
         uModelLoc = glGetUniformLocation(depthProgram, "uModelMatrix");
         uAlphaThresholdLoc = glGetUniformLocation(depthProgram, "uAlphaThreshold");
 
-        // 2. Create Depth FBO and Texture
+        glUseProgram(depthProgram);
+        glUniform1i(glGetUniformLocation(depthProgram, "uDiffuseTexture"), 0);
+        glUseProgram(0);
+
         fboId = glGenFramebuffers();
         depthTextureId = glGenTextures();
 
@@ -107,20 +87,22 @@ public final class ShadowMapRenderer implements AutoCloseable {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
-        float[] borderColor = new float[]{1.0f, 1.0f, 1.0f, 1.0f};
-        FloatBuffer borderBuffer = BufferUtils.createFloatBuffer(4).put(borderColor);
-        borderBuffer.flip();
-        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderBuffer);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer borderBuffer = stack.floats(1.0f, 1.0f, 1.0f, 1.0f);
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderBuffer);
+        }
 
         glBindFramebuffer(GL_FRAMEBUFFER, fboId);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTextureId, 0);
 
-        // Tell OpenGL we're not drawing to any color buffer
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
 
         int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            close();
             throw new IllegalStateException("ShadowMap Framebuffer incomplete, status: " + status);
         }
 
@@ -158,19 +140,19 @@ public final class ShadowMapRenderer implements AutoCloseable {
         glClear(GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
-        glDisable(GL_CULL_FACE); // Allow double-sided shadow casting for thin foliage/geometry
+        glDisable(GL_CULL_FACE);
 
         glUseProgram(depthProgram);
 
-        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
-        lightSpaceMatrix.get(fb);
-        glUniformMatrix4fv(uLightSpaceLoc, false, fb);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uLightSpaceLoc, false, lightSpaceMatrix.get(stack.mallocFloat(16)));
+        }
     }
 
     public void setModelMatrix(Matrix4f modelMat, float alphaThreshold) {
-        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
-        modelMat.get(fb);
-        glUniformMatrix4fv(uModelLoc, false, fb);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uModelLoc, false, modelMat.get(stack.mallocFloat(16)));
+        }
         glUniform1f(uAlphaThresholdLoc, alphaThreshold);
     }
 

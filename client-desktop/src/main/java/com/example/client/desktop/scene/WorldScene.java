@@ -5,9 +5,12 @@ import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.common.time.VanadielTime;
+import com.ffxi.io.FileTableManager;
+import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.tables.ZoneConfig;
 import com.ffxi.tables.ZoneIdToResourceId;
-import com.ffxi.io.FileTableManager;
+import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.CharacterAssetCache;
 import com.ffxi.viewer.environment.AuthenticSkyDome;
 import com.ffxi.viewer.environment.WeatherParticleSystem;
 import com.ffxi.viewer.environment.WeatherPreset;
@@ -27,16 +30,20 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
 
 import java.awt.image.BufferedImage;
-import java.io.InputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -62,8 +69,9 @@ public class WorldScene implements AutoCloseable {
     private final List<ZoneRenderChunk> zoneRenderChunks = new ArrayList<>();
     private List<ZoneInteraction> zoneInteractions = List.of();
 
-    // Character Rendering
+    // Character Rendering & Shared Asset Cache
     private CharacterShader characterShader;
+    private final CharacterAssetCache characterAssetCache = new CharacterAssetCache();
 
     // Advanced Lighting & Shadow Systems
     private ShadowMapRenderer shadowRenderer;
@@ -74,7 +82,8 @@ public class WorldScene implements AutoCloseable {
     // Atmospheric & Weather Systems
     private AuthenticSkyDome skyDome;
     private WeatherParticleSystem weatherParticleSystem;
-    @Setter private WeatherPreset weatherPreset = WeatherPreset.SUNNY;
+    private WeatherPreset weatherPreset = WeatherPreset.SUNNY;
+    private WeatherPreset lastSkyDomePreset;
     @Setter private boolean manualTimeOverride = false;
     @Setter private float manualTimeHour = 12.0f;
 
@@ -116,6 +125,10 @@ public class WorldScene implements AutoCloseable {
 
             try {
                 this.skyDome = new AuthenticSkyDome();
+                if (this.weatherPreset != null) {
+                    this.skyDome.updateMesh(this.weatherPreset);
+                    this.lastSkyDomePreset = this.weatherPreset;
+                }
                 this.weatherParticleSystem = new WeatherParticleSystem();
             } catch (Exception e) {
                 log.warn("Atmospheric systems unavailable in current GL context: {}", e.getMessage());
@@ -128,13 +141,30 @@ public class WorldScene implements AutoCloseable {
         }
     }
 
+    public void setWeatherPreset(WeatherPreset preset) {
+        if (preset == null) {
+            return;
+        }
+        this.weatherPreset = preset;
+        if (this.skyDome != null && preset != this.lastSkyDomePreset) {
+            this.skyDome.updateMesh(preset);
+            this.lastSkyDomePreset = preset;
+        }
+    }
+
+    /**
+     * Acquires a character instance using the shared {@link CharacterAssetCache}.
+     */
+    public AuthenticCharacterInstance createCharacterInstance(Path ffxiRoot, RaceGenderConfig race) throws IOException {
+        return characterAssetCache.acquireInstance(ffxiRoot, race);
+    }
+
     /**
      * Loads authentic zone geometry, textures, collision system, and zoneline interactions from DAT files.
      */
     public void loadZone(Path ffxiRoot, int zoneId) {
         this.currentZoneId = zoneId;
 
-        // 1. Dispose previous zone render chunks and texture atlas
         for (ZoneRenderChunk chunk : zoneRenderChunks) {
             try { chunk.close(); } catch (Exception ignored) {}
         }
@@ -144,7 +174,6 @@ public class WorldScene implements AutoCloseable {
             zoneTextureLoader = null;
         }
 
-        // 2. Load authentic visual zone chunks
         if (initialized && ffxiRoot != null && Files.isDirectory(ffxiRoot)) {
             try {
                 this.loadedZone = ZoneModelLoader.loadZone(ffxiRoot, zoneId);
@@ -168,7 +197,6 @@ public class WorldScene implements AutoCloseable {
             }
         }
 
-        // 3. Parse authentic zone line and entrance interactions
         byte[] zoneBytes = loadZoneBytes(zoneId);
         if (zoneBytes != null && zoneBytes.length > 0) {
             try {
@@ -181,19 +209,39 @@ public class WorldScene implements AutoCloseable {
     }
 
     public void setLocalPlayer(SceneActor player) {
+        SceneActor prevLocal = this.localPlayerActor;
         this.localPlayerActor = player;
         if (player != null) {
             player.setLocalPlayer(true);
-            actors.put(player.getId(), player);
+            SceneActor prevAtId = actors.put(player.getId(), player);
+            if (prevAtId != null && prevAtId != player) {
+                prevAtId.close();
+            }
+        }
+        if (prevLocal != null && prevLocal != player) {
+            actors.remove(prevLocal.getId(), prevLocal);
+            prevLocal.close();
         }
     }
 
     public void addActor(SceneActor actor) {
-        actors.put(actor.getId(), actor);
+        if (actor == null) {
+            return;
+        }
+        SceneActor prev = actors.put(actor.getId(), actor);
+        if (prev != null && prev != actor) {
+            prev.close();
+        }
     }
 
     public void removeActor(long actorId) {
-        actors.remove(actorId);
+        SceneActor removed = actors.remove(actorId);
+        if (removed != null) {
+            if (removed == localPlayerActor) {
+                localPlayerActor = null;
+            }
+            removed.close();
+        }
     }
 
     public SceneActor getActor(long actorId) {
@@ -205,24 +253,40 @@ public class WorldScene implements AutoCloseable {
     }
 
     /**
-     * Steps animations, particles, camera tracking, and environmental time.
+     * Steps animations, weather particles, sky dome mesh, camera tracking, and environmental time.
      */
     public void update(float dt, VanadielTime time) {
-        // Step camera
         if (localPlayerActor != null && camera.getMode() == CameraMode.THIRD_PERSON) {
             camera.setTarget(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ());
         }
 
-        // Step character animations & locomotion
         for (SceneActor actor : actors.values()) {
             actor.update(dt);
+        }
+
+        if (skyDome != null && weatherPreset != null && weatherPreset != lastSkyDomePreset) {
+            skyDome.updateMesh(weatherPreset);
+            lastSkyDomePreset = weatherPreset;
+        }
+
+        if (weatherParticleSystem != null && weatherPreset != null) {
+            Vector3f cameraPos = new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+            weatherParticleSystem.update(dt, cameraPos, weatherPreset);
         }
     }
 
     /**
-     * Executes the unified 3D rendering pipeline for the current viewport.
+     * Executes the unified 3D rendering pipeline into the default framebuffer (0).
      */
     public void render(int viewportWidth, int viewportHeight) {
+        renderToFramebuffer(0, viewportWidth, viewportHeight);
+    }
+
+    /**
+     * Executes the unified 3D rendering pipeline targeting {@code targetFbo} (0 for default window backbuffer,
+     * or an offscreen FBO handle for {@link #captureFrame(int, int)}).
+     */
+    public void renderToFramebuffer(int targetFbo, int viewportWidth, int viewportHeight) {
         int w = Math.max(1, viewportWidth);
         int h = Math.max(1, viewportHeight);
 
@@ -244,43 +308,58 @@ public class WorldScene implements AutoCloseable {
         Vector3f moonDir = new Vector3f(-sunDir.x, -sunDir.y, -0.25f).normalize();
         Vector3f activeLightDir = sunDir.y > 0.0f ? sunDir : moonDir;
 
+        float dayFactor = (hour >= 6.0f && hour <= 18.0f) ? 1.0f
+                : ((hour > 18.0f && hour < 20.0f) ? 1.0f - 0.65f * ((hour - 18.0f) / 2.0f)
+                : ((hour >= 20.0f || hour <= 4.0f) ? 0.35f
+                : 0.35f + 0.65f * ((hour - 4.0f) / 2.0f)));
+
         Vector3f shadowTarget = (localPlayerActor != null)
                 ? new Vector3f(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ())
                 : new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
 
-        // 1. Directional Shadow Pass
-        if (enableShadows && shadowRenderer != null && !zoneRenderChunks.isEmpty()) {
+        // 1. Directional Shadow Pass (binds chunk diffuse texture on unit 0 so alpha-cutout shadows work)
+        boolean shadowsActive = enableShadows && shadowRenderer != null && !zoneRenderChunks.isEmpty();
+        if (shadowsActive) {
             shadowRenderer.computeLightSpaceMatrix(activeLightDir, shadowTarget, 60.0f, 10.0f, 150.0f);
             shadowRenderer.beginShadowPass();
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
             for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                if (zoneTextureLoader != null) {
+                    GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(chunk.buffer().textureName()));
+                }
                 shadowRenderer.setModelMatrix(chunk.modelMatrix(), chunk.discardThreshold());
                 chunk.buffer().draw();
             }
             shadowRenderer.endShadowPass(w, h);
         }
 
-        // 2. SSAO Geometry & Blur Passes
-        if (enableSsao && ssaoRenderer != null && !zoneRenderChunks.isEmpty()) {
+        // 2. SSAO Geometry & Blur Passes (uses SsaoRenderer's internal G-buffer shader and chunk matrices)
+        boolean ssaoActive = enableSsao && ssaoRenderer != null && !zoneRenderChunks.isEmpty();
+        if (ssaoActive) {
             ssaoRenderer.resize(w, h);
-            ssaoRenderer.beginGeometryPass();
+            ssaoRenderer.beginGeometryPass(pMat, vMat);
             for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                if (chunk.buffer().renderBlend()) {
+                    continue;
+                }
+                ssaoRenderer.setGeometryModelMatrix(chunk.modelMatrix());
                 chunk.buffer().draw();
             }
             ssaoRenderer.computeSsao(pMat, 3.5f, 0.025f, 1.6f, true);
         }
 
-        // 3. Clear Screen & Main Viewport Setup
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        // 3. Clear Target Framebuffer & Main Viewport Setup
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, targetFbo);
         GL11.glViewport(0, 0, w, h);
         GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
         // 4. Atmospheric Sky Dome Pass
         if (showSkyDome && skyDome != null) {
-            float dayFactor = (hour >= 6.0f && hour <= 18.0f) ? 1.0f
-                    : ((hour > 18.0f && hour < 20.0f) ? 1.0f - 0.65f * ((hour - 18.0f) / 2.0f)
-                    : ((hour >= 20.0f || hour <= 4.0f) ? 0.35f
-                    : 0.35f + 0.65f * ((hour - 4.0f) / 2.0f)));
+            if (weatherPreset != null && weatherPreset != lastSkyDomePreset) {
+                skyDome.updateMesh(weatherPreset);
+                lastSkyDomePreset = weatherPreset;
+            }
             float brightness = dayFactor * weatherPreset.diffuseMultiplier();
             skyDome.render(pMat, vMat, new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), brightness);
         }
@@ -288,11 +367,41 @@ public class WorldScene implements AutoCloseable {
         // 5. Zone Geometry Multi-Pass (Opaque & Alpha-Test Pass 0, Blended Pass 1)
         if (showVisualZone && zoneShader != null && zoneTextureLoader != null && !zoneRenderChunks.isEmpty()) {
             zoneShader.bind();
-            if (enableShadows && shadowRenderer != null) {
+
+            float lightningBoost = (weatherParticleSystem != null && weatherParticleSystem.isLightningActive())
+                    ? weatherParticleSystem.getLightningIntensity()
+                    : 0.0f;
+            float diffMult = weatherPreset.diffuseMultiplier() * dayFactor + lightningBoost;
+            Vector3f sunColor = new Vector3f(
+                    weatherPreset.sunColor().x * diffMult,
+                    weatherPreset.sunColor().y * diffMult,
+                    weatherPreset.sunColor().z * diffMult
+            );
+            float ambMult = Math.max(0.35f, dayFactor);
+            Vector3f ambientColor = new Vector3f(
+                    Math.max(0.45f, weatherPreset.ambientColor().x * ambMult * 2.0f),
+                    Math.max(0.45f, weatherPreset.ambientColor().y * ambMult * 2.0f),
+                    Math.max(0.48f, weatherPreset.ambientColor().z * ambMult * 2.0f)
+            );
+            Matrix4f lightSpaceMat = shadowsActive ? shadowRenderer.getLightSpaceMatrix() : null;
+
+            zoneShader.setEnvironment(
+                    activeLightDir,
+                    sunColor,
+                    ambientColor,
+                    lightSpaceMat,
+                    shadowsActive,
+                    ssaoActive,
+                    w,
+                    h
+            );
+            zoneShader.setFog(true, weatherPreset.fogNear(), weatherPreset.fogFar(), weatherPreset.fogColor());
+
+            if (shadowsActive) {
                 GL13.glActiveTexture(GL13.GL_TEXTURE2);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, shadowRenderer.getDepthTextureId());
             }
-            if (enableSsao && ssaoRenderer != null) {
+            if (ssaoActive) {
                 GL13.glActiveTexture(GL13.GL_TEXTURE3);
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, ssaoRenderer.getFinalSsaoTextureId(true));
             }
@@ -332,14 +441,14 @@ public class WorldScene implements AutoCloseable {
             GL11.glFrontFace(GL11.GL_CCW);
         }
 
-        // 3. Animated Skinned Character Actors Pass
+        // 6. Animated Skinned Character Actors Pass
         if (showCharacterModels && characterShader != null) {
             for (SceneActor actor : actors.values()) {
                 actor.render(characterShader, pMat, vMat);
             }
         }
 
-        // 4. Collision Wireframe / Cylinder Markers Pass
+        // 7. Collision Wireframe / Cylinder Markers Pass
         if (collisionRenderer != null) {
             if (showCollisionMesh) {
                 collisionRenderer.render(proj, view, true);
@@ -355,7 +464,7 @@ public class WorldScene implements AutoCloseable {
             }
         }
 
-        // 5. Weather Particles Pass
+        // 8. Weather Particles Pass
         if (showWeather && weatherParticleSystem != null) {
             weatherParticleSystem.render(pMat, vMat, weatherPreset);
         }
@@ -371,34 +480,32 @@ public class WorldScene implements AutoCloseable {
         int fbo = GL30.glGenFramebuffers();
         int colorTex = GL11.glGenTextures();
         int depthRb = GL30.glGenRenderbuffers();
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-
-        // Color attachment
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, colorTex);
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, colorTex, 0);
-
-        // Depth/stencil attachment
-        GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, depthRb);
-        GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH24_STENCIL8, width, height);
-        GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_RENDERBUFFER, depthRb);
-
-        render(width, height);
-
-        // Read pixels
         ByteBuffer buffer = BufferUtils.createByteBuffer(width * height * 4);
-        GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
 
-        // Restore previous framebuffer
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
-        GL30.glDeleteRenderbuffers(depthRb);
-        GL11.glDeleteTextures(colorTex);
-        GL30.glDeleteFramebuffers(fbo);
+        try {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
 
-        // Convert to BufferedImage with vertical flip
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, colorTex);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+            GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, colorTex, 0);
+
+            GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, depthRb);
+            GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH24_STENCIL8, width, height);
+            GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_RENDERBUFFER, depthRb);
+
+            renderToFramebuffer(fbo, width, height);
+
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+            GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
+            if (depthRb != 0) GL30.glDeleteRenderbuffers(depthRb);
+            if (colorTex != 0) GL11.glDeleteTextures(colorTex);
+            if (fbo != 0) GL30.glDeleteFramebuffers(fbo);
+        }
+
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         int[] pixels = new int[width * height];
         for (int y = 0; y < height; y++) {
@@ -448,6 +555,16 @@ public class WorldScene implements AutoCloseable {
 
     @Override
     public void close() {
+        for (SceneActor actor : actors.values()) {
+            try { actor.close(); } catch (Exception ignored) {}
+        }
+        actors.clear();
+        if (localPlayerActor != null) {
+            try { localPlayerActor.close(); } catch (Exception ignored) {}
+            localPlayerActor = null;
+        }
+        characterAssetCache.close();
+
         for (ZoneRenderChunk chunk : zoneRenderChunks) {
             try { chunk.close(); } catch (Exception ignored) {}
         }
@@ -485,7 +602,7 @@ public class WorldScene implements AutoCloseable {
             try { weatherParticleSystem.close(); } catch (Exception ignored) {}
             weatherParticleSystem = null;
         }
-        actors.clear();
+        this.lastSkyDomePreset = null;
         this.initialized = false;
         log.info("Disposed WorldScene GPU resources");
     }

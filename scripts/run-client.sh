@@ -5,24 +5,35 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 MAIN_CLASS="com.example.client.desktop.Launcher"
+# Default: the shipped game client (client-desktop). Developer tools live in ffxi-tools.
+MODULE="client-desktop"
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     zone|viewer|--zone|--zone-viewer)
       MAIN_CLASS="com.ffxi.viewer.ZoneViewer"
+      MODULE="ffxi-tools"
       shift
       ;;
     sandbox|shader|--sandbox|--shader)
       MAIN_CLASS="com.ffxi.viewer.MapShaderSandbox"
+      MODULE="ffxi-tools"
       shift
       ;;
     char|character|--char|--character)
       MAIN_CLASS="com.ffxi.viewer.CharacterViewer"
+      MODULE="ffxi-tools"
       shift
       ;;
     glb|--glb)
       MAIN_CLASS="com.ffxi.viewer.GlbRenderer"
+      MODULE="ffxi-tools"
+      shift
+      ;;
+    com.ffxi.viewer.*)
+      MAIN_CLASS="$1"
+      MODULE="ffxi-tools"
       shift
       ;;
     com.*)
@@ -36,12 +47,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "=== Ensuring client-desktop and dependencies are compiled ==="
-./mvnw test-compile -pl client-desktop -am -DskipTests -q
+echo "=== Ensuring ${MODULE} and dependencies are compiled ==="
+./mvnw test-compile -pl "${MODULE}" -am -DskipTests -q
 
-echo "=== Launching ${MAIN_CLASS} ${EXTRA_ARGS[*]:-} ==="
-if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
-  ./mvnw exec:exec -pl client-desktop -Dexec.mainClass="${MAIN_CLASS}" -Dexec.args="${EXTRA_ARGS[*]}"
-else
-  ./mvnw exec:exec -pl client-desktop -Dexec.mainClass="${MAIN_CLASS}"
-fi
+echo "=== Launching ${MAIN_CLASS} ${EXTRA_ARGS[*]:-} (module: ${MODULE}) ==="
+./mvnw exec:exec -pl "${MODULE}" \
+  -Dexec.executable=java \
+  -Dexec.args="-classpath %classpath ${MAIN_CLASS} ${EXTRA_ARGS[*]:-}"

@@ -1,12 +1,12 @@
 package com.ffxi.viewer;
 
 import com.example.asset.config.FfxiPathConfig;
-import com.example.asset.loader.RaceModelLoader;
-import com.example.asset.skeleton.AuthenticCharacterModelDecoder;
-import com.example.asset.skeleton.SkinnedMesh;
-import com.example.asset.skeleton.SkinnedSubMesh;
-import com.example.asset.skeleton.SkinnedVertex;
-import com.example.asset.texture.DecodedTexture;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.RaceModelLoader;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.AuthenticCharacterModelDecoder;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedMesh;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedSubMesh;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedVertex;
+import com.ffxi.viewer.SnapshotCharacterTestHelper.DecodedTexture;
 import com.ffxi.io.ByteReader;
 import com.ffxi.model.*;
 import com.ffxi.parser.DatParser;

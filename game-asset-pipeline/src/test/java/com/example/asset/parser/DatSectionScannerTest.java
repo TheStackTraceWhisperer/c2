@@ -5,7 +5,11 @@ import com.example.asset.reader.DatByteReader;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.io.InputStream;
+import com.example.asset.config.FfxiPathConfig;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -19,10 +23,10 @@ class DatSectionScannerTest {
     @Test
     @DisplayName("Scan all section headers in South San d'Oria DAT")
     void testScanSouthSanDoriaSections() throws Exception {
-        InputStream stream = getClass().getResourceAsStream("/dats/zones/south_san_doria_230.DAT");
-        assumeTrue(stream != null, "Missing south_san_doria_230.DAT fixture");
+        Optional<Path> dat = FfxiPathConfig.resolveRomFile("ROM/1/31.DAT");
+        assumeTrue(dat.isPresent(), "Retail FFXI ROM/1/31.DAT not found under " + FfxiPathConfig.resolveFfxiInstallDirectory());
 
-        byte[] bytes = stream.readAllBytes();
+        byte[] bytes = Files.readAllBytes(dat.get());
         DatByteReader reader = new DatByteReader(bytes);
         List<DatSectionHeader> sections = DatSectionScanner.scanSections(reader);
 

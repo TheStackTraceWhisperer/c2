@@ -10,6 +10,8 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Unified Scene Camera abstraction supporting retail third-person gameplay,
  * directed in-game cutscenes, and free development inspection.
+ * Uses the unified client-side right-handed coordinate convention:
+ * Y-up, North = -Z, East = +X, yaw = 0 deg faces North (-Z), 90 deg faces East (+X).
  */
 @Getter
 public class SceneCamera implements Camera {
@@ -241,29 +243,22 @@ public class SceneCamera implements Camera {
         double sinYaw = Math.sin(yawRad);
         double cosYaw = Math.cos(yawRad);
 
-        // In FFXI world coordinates: 0 deg = North (-Z), 90 deg = East (+X)
-        float focusY = targetY + targetOffsetY;
-        this.eyeX = (float) (targetX + distance * cosPitch * sinYaw);
-        this.eyeY = (float) (focusY + distance * sinPitch);
-        this.eyeZ = (float) (targetZ - distance * cosPitch * cosYaw);
+        // Unified client coordinate system (matches PolarCamera):
+        // Y-up, North = -Z, East = +X; yaw = 0 deg faces North (-Z), 90 deg faces East (+X).
+        this.forwardX = (float) sinYaw;
+        this.forwardZ = (float) -cosYaw;
 
-        float dx = targetX - eyeX;
-        float dy = focusY - eyeY;
-        float dz = targetZ - eyeZ;
-        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (len > 1e-4f) {
-            this.viewX = dx / len;
-            this.viewY = dy / len;
-            this.viewZ = dz / len;
-        }
-
-        // Horizontal forward vector (XZ plane)
-        this.forwardX = (float) -sinYaw;
-        this.forwardZ = (float) cosYaw;
-
-        // Horizontal right vector (XZ plane)
         this.rightX = (float) cosYaw;
         this.rightZ = (float) sinYaw;
+
+        float focusY = targetY + targetOffsetY;
+        this.eyeX = (float) (targetX - distance * cosPitch * sinYaw);
+        this.eyeY = (float) (focusY + distance * sinPitch);
+        this.eyeZ = (float) (targetZ + distance * cosPitch * cosYaw);
+
+        this.viewX = (float) (forwardX * cosPitch);
+        this.viewY = (float) -sinPitch;
+        this.viewZ = (float) (forwardZ * cosPitch);
     }
 
     private static float normalizeAngle(float degrees) {

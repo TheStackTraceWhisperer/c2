@@ -1,12 +1,13 @@
 package com.ffxi.viewer.environment;
 
+import com.ffxi.viewer.shader.GlShaderUtil;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.util.Random;
 
 import static org.lwjgl.opengl.GL33C.*;
@@ -65,38 +66,15 @@ public final class WeatherParticleSystem implements AutoCloseable {
     private final int vaoId;
     private final int vboId;
 
-    private final ByteBuffer vertexBuffer = BufferUtils.createByteBuffer(MAX_PARTICLES * 2 * 28); // 2 vertices per line streak
+    private final ByteBuffer vertexBuffer = BufferUtils.createByteBuffer(MAX_PARTICLES * 2 * 28);
 
-    // Lightning flash simulation
     private float lightningTimer = 4.0f;
     private float lightningFlashDuration = 0.0f;
     private float lightningIntensity = 0.0f;
     private boolean lightningActive = false;
 
     public WeatherParticleSystem() {
-        int vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, PARTICLE_VERT_SRC);
-        glCompileShader(vs);
-        if (glGetShaderi(vs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile particle vertex shader: " + glGetShaderInfoLog(vs));
-        }
-
-        int fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, PARTICLE_FRAG_SRC);
-        glCompileShader(fs);
-        if (glGetShaderi(fs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile particle fragment shader: " + glGetShaderInfoLog(fs));
-        }
-
-        shaderProgram = glCreateProgram();
-        glAttachShader(shaderProgram, vs);
-        glAttachShader(shaderProgram, fs);
-        glLinkProgram(shaderProgram);
-        if (glGetProgrami(shaderProgram, GL_LINK_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to link particle program: " + glGetProgramInfoLog(shaderProgram));
-        }
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        shaderProgram = GlShaderUtil.createProgram(PARTICLE_VERT_SRC, PARTICLE_FRAG_SRC, "WeatherParticleSystem");
 
         uProjLoc = glGetUniformLocation(shaderProgram, "uProjMatrix");
         uViewLoc = glGetUniformLocation(shaderProgram, "uViewMatrix");
@@ -116,7 +94,6 @@ public final class WeatherParticleSystem implements AutoCloseable {
 
         glBindVertexArray(0);
 
-        // Pre-initialize particles randomly around origin
         for (int i = 0; i < MAX_PARTICLES; i++) {
             resetParticle(i, new Vector3f(0f, 0f, 0f), WeatherPreset.WeatherEffectType.RAIN, new Vector3f(0f, -10f, 0f));
             life[i] = random.nextFloat();
@@ -174,10 +151,12 @@ public final class WeatherParticleSystem implements AutoCloseable {
      * Updates physics and life cycles for all active weather particles and advances lightning timers.
      */
     public void update(float dt, Vector3f cameraPos, WeatherPreset preset) {
+        if (preset == null) {
+            return;
+        }
         WeatherPreset.WeatherEffectType effect = preset.effectType();
         Vector3f wind = preset.windVector();
 
-        // 1. Advance lightning cycle for thunder/bolt weathers
         if (effect == WeatherPreset.WeatherEffectType.THUNDERSTORM) {
             lightningTimer -= dt;
             if (lightningTimer <= 0.0f && !lightningActive) {
@@ -192,7 +171,6 @@ public final class WeatherParticleSystem implements AutoCloseable {
                     lightningActive = false;
                     lightningIntensity = 0.0f;
                 } else {
-                    // Strobe double-flash pattern
                     float phase = lightningFlashDuration * 25.0f;
                     lightningIntensity = (float) Math.max(0.0, Math.sin(phase)) * 2.2f;
                 }
@@ -208,14 +186,12 @@ public final class WeatherParticleSystem implements AutoCloseable {
             return;
         }
 
-        // 2. Update particle positions
         int activeCount = getActiveParticleCount(effect);
         for (int i = 0; i < activeCount; i++) {
             posX[i] += velX[i] * dt;
             posY[i] += velY[i] * dt;
             posZ[i] += velZ[i] * dt;
 
-            // Check boundaries relative to camera
             float dx = posX[i] - cameraPos.x;
             float dy = posY[i] - cameraPos.y;
             float dz = posZ[i] - cameraPos.z;
@@ -242,6 +218,9 @@ public final class WeatherParticleSystem implements AutoCloseable {
      * Renders active weather streaks/particles.
      */
     public void render(Matrix4f projMatrix, Matrix4f viewMatrix, WeatherPreset preset) {
+        if (preset == null) {
+            return;
+        }
         WeatherPreset.WeatherEffectType effect = preset.effectType();
         int activeCount = getActiveParticleCount(effect);
         if (activeCount == 0) {
@@ -284,7 +263,6 @@ public final class WeatherParticleSystem implements AutoCloseable {
             float y0 = posY[i];
             float z0 = posZ[i];
 
-            // Velocity-aligned streak
             float len = length[i];
             float vxNorm = velX[i];
             float vyNorm = velY[i];
@@ -302,11 +280,9 @@ public final class WeatherParticleSystem implements AutoCloseable {
             float y1 = y0 - vyNorm;
             float z1 = z0 - vzNorm;
 
-            // Head vertex
             vertexBuffer.putFloat(x0).putFloat(y0).putFloat(z0);
             vertexBuffer.putFloat(col0.x).putFloat(col0.y).putFloat(col0.z).putFloat(col0.w);
 
-            // Tail vertex
             vertexBuffer.putFloat(x1).putFloat(y1).putFloat(z1);
             vertexBuffer.putFloat(col1.x).putFloat(col1.y).putFloat(col1.z).putFloat(col1.w);
         }
@@ -318,13 +294,10 @@ public final class WeatherParticleSystem implements AutoCloseable {
 
         glUseProgram(shaderProgram);
 
-        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
-        projMatrix.get(fb);
-        glUniformMatrix4fv(uProjLoc, false, fb);
-
-        fb.clear();
-        viewMatrix.get(fb);
-        glUniformMatrix4fv(uViewLoc, false, fb);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uProjLoc, false, projMatrix.get(stack.mallocFloat(16)));
+            glUniformMatrix4fv(uViewLoc, false, viewMatrix.get(stack.mallocFloat(16)));
+        }
 
         glBindVertexArray(vaoId);
         glBindBuffer(GL_ARRAY_BUFFER, vboId);

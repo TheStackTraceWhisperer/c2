@@ -1,5 +1,6 @@
 package com.ffxi.viewer.model;
 
+import lombok.extern.slf4j.Slf4j;
 import com.ffxi.io.ByteReader;
 import com.ffxi.io.FileTableManager;
 import com.ffxi.model.BgraColor;
@@ -32,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 public final class CharacterModelLoader {
 
     public static LoadedCharacter loadCharacter(Path ffxiRoot, RaceGenderConfig race) throws IOException {
@@ -60,14 +62,14 @@ public final class CharacterModelLoader {
                 CharacterIdToResourceId.getRaceConfigPath(race, new ByteReader(dllBytes, dllFile.getName()), fileTableManager),
                 "race skeleton"
         );
-        System.out.println("[VIEWER] Reading skeleton DAT: " + skeletonPath);
+        log.info("{}", "[VIEWER] Reading skeleton DAT: " + skeletonPath);
         ParsedDat skeletonDat = loadDat(Path.of(skeletonPath));
 
         String upperAnimPath = requirePath(
                 CharacterIdToResourceId.getUpperBodyAnimationPath(race, new ByteReader(dllBytes, dllFile.getName()), fileTableManager),
                 "upper-body animation"
         );
-        System.out.println("[VIEWER] Reading upper animation DAT: " + upperAnimPath);
+        log.info("{}", "[VIEWER] Reading upper animation DAT: " + upperAnimPath);
         ParsedDat upperAnimationDat = loadDat(Path.of(upperAnimPath));
 
         List<SkeletonResource> skeletons = new ArrayList<>();
@@ -85,13 +87,13 @@ public final class CharacterModelLoader {
         collectAnimations(upperAnimationDat.graph().rootDirectory(), slot1Animations);
         collectTextureSources(upperAnimationDat.graph().rootDirectory(), upperAnimationDat.rawData(), textureSources);
 
-        System.out.println("[VIEWER] Loaded Slot 0 Animations (Base/Lower body):");
+        log.info("[VIEWER] Loaded Slot 0 Animations (Base/Lower body):");
         for (SkeletonAnimationResource anim : slot0Animations) {
-            System.out.println("  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
+            log.info("{}", "  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
         }
-        System.out.println("[VIEWER] Loaded Slot 1 Animations (Upper body override):");
+        log.info("[VIEWER] Loaded Slot 1 Animations (Upper body override):");
         for (SkeletonAnimationResource anim : slot1Animations) {
-            System.out.println("  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
+            log.info("{}", "  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
         }
 
         Map<ItemModelSlot, Integer> modelIds = new LinkedHashMap<>();
@@ -107,7 +109,7 @@ public final class CharacterModelLoader {
         for (Map.Entry<ItemModelSlot, Integer> entry : modelIds.entrySet()) {
             ItemModelSlot slot = entry.getKey();
             int modelId = entry.getValue();
-            System.out.println("[VIEWER-DEBUG] --- Start processing slot: " + slot + " (requested modelId: " + modelId + ") ---");
+            log.info("{}", "[VIEWER-DEBUG] --- Start processing slot: " + slot + " (requested modelId: " + modelId + ") ---");
             
             int activeId = modelId;
             String meshPath = CharacterIdToResourceId.getEquipmentModelPath(
@@ -117,7 +119,7 @@ public final class CharacterModelLoader {
                     new ByteReader(dllBytes, dllFile.getName()),
                     fileTableManager
             );
-            System.out.println("[VIEWER-DEBUG] Initial resolution for slot " + slot + ", modelId " + modelId + " returned path: " + meshPath);
+            log.info("{}", "[VIEWER-DEBUG] Initial resolution for slot " + slot + ", modelId " + modelId + " returned path: " + meshPath);
             
             boolean isDummy = false;
             try {
@@ -125,23 +127,23 @@ public final class CharacterModelLoader {
                     long size = Files.size(Path.of(meshPath));
                     if (size < 1024) {
                         isDummy = true;
-                        System.out.println("[VIEWER-DEBUG] File " + meshPath + " is a dummy (size: " + size + " bytes).");
+                        log.info("{}", "[VIEWER-DEBUG] File " + meshPath + " is a dummy (size: " + size + " bytes).");
                     }
                     if (meshPath.equalsIgnoreCase(skeletonPath) || meshPath.equalsIgnoreCase(upperAnimPath)) {
                         isDummy = true;
-                        System.out.println("[VIEWER-DEBUG] File " + meshPath + " matches skeleton or upper animation path.");
+                        log.info("{}", "[VIEWER-DEBUG] File " + meshPath + " matches skeleton or upper animation path.");
                     }
                 }
             } catch (Exception e) {
                 // ignore
             }
             if (isDummy && modelId != 0) {
-                System.out.println("[VIEWER-DEBUG] Setting meshPath to null to trigger fallback-to-0.");
+                log.info("[VIEWER-DEBUG] Setting meshPath to null to trigger fallback-to-0.");
                 meshPath = null;
             }
             
             if (meshPath == null && modelId != 0) {
-                System.out.println("[VIEWER-DEBUG] Path was null. Attempting fallback to modelId 0 for slot: " + slot);
+                log.info("{}", "[VIEWER-DEBUG] Path was null. Attempting fallback to modelId 0 for slot: " + slot);
                 meshPath = CharacterIdToResourceId.getEquipmentModelPath(
                         race,
                         slot,
@@ -149,25 +151,25 @@ public final class CharacterModelLoader {
                         new ByteReader(dllBytes, dllFile.getName()),
                         fileTableManager
                 );
-                System.out.println("[VIEWER-DEBUG] Fallback resolution for slot " + slot + ", modelId 0 returned path: " + meshPath);
+                log.info("{}", "[VIEWER-DEBUG] Fallback resolution for slot " + slot + ", modelId 0 returned path: " + meshPath);
                 activeId = 0;
             }
             
-            System.out.println("[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to: " + meshPath);
+            log.info("{}", "[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to: " + meshPath);
             if (meshPath == null) {
-                System.out.println("[VIEWER-DEBUG] No path found for slot " + slot + " (even after fallback to 0). Skipping slot.");
+                log.info("{}", "[VIEWER-DEBUG] No path found for slot " + slot + " (even after fallback to 0). Skipping slot.");
                 continue;
             }
             
-            System.out.println("[VIEWER-DEBUG] Loading DAT file: " + meshPath);
+            log.info("{}", "[VIEWER-DEBUG] Loading DAT file: " + meshPath);
             ParsedDat equipmentDat = loadDat(Path.of(meshPath));
             
             List<SkeletonMeshResource> slotMeshes = new ArrayList<>();
             collectSkeletonMeshes(equipmentDat.graph().rootDirectory(), slotMeshes);
-            System.out.println("[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from DAT: " + meshPath);
+            log.info("{}", "[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from DAT: " + meshPath);
             
             if (slotMeshes.isEmpty() && modelId != 0) {
-                System.out.println("[VIEWER-DEBUG] Mesh list is empty. Attempting fallback to modelId 0 due to empty meshes for slot: " + slot);
+                log.info("{}", "[VIEWER-DEBUG] Mesh list is empty. Attempting fallback to modelId 0 due to empty meshes for slot: " + slot);
                 String fallbackPath = CharacterIdToResourceId.getEquipmentModelPath(
                         race,
                         slot,
@@ -175,14 +177,14 @@ public final class CharacterModelLoader {
                         new ByteReader(dllBytes, dllFile.getName()),
                         fileTableManager
                 );
-                System.out.println("[VIEWER-DEBUG] Mesh empty fallback path resolution returned: " + fallbackPath);
+                log.info("{}", "[VIEWER-DEBUG] Mesh empty fallback path resolution returned: " + fallbackPath);
                 
                 if (fallbackPath != null) {
-                    System.out.println("[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to empty mesh. Falling back to: " + fallbackPath);
+                    log.info("{}", "[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to empty mesh. Falling back to: " + fallbackPath);
                     equipmentDat = loadDat(Path.of(fallbackPath));
                     slotMeshes.clear();
                     collectSkeletonMeshes(equipmentDat.graph().rootDirectory(), slotMeshes);
-                    System.out.println("[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from fallback DAT: " + fallbackPath);
+                    log.info("{}", "[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from fallback DAT: " + fallbackPath);
                     activeId = 0;
                 }
             }
@@ -191,16 +193,16 @@ public final class CharacterModelLoader {
             actualModelIds.put(slot, activeId);
             
             for (SkeletonMeshResource meshRes : slotMeshes) {
-                System.out.println("  - Sub-resource Mesh: " + meshRes.sectionId());
+                log.info("{}", "  - Sub-resource Mesh: " + meshRes.sectionId());
             }
             
             Map<String, CharacterTextureLoader.TextureSource> slotTextures = new LinkedHashMap<>();
             collectTextureSources(equipmentDat.graph().rootDirectory(), equipmentDat.rawData(), slotTextures);
-            System.out.println("[VIEWER-DEBUG] Collected " + slotTextures.size() + " textures from DAT: " + meshPath);
+            log.info("{}", "[VIEWER-DEBUG] Collected " + slotTextures.size() + " textures from DAT: " + meshPath);
             textureSources.putAll(slotTextures);
             
             for (String texName : slotTextures.keySet()) {
-                System.out.println("  - Sub-resource Texture: " + texName);
+                log.info("{}", "  - Sub-resource Texture: " + texName);
             }
         }
 
@@ -222,24 +224,15 @@ public final class CharacterModelLoader {
 
         CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, idleUpper);
         Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
-        System.out.printf("[VIEWER] Bounds: min=%s max=%s center=%s radius=%.3f%n",
-                bounds.center().sub(new Vector3f(bounds.radius())),
-                bounds.center().add(new Vector3f(bounds.radius())),
-                bounds.center(), bounds.radius());
+        log.info(String.format("[VIEWER] Bounds: min=%s max=%s center=%s radius=%.3f", new Vector3f(bounds.center()).sub(new Vector3f(bounds.radius())), new Vector3f(bounds.center()).add(new Vector3f(bounds.radius())), bounds.center(), bounds.radius()));
         Vector3f modelOffset = new Vector3f(
                 -bounds.center().x(),
                 -bounds.center().y(),
                 -bounds.center().z()
         );
-        System.out.printf("[VIEWER] ModelOffset: %s%n", modelOffset);
+        log.info(String.format("[VIEWER] ModelOffset: %s", modelOffset));
 
-        System.out.printf("[VIEWER] Race=%s skeleton=%d joints meshes=%d textures=%d lower=%s upper=%s%n",
-                race.name(),
-                skeleton.joints().size(),
-                meshes.size(),
-                textureSources.size(),
-                idleLower != null ? idleLower.sectionId() : "missing",
-                idleUpper != null ? idleUpper.sectionId() : "missing");
+        log.info(String.format("[VIEWER] Race=%s skeleton=%d joints meshes=%d textures=%d lower=%s upper=%s", race.name(), skeleton.joints().size(), meshes.size(), textureSources.size(), idleLower != null ? idleLower.sectionId() : "missing", idleUpper != null ? idleUpper.sectionId() : "missing"));
 
         return new LoadedCharacter(skeleton, meshes, textureSources, slot0Animations, slot1Animations, bounds.radius(), bounds.feetOffsetY(), modelOffset, actualModelIds);
     }

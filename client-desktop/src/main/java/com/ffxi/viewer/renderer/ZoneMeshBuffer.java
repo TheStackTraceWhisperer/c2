@@ -1,6 +1,6 @@
 package com.ffxi.viewer.renderer;
 
-import com.ffxi.viewer.model.ZoneMeshMath;
+import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshVertex;
 import org.lwjgl.BufferUtils;

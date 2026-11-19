@@ -1,5 +1,6 @@
 package com.example.client.desktop.state;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.client.desktop.camera.Camera;
 import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
@@ -17,12 +18,15 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class InGameStateTest {
 
     @Test
     @DisplayName("InGameState can locate and read South San d'Oria DAT bytes")
     void testLoadZoneBytes() {
+        assumeTrue(FfxiPathConfig.resolveRomFile("ROM/1/31.DAT").isPresent(),
+                "Retail FFXI ROM/1/31.DAT not found under " + FfxiPathConfig.resolveFfxiInstallDirectory());
         InGameState state = createTestState(0L);
         byte[] bytes = state.loadZoneBytes(230);
 
@@ -33,6 +37,8 @@ class InGameStateTest {
     @Test
     @DisplayName("InGameState can locate and read West Ronfaure DAT bytes")
     void testLoadZoneBytesWestRonfaure() {
+        assumeTrue(FfxiPathConfig.resolveRomFile("ROM/1/30.DAT").isPresent(),
+                "Retail FFXI ROM/1/30.DAT not found under " + FfxiPathConfig.resolveFfxiInstallDirectory());
         InGameState state = createTestState(0L);
         byte[] bytes = state.loadZoneBytes(100);
 

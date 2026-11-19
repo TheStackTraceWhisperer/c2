@@ -13,7 +13,7 @@ import org.joml.Matrix4f;
  */
 @Getter
 @Setter
-public class SceneActor {
+public class SceneActor implements AutoCloseable {
 
     public enum ActorType {
         PLAYER,
@@ -65,9 +65,14 @@ public class SceneActor {
         this.targetZ = z;
     }
 
+    public void setYaw(float yaw) {
+        this.yaw = normalizeYaw(yaw);
+    }
+
     public void setRotation(float yaw) {
-        this.yaw = yaw;
-        this.targetYaw = yaw;
+        float norm = normalizeYaw(yaw);
+        this.yaw = norm;
+        this.targetYaw = norm;
     }
 
     /**
@@ -78,7 +83,7 @@ public class SceneActor {
         this.targetX = tx;
         this.targetY = ty;
         this.targetZ = tz;
-        this.targetYaw = tYaw;
+        this.targetYaw = normalizeYaw(tYaw);
         this.vx = velX;
         this.vy = velY;
         this.vz = velZ;
@@ -97,24 +102,21 @@ public class SceneActor {
             float distSq = dx * dx + dy * dy + dz * dz;
 
             if (distSq > 400.0f) {
-                // Hard snap on large teleport / initial spawn (20m)
                 x = targetX;
                 y = targetY;
                 z = targetZ;
             } else {
-                // Exponential decay approach towards target with velocity prediction
                 float blend = 1.0f - (float) Math.exp(-15.0f * dt);
                 x += dx * blend + vx * dt * (1.0f - blend);
                 y += dy * blend + vy * dt * (1.0f - blend);
                 z += dz * blend + vz * dt * (1.0f - blend);
             }
 
-            // Authentic turn-rate easing from vana-client client/mod.rs (1.0 - (1.0 - rate)^ticks)
             float diff = (targetYaw - yaw) % 360.0f;
             if (diff > 180.0f) diff -= 360.0f;
             else if (diff < -180.0f) diff += 360.0f;
             float turnFactor = 1.0f - (float) Math.pow(1.0f - 0.15f, dt * 60.0f);
-            yaw += diff * turnFactor;
+            yaw = normalizeYaw(yaw + diff * turnFactor);
         }
 
         float speed = isLocalPlayer ? movementSpeed : (float) Math.hypot(vx, vz);
@@ -131,5 +133,24 @@ public class SceneActor {
             return;
         }
         visualModel.render(shader, proj, view, x, y, z, yaw);
+    }
+
+    @Override
+    public void close() {
+        if (visualModel != null) {
+            try {
+                visualModel.close();
+            } catch (Exception ignored) {
+            }
+            visualModel = null;
+        }
+    }
+
+    private static float normalizeYaw(float degrees) {
+        float norm = degrees % 360.0f;
+        if (norm < 0.0f) {
+            norm += 360.0f;
+        }
+        return norm == 360.0f ? 0.0f : norm;
     }
 }

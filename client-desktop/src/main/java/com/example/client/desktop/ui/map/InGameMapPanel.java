@@ -167,9 +167,10 @@ public class InGameMapPanel implements AutoCloseable {
         float xOff = (zm != null) ? zm.xOffset() : -304.0f;
         float yOff = (zm != null) ? zm.yOffset() : -304.0f;
 
-        // Compute player's map coordinate & grid
-        float pMapX = 0.5f + (playerX / span) * 512.0f - xOff;
-        float pMapY = -0.5f + (-playerZ / span) * 512.0f - yOff;
+        // Compute player's map coordinate & grid (retail ZoneMapTable convention: mapY uses -worldZ)
+        float[] playerMapPx = worldToMapPixel(playerX, playerZ, span, xOff, yOff);
+        float pMapX = playerMapPx[0];
+        float pMapY = playerMapPx[1];
         float pNormX = pMapX / 512.0f;
         float pNormY = pMapY / 512.0f;
         String playerGridStr = formatGridCoord(pMapX, pMapY);
@@ -210,8 +211,9 @@ public class InGameMapPanel implements AutoCloseable {
             for (ZoneInteraction zi : zoneInteractions) {
                 float mx = zi.getPosition().x();
                 float mz = zi.getPosition().z();
-                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
-                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
+                float[] lmMapPx = worldToMapPixel(mx, mz, span, xOff, yOff);
+                float lmMapX = lmMapPx[0];
+                float lmMapY = lmMapPx[1];
                 String grid = formatGridCoord(lmMapX, lmMapY);
 
                 if (zi.isZoneLine()) {
@@ -240,8 +242,9 @@ public class InGameMapPanel implements AutoCloseable {
             for (ClientState.RemoteEntityState entity : remoteEntities) {
                 float mx = entity.x();
                 float mz = entity.z();
-                float lmMapX = 0.5f + (mx / span) * 512.0f - xOff;
-                float lmMapY = -0.5f + (-mz / span) * 512.0f - yOff;
+                float[] lmMapPx = worldToMapPixel(mx, mz, span, xOff, yOff);
+                float lmMapX = lmMapPx[0];
+                float lmMapY = lmMapPx[1];
                 String grid = formatGridCoord(lmMapX, lmMapY);
 
                 boolean isNpc = entity.mainJobId() == JobId.NPC;
@@ -260,8 +263,9 @@ public class InGameMapPanel implements AutoCloseable {
         DynamicMapMarker hoveredMarker = null;
 
         for (DynamicMapMarker m : markers) {
-            float lmMapX = 0.5f + (m.worldX() / span) * 512.0f - xOff;
-            float lmMapY = -0.5f + (-m.worldZ() / span) * 512.0f - yOff;
+            float[] lmMapPx = worldToMapPixel(m.worldX(), m.worldZ(), span, xOff, yOff);
+            float lmMapX = lmMapPx[0];
+            float lmMapY = lmMapPx[1];
 
             // Only draw if within map bounds
             if (lmMapX < -20.0f || lmMapX > 532.0f || lmMapY < -20.0f || lmMapY > 532.0f) {
@@ -324,6 +328,12 @@ public class InGameMapPanel implements AutoCloseable {
                         span, scaleMeters, xOff, yOff, markers.size()));
 
         ImGui.end();
+    }
+
+    public static float[] worldToMapPixel(float worldX, float worldZ, float span, float xOff, float yOff) {
+        float mapX = 0.5f + (worldX / span) * 512.0f - xOff;
+        float mapY = -0.5f + (-worldZ / span) * 512.0f - yOff;
+        return new float[]{mapX, mapY};
     }
 
     public static String formatGridCoord(float mapPxX, float mapPxY) {

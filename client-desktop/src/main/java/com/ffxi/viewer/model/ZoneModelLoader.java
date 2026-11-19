@@ -1,11 +1,13 @@
 package com.ffxi.viewer.model;
 
+import lombok.extern.slf4j.Slf4j;
 import com.ffxi.crypto.KeyTables;
 
 import com.ffxi.io.ByteReader;
 import com.ffxi.io.FileTableManager;
 import com.ffxi.io.FileUtil;
 import com.ffxi.model.DatResourceGraph;
+import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.model.DirectoryResource;
 import com.ffxi.model.ResourceNode;
 import com.ffxi.model.TextureResource;
@@ -36,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+@Slf4j
 public final class ZoneModelLoader {
     private static final float MASK_DISCARD_THRESHOLD = 0.375f;
 
@@ -233,16 +236,15 @@ public final class ZoneModelLoader {
             }
         }
 
-        System.out.printf("[LOADER] Zone %d: %d meshes total, %d with objects, %d standalone, %d chunk instances%n",
-                zoneId, allMeshes.size(), meshesWithObjects, meshesWithoutObjects, totalChunkInstances);
+        log.info(String.format("[LOADER] Zone %d: %d meshes total, %d with objects, %d standalone, %d chunk instances", zoneId, allMeshes.size(), meshesWithObjects, meshesWithoutObjects, totalChunkInstances));
 
         ZoneCollisionSystem collisionSystem = null;
         ZoneCollisionMap collisionMap = findCollisionMap(zoneDat.graph().rootDirectory());
         if (collisionMap != null) {
             collisionSystem = new ZoneCollisionSystem(collisionMap);
-            System.out.printf("[LOADER] Zone %d: collision map loaded%n", zoneId);
+            log.info(String.format("[LOADER] Zone %d: collision map loaded", zoneId));
         } else {
-            System.out.printf("[LOADER] Zone %d: no collision map found%n", zoneId);
+            log.info(String.format("[LOADER] Zone %d: no collision map found", zoneId));
         }
 
         return new LoadedZone(zoneId, zoneName, chunkInstances, textureSources, collisionSystem);

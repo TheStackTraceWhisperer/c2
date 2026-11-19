@@ -8,7 +8,7 @@ import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.model.CharacterModelLoader;
 import com.ffxi.viewer.model.LoadedCharacter;
 import com.ffxi.viewer.model.LoadedZone;
-import com.ffxi.viewer.model.ZoneMeshMath;
+import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import com.ffxi.viewer.renderer.FontMojiRenderer;

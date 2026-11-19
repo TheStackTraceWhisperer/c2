@@ -16,10 +16,6 @@
 
   <dependencies>
     <dependency>
-      <groupId>com.example</groupId>
-      <artifactId>common-protocol</artifactId>
-    </dependency>
-    <dependency>
       <groupId>org.joml</groupId>
       <artifactId>joml</artifactId>
     </dependency>

@@ -1,6 +1,8 @@
 package com.ffxi.model;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -18,8 +20,11 @@ public final class ZoneCollisionMap {
                             int blockWidth, int blockLength,
                             int subBlocksX, int subBlocksZ,
                             ZoneCollisionObjectGroup[][] grid) {
-        this.numBlocksX = numBlocksWide * subBlocksX;
-        this.numBlocksZ = numBlocksLong * subBlocksZ;
+        // Clamp degenerate sub-block counts to 1 to avoid division by zero.
+        subBlocksX = Math.max(1, subBlocksX);
+        subBlocksZ = Math.max(1, subBlocksZ);
+        this.numBlocksX = Math.max(0, numBlocksWide) * subBlocksX;
+        this.numBlocksZ = Math.max(0, numBlocksLong) * subBlocksZ;
         this.blockWidth = blockWidth;
         this.blockLength = blockLength;
         this.subBlocksX = subBlocksX;
@@ -51,6 +56,9 @@ public final class ZoneCollisionMap {
         float halfL = (float) (blockLength * numBlocksLong) / 2.0f;
         float cellW = (float) blockWidth / subBlocksX;
         float cellL = (float) blockLength / subBlocksZ;
+        if (!(cellW > 0.0f) || !(cellL > 0.0f)) {
+            return new int[]{-1, -1};
+        }
         int bx = (int) ((fx + halfW) / cellW);
         int bz = (int) ((fz + halfL) / cellL);
         return new int[]{bx, bz};
@@ -58,6 +66,9 @@ public final class ZoneCollisionMap {
 
     private ZoneCollisionObjectGroup getGroup(int bx, int bz) {
         if (bx < 0 || bx >= numBlocksX || bz < 0 || bz >= numBlocksZ) {
+            return null;
+        }
+        if (grid == null || bz >= grid.length || grid[bz] == null || bx >= grid[bz].length) {
             return null;
         }
         return grid[bz][bx];
@@ -89,15 +100,30 @@ public final class ZoneCollisionMap {
 
     /** Returns all unique collision objects placed in this zone collision map. */
     public List<ZoneCollisionObject> allObjects() {
-        Set<ZoneCollisionObject> unique = new LinkedHashSet<>();
-        for (int z = 0; z < numBlocksZ; z++) {
-            for (int x = 0; x < numBlocksX; x++) {
-                ZoneCollisionObjectGroup g = grid[z][x];
-                if (g != null) {
-                    unique.addAll(g.objects());
+        if (grid == null) {
+            return new ArrayList<>();
+        }
+        // Identity-based de-duplication: ZoneCollisionObject is a record over float[] so equals()
+        // would compare array references (and be expensive / unreliable).
+        Set<ZoneCollisionObject> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<ZoneCollisionObject> result = new ArrayList<>();
+        for (int z = 0; z < numBlocksZ && z < grid.length; z++) {
+            ZoneCollisionObjectGroup[] row = grid[z];
+            if (row == null) {
+                continue;
+            }
+            for (int x = 0; x < numBlocksX && x < row.length; x++) {
+                ZoneCollisionObjectGroup g = row[x];
+                if (g == null || g.objects() == null) {
+                    continue;
+                }
+                for (ZoneCollisionObject o : g.objects()) {
+                    if (o != null && seen.add(o)) {
+                        result.add(o);
+                    }
                 }
             }
         }
-        return new ArrayList<>(unique);
+        return result;
     }
 }

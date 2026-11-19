@@ -1,8 +1,8 @@
 package com.ffxi.viewer.shader;
 
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -13,14 +13,42 @@ import static org.lwjgl.opengl.GL33C.*;
 /**
  * Screen-Space Ambient Occlusion (SSAO) Renderer.
  * Implements a high-performance SSAO pipeline for FFXI map geometry:
- * 1. Geometry Pass: Outputs view-space normals and linear depth into a G-Buffer FBO.
+ * 1. Geometry Pass: Outputs view-space normals and depth into a G-Buffer FBO using an dedicated G-buffer shader.
  * 2. SSAO Pass: Evaluates a 32-sample cosine-weighted hemisphere kernel with a 4x4 noise texture.
- * 3. Blur Pass: Edge-preserving 4x4 bilateral box blur to eliminate sampling noise.
- * Produces contact shadows and ambient darkening in corners, crevices, under buildings, and arches.
+ * 3. Blur Pass: Edge-preserving 4x4 box blur to eliminate sampling noise.
  */
 public final class SsaoRenderer implements AutoCloseable {
 
     public static final int KERNEL_SIZE = 32;
+
+    private static final String GEOM_VERT_SRC = """
+            #version 330 core
+            layout (location = 0) in vec3 aPos;
+            layout (location = 1) in vec3 aNormal;
+
+            uniform mat4 uProjMatrix;
+            uniform mat4 uViewMatrix;
+            uniform mat4 uModelMatrix;
+
+            out vec3 vViewNormal;
+
+            void main() {
+                mat3 normalMatrix = transpose(inverse(mat3(uViewMatrix * uModelMatrix)));
+                vec3 n = normalMatrix * aNormal;
+                vViewNormal = length(n) > 1e-4 ? normalize(n) : vec3(0.0, 0.0, 1.0);
+                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(aPos, 1.0);
+            }
+            """;
+
+    private static final String GEOM_FRAG_SRC = """
+            #version 330 core
+            in vec3 vViewNormal;
+            layout (location = 0) out vec4 gNormalOut;
+
+            void main() {
+                gNormalOut = vec4(normalize(vViewNormal), 1.0);
+            }
+            """;
 
     private static final String QUAD_VERT_SRC = """
             #version 330 core
@@ -72,17 +100,15 @@ public final class SsaoRenderer implements AutoCloseable {
                 vec2 noiseScale = uScreenSize / 4.0;
                 vec3 randomVec = normalize(texture(texNoise, vTexCoord * noiseScale).xyz);
 
-                // Gram-Schmidt process to create tangent-to-view space matrix
                 vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
                 vec3 bitangent = cross(normal, tangent);
                 mat3 TBN = mat3(tangent, bitangent, normal);
 
                 float occlusion = 0.0;
                 for (int i = 0; i < 32; ++i) {
-                    vec3 samplePos = TBN * samples[i]; // From tangent to view space
+                    vec3 samplePos = TBN * samples[i];
                     samplePos = fragPos + samplePos * uRadius;
 
-                    // Project sample position to screen space UV
                     vec4 offset = vec4(samplePos, 1.0);
                     offset = uProjMatrix * offset;
                     offset.xyz /= offset.w;
@@ -91,7 +117,6 @@ public final class SsaoRenderer implements AutoCloseable {
                     float sampleDepth = texture(gDepth, offset.xy).r;
                     vec3 samplePosRecon = reconstructViewPos(offset.xy, sampleDepth);
 
-                    // Range check & accumulate
                     float rangeCheck = smoothstep(0.0, 1.0, uRadius / max(0.001, abs(fragPos.z - samplePosRecon.z)));
                     occlusion += (samplePosRecon.z >= samplePos.z + uBias ? 1.0 : 0.0) * rangeCheck;
                 }
@@ -136,8 +161,28 @@ public final class SsaoRenderer implements AutoCloseable {
 
     private int noiseTextureId;
 
+    private final int geometryProgram;
     private final int ssaoProgram;
     private final int blurProgram;
+
+    // Cached uniform locations
+    private final int uGeomProjLoc;
+    private final int uGeomViewLoc;
+    private final int uGeomModelLoc;
+
+    private final int uSsaoGNormalLoc;
+    private final int uSsaoGDepthLoc;
+    private final int uSsaoTexNoiseLoc;
+    private final int uSsaoProjLoc;
+    private final int uSsaoInvProjLoc;
+    private final int uSsaoSamplesLoc;
+    private final int uSsaoScreenSizeLoc;
+    private final int uSsaoRadiusLoc;
+    private final int uSsaoBiasLoc;
+    private final int uSsaoPowerLoc;
+
+    private final int uBlurInputLoc;
+    private final int uBlurTexelSizeLoc;
 
     private final int quadVaoId;
     private final int quadVboId;
@@ -148,11 +193,29 @@ public final class SsaoRenderer implements AutoCloseable {
         this.width = Math.max(640, initialWidth);
         this.height = Math.max(360, initialHeight);
 
-        // 1. Compile SSAO shader
-        ssaoProgram = createProgram(QUAD_VERT_SRC, SSAO_FRAG_SRC);
-        blurProgram = createProgram(QUAD_VERT_SRC, BLUR_FRAG_SRC);
+        geometryProgram = GlShaderUtil.createProgram(GEOM_VERT_SRC, GEOM_FRAG_SRC, "SsaoGeometry");
+        ssaoProgram = GlShaderUtil.createProgram(QUAD_VERT_SRC, SSAO_FRAG_SRC, "SsaoKernel");
+        blurProgram = GlShaderUtil.createProgram(QUAD_VERT_SRC, BLUR_FRAG_SRC, "SsaoBlur");
 
-        // 2. Build full-screen quad VAO
+        uGeomProjLoc = glGetUniformLocation(geometryProgram, "uProjMatrix");
+        uGeomViewLoc = glGetUniformLocation(geometryProgram, "uViewMatrix");
+        uGeomModelLoc = glGetUniformLocation(geometryProgram, "uModelMatrix");
+
+        uSsaoGNormalLoc = glGetUniformLocation(ssaoProgram, "gNormal");
+        uSsaoGDepthLoc = glGetUniformLocation(ssaoProgram, "gDepth");
+        uSsaoTexNoiseLoc = glGetUniformLocation(ssaoProgram, "texNoise");
+        uSsaoProjLoc = glGetUniformLocation(ssaoProgram, "uProjMatrix");
+        uSsaoInvProjLoc = glGetUniformLocation(ssaoProgram, "uInvProjMatrix");
+        uSsaoSamplesLoc = glGetUniformLocation(ssaoProgram, "samples");
+        uSsaoScreenSizeLoc = glGetUniformLocation(ssaoProgram, "uScreenSize");
+        uSsaoRadiusLoc = glGetUniformLocation(ssaoProgram, "uRadius");
+        uSsaoBiasLoc = glGetUniformLocation(ssaoProgram, "uBias");
+        uSsaoPowerLoc = glGetUniformLocation(ssaoProgram, "uPower");
+
+        uBlurInputLoc = glGetUniformLocation(blurProgram, "ssaoInput");
+        uBlurTexelSizeLoc = glGetUniformLocation(blurProgram, "uTexelSize");
+
+        // Build full-screen quad VAO
         float[] quadVertices = {
                 -1.0f,  1.0f, 0.0f, 1.0f,
                 -1.0f, -1.0f, 0.0f, 0.0f,
@@ -173,25 +236,25 @@ public final class SsaoRenderer implements AutoCloseable {
         glEnableVertexAttribArray(1);
         glBindVertexArray(0);
 
-        // 3. Generate 32-sample hemisphere kernel
+        // Generate 32-sample hemisphere kernel
         Random rng = new Random(42);
         for (int i = 0; i < KERNEL_SIZE; i++) {
             float x = rng.nextFloat() * 2.0f - 1.0f;
             float y = rng.nextFloat() * 2.0f - 1.0f;
-            float z = rng.nextFloat(); // Hemisphere (+Z)
+            float z = rng.nextFloat();
             float len = (float) Math.sqrt(x * x + y * y + z * z);
             if (len > 1e-4f) {
                 x /= len; y /= len; z /= len;
             }
             float scale = (float) i / (float) KERNEL_SIZE;
-            scale = 0.1f + scale * scale * (1.0f - 0.1f); // Accelerate samples closer to origin
+            scale = 0.1f + scale * scale * (1.0f - 0.1f);
             x *= scale; y *= scale; z *= scale;
 
             kernelBuffer.put(x).put(y).put(z);
         }
         kernelBuffer.flip();
 
-        // 4. Generate 4x4 noise texture
+        // Generate 4x4 noise texture
         ByteBuffer noiseBuf = BufferUtils.createByteBuffer(16 * 3 * 4);
         for (int i = 0; i < 16; i++) {
             float nx = rng.nextFloat() * 2.0f - 1.0f;
@@ -213,7 +276,6 @@ public final class SsaoRenderer implements AutoCloseable {
     }
 
     private void initFramebuffers() {
-        // G-Buffer FBO
         gFboId = glGenFramebuffers();
         glBindFramebuffer(GL_FRAMEBUFFER, gFboId);
 
@@ -237,10 +299,10 @@ public final class SsaoRenderer implements AutoCloseable {
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
             throw new IllegalStateException("G-Buffer FBO incomplete");
         }
 
-        // SSAO FBO
         ssaoFboId = glGenFramebuffers();
         glBindFramebuffer(GL_FRAMEBUFFER, ssaoFboId);
         ssaoColorTextureId = glGenTextures();
@@ -250,7 +312,6 @@ public final class SsaoRenderer implements AutoCloseable {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorTextureId, 0);
 
-        // Blur FBO
         blurFboId = glGenFramebuffers();
         glBindFramebuffer(GL_FRAMEBUFFER, blurFboId);
         blurColorTextureId = glGenTextures();
@@ -274,7 +335,7 @@ public final class SsaoRenderer implements AutoCloseable {
     }
 
     /**
-     * Binds G-Buffer FBO to render view-space normals and depth.
+     * Binds G-Buffer FBO and the internal G-buffer geometry shader program.
      */
     public void beginGeometryPass() {
         glBindFramebuffer(GL_FRAMEBUFFER, gFboId);
@@ -282,13 +343,30 @@ public final class SsaoRenderer implements AutoCloseable {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
+        glUseProgram(geometryProgram);
+    }
+
+    /**
+     * Binds G-Buffer FBO and uploads projection & view matrices to the G-buffer geometry shader.
+     */
+    public void beginGeometryPass(Matrix4f projMatrix, Matrix4f viewMatrix) {
+        beginGeometryPass();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uGeomProjLoc, false, projMatrix.get(stack.mallocFloat(16)));
+            glUniformMatrix4fv(uGeomViewLoc, false, viewMatrix.get(stack.mallocFloat(16)));
+        }
+    }
+
+    public void setGeometryModelMatrix(Matrix4f modelMatrix) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uGeomModelLoc, false, modelMatrix.get(stack.mallocFloat(16)));
+        }
     }
 
     /**
      * Evaluates SSAO pass and optional bilateral blur pass.
      */
     public void computeSsao(Matrix4f projMatrix, float radius, float bias, float power, boolean enableBlur) {
-        // 1. SSAO Generation Pass
         glBindFramebuffer(GL_FRAMEBUFFER, ssaoFboId);
         glViewport(0, 0, width, height);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -298,35 +376,31 @@ public final class SsaoRenderer implements AutoCloseable {
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, gNormalTextureId);
-        glUniform1i(glGetUniformLocation(ssaoProgram, "gNormal"), 0);
+        glUniform1i(uSsaoGNormalLoc, 0);
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, gDepthTextureId);
-        glUniform1i(glGetUniformLocation(ssaoProgram, "gDepth"), 1);
+        glUniform1i(uSsaoGDepthLoc, 1);
 
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, noiseTextureId);
-        glUniform1i(glGetUniformLocation(ssaoProgram, "texNoise"), 2);
-
-        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
-        projMatrix.get(fb);
-        glUniformMatrix4fv(glGetUniformLocation(ssaoProgram, "uProjMatrix"), false, fb);
+        glUniform1i(uSsaoTexNoiseLoc, 2);
 
         Matrix4f invProj = new Matrix4f(projMatrix).invert();
-        fb.clear();
-        invProj.get(fb);
-        glUniformMatrix4fv(glGetUniformLocation(ssaoProgram, "uInvProjMatrix"), false, fb);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            glUniformMatrix4fv(uSsaoProjLoc, false, projMatrix.get(stack.mallocFloat(16)));
+            glUniformMatrix4fv(uSsaoInvProjLoc, false, invProj.get(stack.mallocFloat(16)));
+        }
 
-        glUniform3fv(glGetUniformLocation(ssaoProgram, "samples"), kernelBuffer);
-        glUniform2f(glGetUniformLocation(ssaoProgram, "uScreenSize"), (float) width, (float) height);
-        glUniform1f(glGetUniformLocation(ssaoProgram, "uRadius"), radius);
-        glUniform1f(glGetUniformLocation(ssaoProgram, "uBias"), bias);
-        glUniform1f(glGetUniformLocation(ssaoProgram, "uPower"), power);
+        glUniform3fv(uSsaoSamplesLoc, kernelBuffer);
+        glUniform2f(uSsaoScreenSizeLoc, (float) width, (float) height);
+        glUniform1f(uSsaoRadiusLoc, radius);
+        glUniform1f(uSsaoBiasLoc, bias);
+        glUniform1f(uSsaoPowerLoc, power);
 
         glBindVertexArray(quadVaoId);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-        // 2. SSAO Blur Pass
         if (enableBlur) {
             glBindFramebuffer(GL_FRAMEBUFFER, blurFboId);
             glClear(GL_COLOR_BUFFER_BIT);
@@ -334,8 +408,8 @@ public final class SsaoRenderer implements AutoCloseable {
             glUseProgram(blurProgram);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, ssaoColorTextureId);
-            glUniform1i(glGetUniformLocation(blurProgram, "ssaoInput"), 0);
-            glUniform2f(glGetUniformLocation(blurProgram, "uTexelSize"), 1.0f / width, 1.0f / height);
+            glUniform1i(uBlurInputLoc, 0);
+            glUniform2f(uBlurTexelSizeLoc, 1.0f / width, 1.0f / height);
 
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }
@@ -370,39 +444,13 @@ public final class SsaoRenderer implements AutoCloseable {
         if (gFboId != 0) glDeleteFramebuffers(gFboId);
     }
 
-    private static int createProgram(String vsSrc, String fsSrc) {
-        int vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, vsSrc);
-        glCompileShader(vs);
-        if (glGetShaderi(vs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Vertex compile error: " + glGetShaderInfoLog(vs));
-        }
-
-        int fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, fsSrc);
-        glCompileShader(fs);
-        if (glGetShaderi(fs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Fragment compile error: " + glGetShaderInfoLog(fs));
-        }
-
-        int prog = glCreateProgram();
-        glAttachShader(prog, vs);
-        glAttachShader(prog, fs);
-        glLinkProgram(prog);
-        if (glGetProgrami(prog, GL_LINK_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Program link error: " + glGetProgramInfoLog(prog));
-        }
-        glDeleteShader(vs);
-        glDeleteShader(fs);
-        return prog;
-    }
-
     @Override
     public void close() {
         cleanupTexturesAndFbos();
         if (noiseTextureId != 0) glDeleteTextures(noiseTextureId);
         if (quadVboId != 0) glDeleteBuffers(quadVboId);
         if (quadVaoId != 0) glDeleteVertexArrays(quadVaoId);
+        if (geometryProgram != 0) glDeleteProgram(geometryProgram);
         if (ssaoProgram != 0) glDeleteProgram(ssaoProgram);
         if (blurProgram != 0) glDeleteProgram(blurProgram);
     }

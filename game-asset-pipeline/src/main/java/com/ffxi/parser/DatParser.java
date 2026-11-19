@@ -1,44 +1,100 @@
 package com.ffxi.parser;
 
+import com.ffxi.crypto.KeyTables;
 import com.ffxi.crypto.ZoneDecryptor;
 import com.ffxi.io.ByteReader;
 import com.ffxi.model.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class DatParser {
 
+    /** Maximum nesting of zone space-partition nodes accepted from untrusted data. */
+    static final int MAX_SPACE_TREE_DEPTH = 64;
+
+    /** Size in bytes of a section header as laid out by {@link SectionHeader#read(ByteReader)}. */
+    private static final int SECTION_HEADER_SIZE = 0x10;
+
+    /** Smallest serialized space-partition node: 8 vectors + 6 dwords. */
+    private static final int MIN_SPACE_NODE_BYTES = 8 * 12 + 24;
+
+    /** Upper bound on zone collision grid cells accepted from untrusted data. */
+    private static final long MAX_COLLISION_GRID_CELLS = 1L << 22;
+
+    /**
+     * Lists the section headers of a DAT. This is a read-only scan: section headers are not encrypted, so
+     * neither a copy of the data nor any decryption is required. Sections with an unknown type code are
+     * not returned (their size is still honoured so the scan can continue past them).
+     */
     public static List<SectionHeader> parseSections(ByteReader byteReader) {
         List<SectionHeader> headers = new ArrayList<>();
         if (byteReader == null) return headers;
-        ByteReader workingReader = copyReader(byteReader);
+        ByteReader scanReader = new ByteReader(byteReader.getBytes(), byteReader.getResourceName());
+        scanReader.setPosition(byteReader.getPosition());
 
-        while (workingReader.hasMore()) {
-            if (workingReader.remaining() < 0x10) break;
-
-            SectionHeader header = new SectionHeader();
-            header.read(workingReader);
-            headers.add(header);
-
-            if (header.getSectionType() == SectionType.S1C_ZoneDef) {
-                int currentPos = workingReader.getPosition();
-                ZoneDecryptor.decryptZoneObjects(header, workingReader);
-                workingReader.setPosition(currentPos);
-            } else if (header.getSectionType() == SectionType.S2E_ZoneMesh) {
-                int currentPos = workingReader.getPosition();
-                ZoneDecryptor.decryptZoneMesh(header, workingReader);
-                workingReader.setPosition(currentPos);
+        while (scanReader.hasMore()) {
+            if (scanReader.remaining() < SECTION_HEADER_SIZE) break;
+            int start = scanReader.getPosition();
+            SectionHeader header = readHeaderOrNull(scanReader);
+            int nextOffset;
+            if (header != null) {
+                headers.add(header);
+                nextOffset = header.getNextSectionOffset();
+            } else {
+                nextOffset = peekNextSectionOffset(scanReader.getBytes(), start);
             }
-
-            int nextOffset = header.getNextSectionOffset();
-            if (nextOffset <= header.getSectionStartPosition() || nextOffset > workingReader.getBytes().length) {
+            if (nextOffset <= start || nextOffset > scanReader.getBytes().length) {
                 break;
             }
-            workingReader.setPosition(nextOffset);
+            scanReader.setPosition(nextOffset);
         }
 
         return headers;
+    }
+
+    /**
+     * Reads a section header, returning {@code null} (instead of throwing) when the section type code is
+     * unknown. The reader position is unspecified afterwards; callers must reposition it.
+     */
+    private static SectionHeader readHeaderOrNull(ByteReader reader) {
+        int start = reader.getPosition();
+        if (!knownSectionTypeAt(reader.getBytes(), start)) {
+            return null;
+        }
+        SectionHeader header = new SectionHeader();
+        header.read(reader);
+        return header;
+    }
+
+    private static boolean knownSectionTypeAt(byte[] bytes, int start) {
+        if (start < 0 || (long) start + 8 > bytes.length) {
+            return false;
+        }
+        int code = readMeta(bytes, start) & 0x7F;
+        for (SectionType type : SectionType.values()) {
+            if (type.getCode() == code) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int readMeta(byte[] bytes, int start) {
+        return (bytes[start + 4] & 0xFF) | ((bytes[start + 5] & 0xFF) << 8)
+                | ((bytes[start + 6] & 0xFF) << 16) | ((bytes[start + 7] & 0xFF) << 24);
+    }
+
+    /** Computes start + size for a header at {@code start} without needing a known type; -1 if unreadable. */
+    private static int peekNextSectionOffset(byte[] bytes, int start) {
+        if (start < 0 || (long) start + 8 > bytes.length) {
+            return -1;
+        }
+        long size = (((long) readMeta(bytes, start) >>> 7) & 0xFFFFF) * 0x10L;
+        long next = start + size;
+        return next > Integer.MAX_VALUE ? -1 : (int) next;
     }
 
     public static DatResourceGraph parseResourceGraph(ByteReader byteReader) {
@@ -46,6 +102,7 @@ public class DatParser {
         if (byteReader == null) {
             return new DatResourceGraph(root);
         }
+        // Header scan is read-only (no copy, no decryption); the only copy + decryption happens below.
         boolean zoneResourceDat = parseSections(byteReader).stream()
                 .anyMatch(header -> header.getSectionType() == SectionType.S1C_ZoneDef
                         || header.getSectionType() == SectionType.S2E_ZoneMesh);
@@ -57,9 +114,51 @@ public class DatParser {
                 break;
             }
 
-            SectionHeader header = new SectionHeader();
-            header.read(workingReader);
+            int sectionStart = workingReader.getPosition();
+            SectionHeader header = readHeaderOrNull(workingReader);
+            if (header == null) {
+                int unknownNext = peekNextSectionOffset(workingReader.getBytes(), sectionStart);
+                log.debug("Skipping section with unknown type at 0x{}", Integer.toHexString(sectionStart));
+                if (unknownNext <= sectionStart || unknownNext > workingReader.getBytes().length) {
+                    break;
+                }
+                workingReader.setPosition(unknownNext);
+                continue;
+            }
 
+            try {
+                currentDirectory = parseGraphSection(header, workingReader, zoneResourceDat, currentDirectory);
+            } catch (RuntimeException e) {
+                log.warn("[{}] Skipping malformed section at 0x{}: {}", header.getSectionId(),
+                        Integer.toHexString(header.getSectionStartPosition()), e.toString());
+            }
+
+            int nextOffset = header.getNextSectionOffset();
+            if (nextOffset <= header.getSectionStartPosition() || nextOffset > workingReader.getBytes().length) {
+                break;
+            }
+            workingReader.setPosition(nextOffset);
+        }
+
+        return new DatResourceGraph(root, byteReader.getResourceName());
+    }
+
+    private static void decryptZoneSection(SectionHeader header, ByteReader reader) {
+        // Fail fast (and loudly) if the key tables were never loaded; this is a caller error, not bad data.
+        KeyTables.keyTable1At(0);
+        int currentPos = reader.getPosition();
+        if (header.getSectionType() == SectionType.S1C_ZoneDef) {
+            ZoneDecryptor.decryptZoneObjects(header, reader);
+        } else {
+            ZoneDecryptor.decryptZoneMesh(header, reader);
+        }
+        reader.setPosition(currentPos);
+    }
+
+    /** Parses one known-type section, returning the (possibly changed) current directory. */
+    private static DirectoryResource parseGraphSection(SectionHeader header, ByteReader workingReader,
+            boolean zoneResourceDat, DirectoryResource currentDirectory) {
+        {
             ResourceNode node;
             switch (header.getSectionType()) {
                 case S01_Directory -> {
@@ -91,16 +190,12 @@ public class DatParser {
                     if (node != null) currentDirectory.addChild(node);
                 }
                 case S1C_ZoneDef -> {
-                    int currentPos = workingReader.getPosition();
-                    ZoneDecryptor.decryptZoneObjects(header, workingReader);
-                    workingReader.setPosition(currentPos);
+                    decryptZoneSection(header, workingReader);
                     node = parseZoneDefSection(header, workingReader);
                     currentDirectory.addChild(node);
                 }
                 case S2E_ZoneMesh -> {
-                    int currentPos = workingReader.getPosition();
-                    ZoneDecryptor.decryptZoneMesh(header, workingReader);
-                    workingReader.setPosition(currentPos);
+                    decryptZoneSection(header, workingReader);
                     node = parseZoneMeshSection(header, workingReader);
                     currentDirectory.addChild(node);
                 }
@@ -125,15 +220,8 @@ public class DatParser {
                     node = null;
                 }
             }
-
-            int nextOffset = header.getNextSectionOffset();
-            if (nextOffset <= header.getSectionStartPosition() || nextOffset > workingReader.getBytes().length) {
-                break;
-            }
-            workingReader.setPosition(nextOffset);
         }
-
-        return new DatResourceGraph(root, byteReader.getResourceName());
+        return currentDirectory;
     }
 
     private static String sectionTypeName(SectionHeader header) {
@@ -143,12 +231,14 @@ public class DatParser {
     private static TextureResource parseTextureSection(SectionHeader header, ByteReader byteReader) {
         // XIM: byteReader.offsetFrom(sectionHeader, 0x10) → position to data start
         byteReader.setPosition(header.getDataStartPosition());
+        requireCanRead(byteReader, getSectionEnd(header, byteReader), 57, "texture header", header.getSectionId());
 
         // XIM: val type = byteReader.next8()
         //      if type != 0x91 && type != 0xA1 && type != 0xB1 → warn, return null
         int type = byteReader.next8();
         if (type != 0x91 && type != 0xA1 && type != 0xB1) {
-            System.err.printf("[WARN] [%s] Don't know how to handle texture type: 0x%02X%n", header.getSectionId(), type);
+            log.warn("[{}] Don't know how to handle texture type: 0x{}", header.getSectionId(),
+                    String.format("%02X", type));
             return null;
         }
 
@@ -224,6 +314,8 @@ public class DatParser {
         int uvOffset = byteReader.next16() + offsetExtension + dataStart;
         String textureName = byteReader.nextString(0x10);
 
+        requireCountFits(byteReader, sectionEnd, (long) weightedSectionCount * ((long) positionCount * 12 + (long) normalCount * 4),
+                1, "weighted mesh chunks", header.getSectionId());
         List<WeightedMeshChunk> chunks = new ArrayList<>(weightedSectionCount);
         for (int i = 0; i < weightedSectionCount; i++) {
             List<Vec3f> positions = new ArrayList<>(positionCount);
@@ -244,6 +336,7 @@ public class DatParser {
         }
 
         byteReader.setPosition(colorOffset);
+        requireCountFits(byteReader, sectionEnd, vertexCount, 4, "weighted mesh colors", header.getSectionId());
         List<BgraColor> colors = new ArrayList<>(vertexCount);
         int colorScaling = zoneResourceDat ? 2 : 1;
         for (int i = 0; i < vertexCount; i++) {
@@ -252,6 +345,7 @@ public class DatParser {
         }
 
         byteReader.setPosition(uvOffset);
+        requireCountFits(byteReader, sectionEnd, vertexCount, 8, "weighted mesh uvs", header.getSectionId());
         List<Vec2f> texCoords = new ArrayList<>(vertexCount);
         for (int i = 0; i < vertexCount; i++) {
             requireCanRead(byteReader, sectionEnd, 8, "weighted mesh uv", header.getSectionId());
@@ -259,11 +353,12 @@ public class DatParser {
         }
 
         byteReader.setPosition(indexOffset);
+        requireCountFits(byteReader, sectionEnd, (long) vertexCount * 2, 1, "weighted mesh indices", header.getSectionId());
         List<Integer> positionIndices = new ArrayList<>(vertexCount);
         for (int i = 0; i < vertexCount; i++) {
             requireCanRead(byteReader, sectionEnd, 2, "weighted mesh position index", header.getSectionId());
             int positionIndex = byteReader.next16();
-            if (positionIndex > positionCount) {
+            if (positionIndex >= positionCount) {
                 throw new IllegalStateException(
                         "[" + header.getSectionId() + "] Position index too large: " + positionIndex);
             }
@@ -274,7 +369,7 @@ public class DatParser {
         for (int i = 0; i < vertexCount; i++) {
             requireCanRead(byteReader, sectionEnd, 2, "weighted mesh normal index", header.getSectionId());
             int normalIndex = byteReader.next16();
-            if (normalIndex > normalCount) {
+            if (normalIndex >= normalCount) {
                 throw new IllegalStateException(
                         "[" + header.getSectionId() + "] Normal index too large: " + normalIndex);
             }
@@ -313,12 +408,13 @@ public class DatParser {
         int sectionEnd = getSectionEnd(header, byteReader);
         int dataStart = header.getDataStartPosition();
 
-        requireCanReadAt(dataStart + 2, sectionEnd, 1, "skeleton joint count", header.getSectionId());
+        requireCanReadAt((long) dataStart, sectionEnd, 4, "skeleton header", header.getSectionId());
         byteReader.setPosition(dataStart);
         int unknownHeaderValue = byteReader.next16();
         int jointCount = byteReader.next8();
 
         byteReader.setPosition(dataStart + 4);
+        requireCountFits(byteReader, sectionEnd, jointCount, 30, "skeleton joints", header.getSectionId());
         List<SkeletonJoint> joints = new ArrayList<>(jointCount);
         for (int i = 0; i < jointCount; i++) {
             requireCanRead(byteReader, sectionEnd, 30, "skeleton joint", header.getSectionId());
@@ -334,6 +430,7 @@ public class DatParser {
         int referenceCount = byteReader.next16();
         int referenceHeaderValue = byteReader.next16();
 
+        requireCountFits(byteReader, sectionEnd, referenceCount, 26, "skeleton joint references", header.getSectionId());
         List<SkeletonJointReference> jointReferences = new ArrayList<>(referenceCount);
         for (int i = 0; i < referenceCount; i++) {
             requireCanRead(byteReader, sectionEnd, 26, "skeleton joint reference", header.getSectionId());
@@ -386,7 +483,7 @@ public class DatParser {
         int dataStart = header.getDataStartPosition();
         byteReader.setPosition(dataStart);
 
-        requireCanRead(byteReader, sectionEnd, 0x22, "skeleton mesh header", header.getSectionId());
+        requireCanRead(byteReader, sectionEnd, 0x2A, "skeleton mesh header", header.getSectionId());
         int flags1 = byteReader.next8();
         int flags2 = byteReader.next8();
         int flags3 = byteReader.next8();
@@ -424,6 +521,7 @@ public class DatParser {
         }
 
         byteReader.setPosition(jointArrayOffset);
+        requireCountFits(byteReader, sectionEnd, jointCount, 2, "skeleton mesh joints", header.getSectionId());
         List<Integer> joints = new ArrayList<>(jointCount);
         for (int i = 0; i < jointCount; i++) {
             requireCanRead(byteReader, sectionEnd, 2, "skeleton mesh joint", header.getSectionId());
@@ -431,7 +529,7 @@ public class DatParser {
         }
 
         byteReader.setPosition(vertexCountsOffset);
-        requireCanRead(byteReader, sectionEnd, vertexCountsEntryCount * 2, "skeleton mesh vertex counts",
+        requireCountFits(byteReader, sectionEnd, vertexCountsEntryCount, 2, "skeleton mesh vertex counts",
                 header.getSectionId());
         if (vertexCountsEntryCount != 2) {
             throw new IllegalStateException("[" + header.getSectionId() + "] Expected only 2 types of counts");
@@ -439,6 +537,10 @@ public class DatParser {
         int singleJointVertexCount = byteReader.next16();
         int doubleJointVertexCount = byteReader.next16();
 
+        // 4 bytes of joint refs per vertex are required further down; reject impossible counts up front.
+        byteReader.setPosition(vertexJointMappingOffset);
+        requireCountFits(byteReader, sectionEnd, (long) singleJointVertexCount + doubleJointVertexCount, 4,
+                "skeleton mesh vertices", header.getSectionId());
         List<SkeletonMeshWorkingVertex> vertices = new ArrayList<>(singleJointVertexCount + doubleJointVertexCount);
         for (int i = 0; i < singleJointVertexCount + doubleJointVertexCount; i++) {
             vertices.add(new SkeletonMeshWorkingVertex(i));
@@ -546,6 +648,8 @@ public class DatParser {
         float movementFactor = byteReader.nextFloat();
 
         byteReader.setPosition(clothLinkDataOffset);
+        requireCountFits(byteReader, sectionEnd, (adjacentLinksSize + diagonalLinksSize) / 4, 8, "skeleton mesh cloth links",
+                header.getSectionId());
         List<SkeletonMeshClothLink> adjacentLinks = new ArrayList<>(adjacentLinksSize / 4);
         for (int i = 0; i < adjacentLinksSize / 4; i++) {
             adjacentLinks.add(readSkeletonMeshClothLink(byteReader, sectionEnd, header.getSectionId()));
@@ -592,16 +696,16 @@ public class DatParser {
             requireCanRead(byteReader, sectionEnd, 4, "skeleton mesh single-joint refs", sectionId);
             SkeletonMeshWorkingVertex vertex = vertices.get(i);
             vertex.jointRef0 = unpackSkeletonMeshJointRef(byteReader.next16());
-            vertex.jointIndex0 = useJointArray ? joints.get(vertex.jointRef0.index()) : vertex.jointRef0.index();
+            vertex.jointIndex0 = useJointArray ? jointAt(joints, vertex.jointRef0.index()) : vertex.jointRef0.index();
             vertex.jointRef1 = unpackSkeletonMeshJointRef(byteReader.next16());
         }
         for (int i = 0; i < doubleJointedCount; i++) {
             requireCanRead(byteReader, sectionEnd, 4, "skeleton mesh double-joint refs", sectionId);
             SkeletonMeshWorkingVertex vertex = vertices.get(singleJointedCount + i);
             vertex.jointRef0 = unpackSkeletonMeshJointRef(byteReader.next16());
-            vertex.jointIndex0 = useJointArray ? joints.get(vertex.jointRef0.index()) : vertex.jointRef0.index();
+            vertex.jointIndex0 = useJointArray ? jointAt(joints, vertex.jointRef0.index()) : vertex.jointRef0.index();
             vertex.jointRef1 = unpackSkeletonMeshJointRef(byteReader.next16());
-            vertex.jointIndex1 = useJointArray ? joints.get(vertex.jointRef1.index()) : vertex.jointRef1.index();
+            vertex.jointIndex1 = useJointArray ? jointAt(joints, vertex.jointRef1.index()) : vertex.jointRef1.index();
         }
     }
 
@@ -680,6 +784,9 @@ public class DatParser {
             List<SkeletonMeshMesh> meshes) {
         requireCanRead(byteReader, sectionEnd, 2, "skeleton mesh tri-strip count", sectionId);
         int triangleCount = byteReader.next16();
+        if (triangleCount == 0) {
+            return;
+        }
         int vertexCount = triangleCount + 2;
         List<SkeletonMeshFaceVertex> meshVertices = new ArrayList<>(vertexCount);
         // XIM layout for first 3 vertices: [idx0][idx1][idx2][u0][v0][u1][v1][u2][v2]
@@ -755,6 +862,9 @@ public class DatParser {
             List<SkeletonMeshMesh> meshes) {
         requireCanRead(byteReader, sectionEnd, 2, "skeleton mesh untextured tri-strip count", sectionId);
         int triangleCount = byteReader.next16();
+        if (triangleCount == 0) {
+            return;
+        }
         int vertexCount = triangleCount + 2;
         int v0 = readSkeletonMeshVertexIndex(byteReader, sectionEnd, sectionId, vertices);
         int v1 = readSkeletonMeshVertexIndex(byteReader, sectionEnd, sectionId, vertices);
@@ -830,9 +940,9 @@ public class DatParser {
         mirrored.n0 = flipSkeletonMeshVector(original.n0, original.jointRef0);
         mirrored.n1 = flipSkeletonMeshVector(original.n1, original.jointRef1);
         mirrored.jointIndex0 = original.jointRef0 == null ? null
-                : (useJointArray ? joints.get(original.jointRef0.flippedIndex()) : original.jointRef0.flippedIndex());
+                : (useJointArray ? jointAt(joints, original.jointRef0.flippedIndex()) : original.jointRef0.flippedIndex());
         mirrored.jointIndex1 = original.jointRef1 == null ? null
-                : (useJointArray ? joints.get(original.jointRef1.flippedIndex()) : original.jointRef1.flippedIndex());
+                : (useJointArray ? jointAt(joints, original.jointRef1.flippedIndex()) : original.jointRef1.flippedIndex());
         mirrored.joint0Weight = original.joint0Weight;
         mirrored.joint1Weight = original.joint1Weight;
         mirrored.jointRef0 = original.jointRef0;
@@ -867,6 +977,7 @@ public class DatParser {
         int frameCount = byteReader.next16();
         float keyFrameDuration = byteReader.nextFloat();
         int keyFrameTableOffset = byteReader.getPosition();
+        requireCountFits(byteReader, sectionEnd, jointCount, 84, "skeleton animation joints", header.getSectionId());
         List<JointAnimation> jointAnimations = new ArrayList<>(jointCount);
 
         for (int i = 0; i < jointCount; i++) {
@@ -943,8 +1054,9 @@ public class DatParser {
 
     private static float[] readAnimationSequence(int offset, int frameCount, ByteReader byteReader, int keyFrameDataOffset,
             int sectionEnd, String sectionId) {
-        int sequencePosition = keyFrameDataOffset + offset * 4;
-        requireCanReadAt(sequencePosition, sectionEnd, frameCount * 4, "skeleton animation keyframe sequence", sectionId);
+        long sequencePositionLong = keyFrameDataOffset + offset * 4L;
+        requireCanReadAt(sequencePositionLong, sectionEnd, frameCount * 4L, "skeleton animation keyframe sequence", sectionId);
+        int sequencePosition = (int) sequencePositionLong;
         int originalPosition = byteReader.getPosition();
         byteReader.setPosition(sequencePosition);
         float[] frames = byteReader.nextFloat(frameCount);
@@ -980,8 +1092,9 @@ public class DatParser {
         List<ZoneObject> zoneObjects = parseZoneObjects(byteReader, sectionEnd, nodeCount, zoneCullingTables.offsetToIndex());
 
         byteReader.setPosition(spacePartitioningTreeOffset + header.getDataStartPosition());
-        ZoneSpacePartitionNode spacePartitioningTreeRoot =
-                parseZoneSpacePartitionNode(byteReader, sectionEnd, header, zoneCullingTables.offsetToIndex());
+        int[] nodeBudget = {2 * (Math.max(0, sectionEnd - header.getDataStartPosition()) / MIN_SPACE_NODE_BYTES) + 16};
+        ZoneSpacePartitionNode spacePartitioningTreeRoot = parseZoneSpacePartitionNode(byteReader, sectionEnd, header,
+                zoneCullingTables.offsetToIndex(), 0, nodeBudget);
 
         byteReader.setPosition(pointLightOffset + header.getDataStartPosition());
         List<String> pointLightLinks = readZonePointLights(byteReader, sectionEnd, header.getSectionId());
@@ -994,7 +1107,7 @@ public class DatParser {
                     collisionMap = parseCollisionMeshData(byteReader, header, sectionEnd,
                             zoneBlocksX, zoneBlocksZ, blockWidth, blockLength, subBlocksX, subBlocksZ, absCollOffset);
                 } catch (Exception e) {
-                    System.err.printf("[WARN] Failed to parse collision mesh for %s: %s%n", header.getSectionId(), e.getMessage());
+                    log.warn("Failed to parse collision mesh for {}: {}", header.getSectionId(), e.getMessage());
                 }
             }
         }
@@ -1041,6 +1154,8 @@ public class DatParser {
         byteReader.next32();
         byteReader.next32();
 
+        byteReader.setPosition(pairsAbsOff);
+        requireCountFits(byteReader, sectionEnd, pairCount, 8, "collision groups", header.getSectionId());
         java.util.Map<Integer, float[]> transformCache = new java.util.LinkedHashMap<>();
         java.util.Map<Integer, List<ZoneCollisionTriangle>> meshCache = new java.util.LinkedHashMap<>();
 
@@ -1055,6 +1170,7 @@ public class DatParser {
             int countFlags = byteReader.next32();
             int groupSize = countFlags & 0x7FF;
 
+            requireCountFits(byteReader, sectionEnd, groupSize, 8, "collision group objects", header.getSectionId());
             List<ZoneCollisionObject> objects = new ArrayList<>(groupSize);
             for (int j = 0; j < groupSize; j++) {
                 int matrixAbsOff = byteReader.next32() + header.getDataStartPosition();
@@ -1074,6 +1190,10 @@ public class DatParser {
 
         int totalX = zoneBlocksX * subBlocksX;
         int totalZ = zoneBlocksZ * subBlocksZ;
+        if ((long) totalX * totalZ > MAX_COLLISION_GRID_CELLS) {
+            throw new IllegalStateException("[" + header.getSectionId() + "] Collision grid too large: " + totalX + "x"
+                    + totalZ);
+        }
         ZoneCollisionObjectGroup[][] grid = new ZoneCollisionObjectGroup[totalZ][totalX];
 
         byteReader.setPosition(mapAbsOff);
@@ -1122,9 +1242,12 @@ public class DatParser {
         int numTris = byteReader.next16();
         byteReader.next16();
 
-        List<ZoneCollisionTriangle> triangles = new ArrayList<>(numTris);
-
         byteReader.setPosition(indexOffset);
+        if ((long) indexOffset < 0 || (long) indexOffset + numTris * 8L > byteReader.getBytes().length) {
+            byteReader.setPosition(saved);
+            throw new IllegalStateException("Collision mesh indices out of range at 0x" + Integer.toHexString(indexOffset));
+        }
+        List<ZoneCollisionTriangle> triangles = new ArrayList<>(numTris);
         for (int i = 0; i < numTris; i++) {
             int rawP0 = byteReader.next16();
             int rawP1 = byteReader.next16();
@@ -1167,6 +1290,7 @@ public class DatParser {
 
     private static List<ZoneObject> parseZoneObjects(ByteReader byteReader, int sectionEnd, int nodeCount,
             java.util.Map<Integer, Integer> cullingTableIndicesByOffset) {
+        requireCountFits(byteReader, sectionEnd, nodeCount, 0x64, "zone objects", "ZoneDef");
         List<ZoneObject> zoneObjects = new ArrayList<>(nodeCount);
         for (int i = 0; i < nodeCount; i++) {
             requireCanRead(byteReader, sectionEnd, 0x64, "zone object", "ZoneDef");
@@ -1241,6 +1365,7 @@ public class DatParser {
             return new ZoneCullingTables(List.of(), java.util.Map.of());
         }
 
+        requireCountFits(byteReader, sectionEnd, indexTableCount, 4, "zone culling tables", sectionId);
         List<List<Integer>> tables = new ArrayList<>(indexTableCount);
         java.util.Map<Integer, Integer> offsetToIndex = new java.util.HashMap<>();
         for (int i = 0; i < indexTableCount; i++) {
@@ -1248,6 +1373,7 @@ public class DatParser {
             offsetToIndex.put(offset, i);
             requireCanRead(byteReader, sectionEnd, 4, "zone culling table", sectionId);
             int currentTableCount = byteReader.next32();
+            requireCountFits(byteReader, sectionEnd, currentTableCount, 4, "zone culling table entries", sectionId);
             List<Integer> table = new ArrayList<>(currentTableCount);
             for (int j = 0; j < currentTableCount; j++) {
                 requireCanRead(byteReader, sectionEnd, 4, "zone culling table entry", sectionId);
@@ -1259,7 +1385,15 @@ public class DatParser {
     }
 
     private static ZoneSpacePartitionNode parseZoneSpacePartitionNode(ByteReader byteReader, int sectionEnd,
-            SectionHeader header, java.util.Map<Integer, Integer> cullingTableIndicesByOffset) {
+            SectionHeader header, java.util.Map<Integer, Integer> cullingTableIndicesByOffset, int depth,
+            int[] nodeBudget) {
+        if (depth > MAX_SPACE_TREE_DEPTH) {
+            throw new IllegalStateException("[" + header.getSectionId() + "] Zone space tree deeper than "
+                    + MAX_SPACE_TREE_DEPTH);
+        }
+        if (--nodeBudget[0] < 0) {
+            throw new IllegalStateException("[" + header.getSectionId() + "] Zone space tree has too many nodes (cycle?)");
+        }
         float minX = Float.POSITIVE_INFINITY;
         float minY = Float.POSITIVE_INFINITY;
         float minZ = Float.POSITIVE_INFINITY;
@@ -1295,12 +1429,14 @@ public class DatParser {
                 continue;
             }
             byteReader.setPosition(childOffset + header.getDataStartPosition());
-            children.add(parseZoneSpacePartitionNode(byteReader, sectionEnd, header, cullingTableIndicesByOffset));
+            children.add(parseZoneSpacePartitionNode(byteReader, sectionEnd, header, cullingTableIndicesByOffset, depth + 1,
+                    nodeBudget));
         }
 
         List<Integer> containedObjects = new ArrayList<>();
         if (leafNode) {
             byteReader.setPosition(idxFileRef);
+            requireCountFits(byteReader, sectionEnd, indexCount, 4, "zone leaf object indices", header.getSectionId());
             for (int i = 0; i < indexCount; i++) {
                 requireCanRead(byteReader, sectionEnd, 4, "zone leaf object index", header.getSectionId());
                 containedObjects.add(byteReader.next32());
@@ -1386,8 +1522,9 @@ public class DatParser {
         // XIM: val section1DataStart = defStart + byteReader.next32()
         int dataOffset = byteReader.next32();
         int section1DataStart = defStart + dataOffset;
-        System.err.printf("[ZONE-PARSE] meshCount0=%d dataOffset=0x%08x defStart=0x%08x section1DataStart=0x%08x%n", 
-            meshCount0, dataOffset, defStart, section1DataStart);
+        log.debug("[ZONE-PARSE] meshCount0={} dataOffset=0x{} defStart=0x{} section1DataStart=0x{}",
+                meshCount0, Integer.toHexString(dataOffset), Integer.toHexString(defStart),
+                Integer.toHexString(section1DataStart));
 
         // "hit"-type models: meshCount0 == 0 → no mesh data
         // XIM: throws if not at sectionEnd
@@ -1491,6 +1628,7 @@ public class DatParser {
         int numIndices = byteReader.next16();
         byteReader.next16(); // unk1
 
+        requireCountFits(byteReader, sectionEnd, numIndices, 2, "zone mesh indices", "ZoneMesh");
         List<Integer> indices = new ArrayList<>(numIndices);
         for (int i = 0; i < numIndices; i++) {
             indices.add(byteReader.next16());
@@ -1519,7 +1657,28 @@ public class DatParser {
     }
 
     private static boolean canRead(ByteReader byteReader, int sectionEnd, int size) {
-        return byteReader.getPosition() >= 0 && byteReader.getPosition() + size <= sectionEnd;
+        return size >= 0 && byteReader.getPosition() >= 0 && (long) byteReader.getPosition() + size <= sectionEnd;
+    }
+
+    /**
+     * Verifies that {@code count} elements of {@code elementSize} bytes fit between the reader position and the
+     * section end. Must be called BEFORE allocating collections sized from untrusted counts.
+     */
+    private static void requireCountFits(ByteReader byteReader, int sectionEnd, long count, long elementSize,
+            String label, String sectionId) {
+        long available = Math.min((long) sectionEnd, (long) byteReader.getBytes().length) - byteReader.getPosition();
+        if (count < 0 || byteReader.getPosition() < 0 || elementSize < 0
+                || (elementSize > 0 && count > available / elementSize)) {
+            throw new IllegalStateException("[" + sectionId + "] Implausible count " + count + " for " + label + " at 0x"
+                    + Integer.toHexString(byteReader.getPosition()));
+        }
+    }
+
+    private static int jointAt(List<Integer> joints, int index) {
+        if (index < 0 || index >= joints.size()) {
+            throw new IllegalStateException("Joint reference " + index + " out of range (" + joints.size() + ")");
+        }
+        return joints.get(index);
     }
 
     private static void requireCanRead(ByteReader byteReader, int sectionEnd, int size, String label, String sectionId) {
@@ -1529,10 +1688,10 @@ public class DatParser {
         }
     }
 
-    private static void requireCanReadAt(int position, int sectionEnd, int size, String label, String sectionId) {
-        if (position < 0 || position + size > sectionEnd) {
+    private static void requireCanReadAt(long position, long sectionEnd, long size, String label, String sectionId) {
+        if (position < 0 || size < 0 || position + size > sectionEnd) {
             throw new IllegalStateException("[" + sectionId + "] Cannot read " + label + " at 0x"
-                    + Integer.toHexString(position));
+                    + Long.toHexString(position));
         }
     }
 

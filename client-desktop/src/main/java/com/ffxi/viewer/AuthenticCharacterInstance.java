@@ -10,11 +10,14 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Encapsulates an authentic retail FFXI character instance (player avatar, remote player, or NPC),
- * including GPU skinned mesh buffers, texture mappings, and locomotion state controller.
+ * including GPU skinned mesh buffers, texture mappings, and a per-actor locomotion state controller.
+ * GPU buffers and texture atlases may be either exclusively owned by this instance or shared from
+ * {@link CharacterAssetCache}.
  */
 public final class AuthenticCharacterInstance implements AutoCloseable {
 
@@ -22,19 +25,41 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
     private final List<CharacterMeshBuffer> meshBuffers;
     private final CharacterTextureLoader textureLoader;
     private final AuthenticLocomotionController locomotion;
+    private final boolean ownsGpuResources;
+    private boolean closed;
 
     public AuthenticCharacterInstance(LoadedCharacter character) {
+        this(
+                character,
+                buildMeshBuffers(character),
+                new CharacterTextureLoader(character.textures()),
+                true
+        );
+    }
+
+    public AuthenticCharacterInstance(
+            LoadedCharacter character,
+            List<CharacterMeshBuffer> meshBuffers,
+            CharacterTextureLoader textureLoader,
+            boolean ownsGpuResources
+    ) {
         this.character = character;
-        this.meshBuffers = new ArrayList<>(character.meshes().size());
-        for (SkeletonMeshMesh mesh : character.meshes()) {
-            this.meshBuffers.add(new CharacterMeshBuffer(mesh));
-        }
-        this.textureLoader = new CharacterTextureLoader(character.textures());
+        this.meshBuffers = ownsGpuResources ? meshBuffers : Collections.unmodifiableList(meshBuffers);
+        this.textureLoader = textureLoader;
+        this.ownsGpuResources = ownsGpuResources;
         this.locomotion = new AuthenticLocomotionController(
                 character.skeleton(),
                 character.slot0Animations(),
                 character.slot1Animations()
         );
+    }
+
+    private static List<CharacterMeshBuffer> buildMeshBuffers(LoadedCharacter character) {
+        List<CharacterMeshBuffer> buffers = new ArrayList<>(character.meshes().size());
+        for (SkeletonMeshMesh mesh : character.meshes()) {
+            buffers.add(new CharacterMeshBuffer(mesh));
+        }
+        return buffers;
     }
 
     public LoadedCharacter getCharacter() {
@@ -43,6 +68,10 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
 
     public AuthenticLocomotionController getLocomotion() {
         return locomotion;
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 
     public void update(float dt, int movementFlags, float horizontalSpeed) {
@@ -58,7 +87,7 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
             float posZ,
             float yawDegrees
     ) {
-        if (shader == null || meshBuffers.isEmpty()) {
+        if (closed || shader == null || meshBuffers.isEmpty()) {
             return;
         }
 
@@ -92,10 +121,16 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
 
     @Override
     public void close() {
-        for (CharacterMeshBuffer mb : meshBuffers) {
-            mb.close();
+        if (closed) {
+            return;
         }
-        meshBuffers.clear();
-        textureLoader.close();
+        closed = true;
+        if (ownsGpuResources) {
+            for (CharacterMeshBuffer mb : meshBuffers) {
+                mb.close();
+            }
+            meshBuffers.clear();
+            textureLoader.close();
+        }
     }
 }

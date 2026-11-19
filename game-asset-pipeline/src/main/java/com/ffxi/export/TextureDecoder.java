@@ -42,24 +42,65 @@ public final class TextureDecoder {
             return null;
         }
 
-        ByteReader reader = new ByteReader(data, section.sectionId());
-        reader.setPosition(dataStartPosition);
-        advanceTextureHeader(reader);
+        try {
+            ByteReader reader = new ByteReader(data, section.sectionId());
+            reader.setPosition(dataStartPosition);
+            advanceTextureHeader(reader);
 
-        return switch (section.textureType()) {
-            case TYPE_PALETTE, TYPE_PALETTE_ALT -> section.bitCount() == 32
-                    ? decodeDirectBgra(reader, width, height)
-                    : decodePalette(reader, width, height, section.textureType() == TYPE_PALETTE_ALT);
-            case TYPE_DXT -> {
-                advanceDxtHeader(reader);
-                yield switch (section.dxtType()) {
-                    case "1TXD" -> decodeDxt1(reader, width, height);
-                    case "3TXD" -> decodeDxt3(reader, width, height);
-                    default -> null;
-                };
+            switch (section.textureType()) {
+                case TYPE_PALETTE, TYPE_PALETTE_ALT -> {
+                    boolean alt = section.textureType() == TYPE_PALETTE_ALT;
+                    int prefix = alt ? 4 : 0;
+                    if (section.bitCount() == 32) {
+                        if (!hasBytes(reader, (long) prefix + rgbaLength)) {
+                            return null;
+                        }
+                        if (alt) {
+                            reader.next32();
+                        }
+                        return decodeDirectBgra(reader, width, height);
+                    }
+                    if (!hasBytes(reader, prefix + PALETTE_SIZE * 4L + (long) width * height)) {
+                        return null;
+                    }
+                    if (alt) {
+                        reader.next32();
+                    }
+                    return decodePalette(reader, width, height);
+                }
+                case TYPE_DXT -> {
+                    advanceDxtHeader(reader);
+                    String dxt = section.dxtType();
+                    int blockBytes = switch (dxt) {
+                        case "1TXD" -> 8;
+                        case "3TXD", "5TXD" -> 16;
+                        default -> 0;
+                    };
+                    if (blockBytes == 0) {
+                        return null;
+                    }
+                    long blocks = ((width + 3L) / 4) * ((height + 3L) / 4);
+                    if (!hasBytes(reader, blocks * blockBytes)) {
+                        return null;
+                    }
+                    int off = reader.getPosition();
+                    return switch (dxt) {
+                        case "1TXD" -> decodeDxt1(data, off, width, height);
+                        case "3TXD" -> decodeDxt3(data, off, width, height);
+                        default -> decodeDxt5(data, off, width, height);
+                    };
+                }
+                default -> {
+                    return null;
+                }
             }
-            default -> null;
-        };
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static boolean hasBytes(ByteReader reader, long needed) {
+        return needed >= 0 && reader.remaining() >= needed;
     }
 
     private static void advanceTextureHeader(ByteReader reader) {
@@ -82,10 +123,7 @@ public final class TextureDecoder {
         reader.next32();
     }
 
-    private static byte[] decodePalette(ByteReader reader, int width, int height, boolean hasAltPalettePrefix) {
-        if (hasAltPalettePrefix) {
-            reader.next32();
-        }
+    private static byte[] decodePalette(ByteReader reader, int width, int height) {
         int[][] palette = new int[PALETTE_SIZE][4];
         for (int i = 0; i < PALETTE_SIZE; i++) {
             int bgra = reader.next32();
@@ -112,36 +150,75 @@ public final class TextureDecoder {
             int destY = height - 1 - y;
             for (int x = 0; x < width; x++) {
                 int bgra = reader.next32();
-                writePixel(
-                        rgba,
-                        width,
-                        x,
-                        destY,
-                        (bgra >>> 16) & 0xFF,
-                        (bgra >>> 8) & 0xFF,
-                        bgra & 0xFF,
-                        (bgra >>> 24) & 0xFF
-                );
+                writePixel(rgba, width, x, destY,
+                        (bgra >>> 16) & 0xFF, (bgra >>> 8) & 0xFF, bgra & 0xFF, (bgra >>> 24) & 0xFF);
             }
         }
         return rgba;
     }
 
-    private static byte[] decodeDxt1(ByteReader reader, int width, int height) {
-        byte[] rgba = new byte[width * height * 4];
+    /**
+     * Decodes DXT1 (BC1) blocks starting at {@code off} into a top-left-origin RGBA array.
+     * Blocks are not flipped vertically. Missing source bytes are treated as an error
+     * ({@link IllegalArgumentException}).
+     */
+    public static byte[] decodeDxt1(byte[] src, int off, int width, int height) {
+        return decodeBlocks(src, off, width, height, 8, false, 0);
+    }
+
+    /** Decodes DXT3 (BC2): 8 bytes explicit 4-bit alpha (little-endian, row-major) + colour block. */
+    public static byte[] decodeDxt3(byte[] src, int off, int width, int height) {
+        return decodeBlocks(src, off, width, height, 16, true, 3);
+    }
+
+    /** Decodes DXT5 (BC3): interpolated alpha block + colour block (4-colour mode). */
+    public static byte[] decodeDxt5(byte[] src, int off, int width, int height) {
+        return decodeBlocks(src, off, width, height, 16, true, 5);
+    }
+
+    private static byte[] decodeBlocks(byte[] src, int off, int width, int height,
+                                       int blockBytes, boolean alphaBlock, int alphaMode) {
+        if (src == null || width <= 0 || height <= 0 || off < 0) {
+            throw new IllegalArgumentException("invalid DXT arguments");
+        }
+        long blocksX = (width + 3L) / 4;
+        long blocksY = (height + 3L) / 4;
+        long rgbaLength = (long) width * height * 4L;
+        if (rgbaLength > Integer.MAX_VALUE || off + blocksX * blocksY * blockBytes > src.length) {
+            throw new IllegalArgumentException("DXT source too short");
+        }
+        byte[] rgba = new byte[(int) rgbaLength];
+        int pos = off;
+        int[] r = new int[4];
+        int[] g = new int[4];
+        int[] b = new int[4];
+        int[] a = new int[16];
         for (int blockY = 0; blockY < height; blockY += 4) {
             for (int blockX = 0; blockX < width; blockX += 4) {
-                int color0 = reader.next16();
-                int color1 = reader.next16();
+                java.util.Arrays.fill(a, 255);
+                if (alphaBlock) {
+                    if (alphaMode == 3) {
+                        long bits = readLe64(src, pos);
+                        for (int i = 0; i < 16; i++) {
+                            int nibble = (int) ((bits >>> (4 * i)) & 0xF);
+                            a[i] = nibble * 255 / 15;
+                        }
+                    } else {
+                        decodeBc3Alpha(src, pos, a);
+                    }
+                    pos += 8;
+                }
+                int color0 = (src[pos] & 0xFF) | ((src[pos + 1] & 0xFF) << 8);
+                int color1 = (src[pos + 2] & 0xFF) | ((src[pos + 3] & 0xFF) << 8);
+                int indices = (src[pos + 4] & 0xFF) | ((src[pos + 5] & 0xFF) << 8)
+                        | ((src[pos + 6] & 0xFF) << 16) | ((src[pos + 7] & 0xFF) << 24);
+                pos += 8;
 
-                int[] r = new int[4];
-                int[] g = new int[4];
-                int[] b = new int[4];
-                int[] a = new int[]{255, 255, 255, 255};
                 decodeRgb565(color0, r, g, b, 0);
                 decodeRgb565(color1, r, g, b, 1);
-
-                if (color0 > color1) {
+                boolean fourColor = alphaBlock || color0 > color1;
+                boolean transparent3 = false;
+                if (fourColor) {
                     r[2] = ((2 * r[0]) + r[1]) / 3;
                     g[2] = ((2 * g[0]) + g[1]) / 3;
                     b[2] = ((2 * b[0]) + b[1]) / 3;
@@ -155,64 +232,58 @@ public final class TextureDecoder {
                     r[3] = 0;
                     g[3] = 0;
                     b[3] = 0;
-                    a[3] = 0;
+                    transparent3 = true;
                 }
 
-                int indices = reader.next32BE();
-                writeDxtBlock(rgba, width, height, blockX, blockY, indices, r, g, b, a, null);
+                for (int row = 0; row < 4; row++) {
+                    for (int col = 0; col < 4; col++) {
+                        int x = blockX + col;
+                        int y = blockY + row;
+                        if (x >= width || y >= height) {
+                            continue;
+                        }
+                        int pi = row * 4 + col;
+                        int idx = (indices >>> (2 * pi)) & 0x03;
+                        int alpha = (transparent3 && idx == 3) ? 0 : a[pi];
+                        writePixel(rgba, width, x, y, r[idx], g[idx], b[idx], alpha);
+                    }
+                }
             }
         }
         return rgba;
     }
 
-    private static byte[] decodeDxt3(ByteReader reader, int width, int height) {
-        byte[] rgba = new byte[width * height * 4];
-        for (int blockY = 0; blockY < height; blockY += 4) {
-            for (int blockX = 0; blockX < width; blockX += 4) {
-                long alphaBlock = ((reader.next32() & 0xFFFFFFFFL) << 32) | (reader.next32() & 0xFFFFFFFFL);
-                int color0 = reader.next16();
-                int color1 = reader.next16();
-
-                int[] r = new int[4];
-                int[] g = new int[4];
-                int[] b = new int[4];
-                decodeRgb565(color0, r, g, b, 0);
-                decodeRgb565(color1, r, g, b, 1);
-                r[2] = ((2 * r[0]) + r[1]) / 3;
-                g[2] = ((2 * g[0]) + g[1]) / 3;
-                b[2] = ((2 * b[0]) + b[1]) / 3;
-                r[3] = (r[0] + (2 * r[1])) / 3;
-                g[3] = (g[0] + (2 * g[1])) / 3;
-                b[3] = (b[0] + (2 * b[1])) / 3;
-
-                int indices = reader.next32BE();
-                writeDxtBlock(rgba, width, height, blockX, blockY, indices, r, g, b, null, alphaBlock);
-            }
+    private static long readLe64(byte[] src, int pos) {
+        long v = 0;
+        for (int i = 7; i >= 0; i--) {
+            v = (v << 8) | (src[pos + i] & 0xFFL);
         }
-        return rgba;
+        return v;
     }
 
-    private static void writeDxtBlock(
-            byte[] rgba,
-            int width,
-            int height,
-            int blockX,
-            int blockY,
-            int indices,
-            int[] r,
-            int[] g,
-            int[] b,
-            int[] a,
-            Long alphaBlock
-    ) {
-        for (int y = blockY, count = 15; y < blockY + 4; y++) {
-            for (int x = blockX + 3; x >= blockX; x--, count--) {
-                int paletteIndex = (indices >>> (count * 2)) & 0x03;
-                int alpha = a != null ? a[paletteIndex] : (int) ((((alphaBlock >>> (4 * count)) & 0x0F) * 255L) / 16L);
-                if (x < width && y < height) {
-                    writePixel(rgba, width, x, y, r[paletteIndex], g[paletteIndex], b[paletteIndex], alpha);
-                }
+    private static void decodeBc3Alpha(byte[] src, int pos, int[] out) {
+        int a0 = src[pos] & 0xFF;
+        int a1 = src[pos + 1] & 0xFF;
+        int[] pal = new int[8];
+        pal[0] = a0;
+        pal[1] = a1;
+        if (a0 > a1) {
+            for (int i = 1; i <= 6; i++) {
+                pal[i + 1] = ((7 - i) * a0 + i * a1) / 7;
             }
+        } else {
+            for (int i = 1; i <= 4; i++) {
+                pal[i + 1] = ((5 - i) * a0 + i * a1) / 5;
+            }
+            pal[6] = 0;
+            pal[7] = 255;
+        }
+        long bits = 0;
+        for (int i = 5; i >= 0; i--) {
+            bits = (bits << 8) | (src[pos + 2 + i] & 0xFFL);
+        }
+        for (int i = 0; i < 16; i++) {
+            out[i] = pal[(int) ((bits >>> (3 * i)) & 0x7)];
         }
     }
 

@@ -4,7 +4,6 @@ import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.client.desktop.camera.Camera;
-import com.example.client.desktop.camera.PolarCamera;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
@@ -18,12 +17,9 @@ import com.example.client.desktop.ui.InGamePanel;
 import com.example.client.desktop.ui.ScreenFader;
 import com.example.client.desktop.ui.map.InGameMapPanel;
 import com.example.client.desktop.ui.radar.WorldRadarPanel;
-import com.example.client.desktop.util.MatrixMath;
-import com.example.client.interp.InterpolatedEntityState;
 import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
-import com.example.common.protocol.JobId;
 import com.example.common.protocol.MovementFlags;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
@@ -32,12 +28,7 @@ import com.example.zone.dto.PlayerMovementResponse;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.AuthenticCharacterInstance;
 import com.ffxi.viewer.environment.WeatherPreset;
-import com.ffxi.viewer.model.CharacterModelLoader;
-import com.ffxi.viewer.model.LoadedCharacter;
 import imgui.ImGui;
-import imgui.flag.ImGuiCond;
-import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImInt;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
@@ -46,13 +37,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 
 /**
  * Production gameplay application state.
  * Orchestrates player input, network replication, UI overlays, and delegates
- * 3D rendering and scene hierarchy to the unified WorldScene abstraction.
+ * 3D rendering and scene hierarchy to {@link WorldScene}, {@link RemoteActorSynchronizer},
+ * and {@link InGameHudOverlay}.
  */
 @Slf4j
 @Prototype
@@ -82,6 +73,7 @@ public class InGameState implements ApplicationState {
 
     @Getter private final ScreenFader screenFader = new ScreenFader();
     private final WorldScene worldScene = new WorldScene();
+    private final InGameHudOverlay hudOverlay = new InGameHudOverlay();
 
     private boolean f1Pressed = false;
     private boolean f2Pressed = false;
@@ -89,15 +81,16 @@ public class InGameState implements ApplicationState {
     private boolean f4Pressed = false;
     private boolean mKeyPressed = false;
     private List<ZoneInteraction> zoneInteractions = List.of();
-    @Getter private WeatherType currentWeather = WeatherType.CLEAR;
-    private boolean manualTimeOverride = false;
-    private float manualTimeHour = 12.0f;
     private ZoneInteraction activeZoneline = null;
 
     private boolean showVisualZone = true;
     private boolean showCharacterModels = true;
     private boolean showCollisionCylinders = false;
     private boolean wireframe = false;
+
+    public WeatherType getCurrentWeather() {
+        return hudOverlay.getCurrentWeather();
+    }
 
     public void init(long accountId, long characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
         this.accountId = accountId;
@@ -137,8 +130,7 @@ public class InGameState implements ApplicationState {
         worldScene.init();
         try {
             Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
-            LoadedCharacter charData = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.HumeM);
-            AuthenticCharacterInstance localVisual = new AuthenticCharacterInstance(charData);
+            AuthenticCharacterInstance localVisual = worldScene.createCharacterInstance(ffxiRoot, RaceGenderConfig.HumeM);
             SceneActor localActor = new SceneActor(characterId, characterName, SceneActor.ActorType.PLAYER);
             localActor.setVisualModel(localVisual);
             worldScene.setLocalPlayer(localActor);
@@ -165,57 +157,9 @@ public class InGameState implements ApplicationState {
         long handle = windowService.getHandle();
         long now = System.currentTimeMillis();
 
-        // 1. Process camera orientation and inputs
         camera.update(handle, dt);
 
-        boolean uiWantsKeyboard = false;
-        if (handle != 0L) {
-            try {
-                var imguiCtx = ImGui.getCurrentContext();
-                if (imguiCtx != null && imguiCtx.isValidPtr()) {
-                    uiWantsKeyboard = ImGui.getIO().getWantCaptureKeyboard();
-                }
-            } catch (Throwable ignored) {}
-
-            boolean f1Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS;
-            if (f1Down && !f1Pressed) {
-                wireframe = !wireframe;
-            }
-            f1Pressed = f1Down;
-
-            boolean f2Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS;
-            if (f2Down && !f2Pressed) {
-                showVisualZone = !showVisualZone;
-            }
-            f2Pressed = f2Down;
-
-            boolean f3Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS;
-            if (f3Down && !f3Pressed) {
-                showCharacterModels = !showCharacterModels;
-            }
-            f3Pressed = f3Down;
-
-            boolean f4Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS;
-            if (f4Down && !f4Pressed) {
-                showCollisionCylinders = !showCollisionCylinders;
-            }
-            f4Pressed = f4Down;
-
-            float zoomRate = 50.0f;
-            if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_UP) == GLFW.GLFW_PRESS) {
-                radarPanel.getConfig().zoomSmooth(-zoomRate * dt);
-            }
-            if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_DOWN) == GLFW.GLFW_PRESS) {
-                radarPanel.getConfig().zoomSmooth(zoomRate * dt);
-            }
-
-            boolean mDown = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
-            if (mDown && !mKeyPressed && inGameMapPanel != null) {
-                inGameMapPanel.toggle();
-            }
-            mKeyPressed = mDown;
-        }
-
+        boolean uiWantsKeyboard = pollHotkeys(handle, dt);
         screenFader.update(dt);
 
         float moveSpeed = 0.0f;
@@ -262,49 +206,11 @@ public class InGameState implements ApplicationState {
             }
         }
 
-        // 2. Sync Scene Actors
-        SceneActor localActor = worldScene.getLocalPlayerActor();
-        if (localActor != null) {
-            localActor.setPosition(clientState.getX(), clientState.getY(), clientState.getZ());
-            localActor.setRotation(clientState.getYaw());
-            localActor.setMovementSpeed(moveSpeed);
-            localActor.setMovementFlags(moveFlags);
-        }
-
+        // Sync Scene Actors via RemoteActorSynchronizer + shared CharacterAssetCache
         Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
-        for (var entity : clientState.getRemoteEntities().values()) {
-            InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
-            SceneActor actor = worldScene.getActor(entity.characterId());
-            boolean isNew = (actor == null);
-            if (actor == null) {
-                SceneActor.ActorType aType = (entity.mainJobId() == JobId.NPC)
-                        ? SceneActor.ActorType.NPC
-                        : SceneActor.ActorType.PLAYER;
-                actor = new SceneActor(entity.characterId(), entity.name(), aType);
-                try {
-                    RaceGenderConfig race = resolveRaceForEntity(entity.mainJobId());
-                    LoadedCharacter cd = CharacterModelLoader.loadCharacter(ffxiRoot, race);
-                    actor.setVisualModel(new AuthenticCharacterInstance(cd));
-                } catch (Exception ignored) {}
-                worldScene.addActor(actor);
-            }
-            if (isNew) {
-                actor.setPosition(interp.x(), interp.y(), interp.z());
-                actor.setRotation(interp.yaw());
-            }
-            actor.setTargetTransform(interp.x(), interp.y(), interp.z(), interp.yaw(), interp.vx(), interp.vy(), interp.vz());
-            float speed = interp.speedHorizontal();
-            actor.setMovementSpeed(speed);
-            actor.setMovementFlags(interp.moveFlags() != 0 ? interp.moveFlags() : (speed > 0.1f ? MovementFlags.FORWARD : MovementFlags.IDLE));
-        }
+        RemoteActorSynchronizer.syncActors(worldScene, clientState, ffxiRoot, moveSpeed, moveFlags, now);
 
-        for (SceneActor a : worldScene.getActors()) {
-            if (!a.isLocalPlayer() && !clientState.getRemoteEntities().containsKey(a.getId())) {
-                worldScene.removeActor(a.getId());
-            }
-        }
-
-        // 3. Check Zoneline Intersections
+        // Check Zoneline Intersections
         activeZoneline = null;
         for (ZoneInteraction zi : zoneInteractions) {
             if (zi.isZoneLine() && zi.containsHorizontal(clientState.getX(), clientState.getZ(), 3.0f)) {
@@ -313,67 +219,121 @@ public class InGameState implements ApplicationState {
             }
         }
 
-        // 4. Render 3D OpenGL Viewport
+        // Render 3D OpenGL Viewport & HUD overlays
         if (handle != 0L) {
-            int[] width = new int[1];
-            int[] height = new int[1];
-            GLFW.glfwGetFramebufferSize(handle, width, height);
-            int fbWidth = Math.max(1, width[0]);
-            int fbHeight = Math.max(1, height[0]);
-
-            VanadielTime vTime = manualTimeOverride
-                    ? VanadielTime.ofHour(manualTimeHour)
-                    : VanadielTime.now();
-
-            worldScene.setWeatherPreset(WeatherPreset.getById(currentWeather.getDatCode()));
-            worldScene.setManualTimeOverride(manualTimeOverride);
-            worldScene.setManualTimeHour(manualTimeHour);
-            worldScene.setShowVisualZone(showVisualZone);
-            worldScene.setShowCharacterModels(showCharacterModels);
-            worldScene.setShowCollisionMesh(wireframe);
-            worldScene.setShowCollisionMarkers(showCollisionCylinders);
-
-            // Sync camera
-            worldScene.getCamera().setTarget(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ());
-            worldScene.getCamera().setYaw(camera.getYaw());
-            worldScene.getCamera().setPitch(camera.getPitch());
-            worldScene.getCamera().setDistance(camera.getDistance());
-
-            worldScene.update(dt, vTime);
-            worldScene.render(fbWidth, fbHeight);
-
-            // Billboard Nameplates
-            float aspect = (float) fbWidth / (float) fbHeight;
-            float[] proj = new float[16];
-            float[] view = new float[16];
-            worldScene.getCamera().getProjectionMatrix(aspect).get(proj);
-            worldScene.getCamera().getViewMatrix().get(view);
-            renderNameplates(proj, view, fbWidth, fbHeight, now);
-
-            // Smooth cross-zone fade overlay
-            screenFader.render(handle, fbWidth, fbHeight);
+            render3dViewportAndOverlays(handle, dt, now);
         }
 
-        // 5. Render UI Panels & Map
-        if (handle != 0L) {
-            VanadielTime vTime = manualTimeOverride
-                    ? VanadielTime.ofHour(manualTimeHour)
-                    : VanadielTime.now();
-            renderClockBanner(vTime);
-            if (inGameMapPanel != null) {
-                inGameMapPanel.render(
-                        currentZoneId,
-                        clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
-                        zoneInteractions,
-                        clientState.getRemoteEntities().values()
-                );
-            }
-        }
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
         panel.render();
         radarPanel.render();
         debugLog.render();
 
+        processPanelIntents();
+
+        if (clientState.getConnectionState() == ClientConnectionState.DISCONNECTED) {
+            stateService.changeState(unauthProvider::get);
+        }
+    }
+
+    private boolean pollHotkeys(long handle, float dt) {
+        if (handle == 0L) {
+            return false;
+        }
+        boolean uiWantsKeyboard = false;
+        try {
+            var imguiCtx = ImGui.getCurrentContext();
+            if (imguiCtx != null && imguiCtx.isValidPtr()) {
+                uiWantsKeyboard = ImGui.getIO().getWantCaptureKeyboard();
+            }
+        } catch (Throwable ignored) {}
+
+        boolean f1Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F1) == GLFW.GLFW_PRESS;
+        if (f1Down && !f1Pressed) {
+            wireframe = !wireframe;
+        }
+        f1Pressed = f1Down;
+
+        boolean f2Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F2) == GLFW.GLFW_PRESS;
+        if (f2Down && !f2Pressed) {
+            showVisualZone = !showVisualZone;
+        }
+        f2Pressed = f2Down;
+
+        boolean f3Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F3) == GLFW.GLFW_PRESS;
+        if (f3Down && !f3Pressed) {
+            showCharacterModels = !showCharacterModels;
+        }
+        f3Pressed = f3Down;
+
+        boolean f4Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F4) == GLFW.GLFW_PRESS;
+        if (f4Down && !f4Pressed) {
+            showCollisionCylinders = !showCollisionCylinders;
+        }
+        f4Pressed = f4Down;
+
+        float zoomRate = 50.0f;
+        if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_UP) == GLFW.GLFW_PRESS) {
+            radarPanel.getConfig().zoomSmooth(-zoomRate * dt);
+        }
+        if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_DOWN) == GLFW.GLFW_PRESS) {
+            radarPanel.getConfig().zoomSmooth(zoomRate * dt);
+        }
+
+        boolean mDown = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_M) == GLFW.GLFW_PRESS;
+        if (mDown && !mKeyPressed && inGameMapPanel != null) {
+            inGameMapPanel.toggle();
+        }
+        mKeyPressed = mDown;
+        return uiWantsKeyboard;
+    }
+
+    private void render3dViewportAndOverlays(long handle, float dt, long now) {
+        int[] width = new int[1];
+        int[] height = new int[1];
+        GLFW.glfwGetFramebufferSize(handle, width, height);
+        int fbWidth = Math.max(1, width[0]);
+        int fbHeight = Math.max(1, height[0]);
+
+        VanadielTime vTime = hudOverlay.resolveCurrentTime();
+
+        worldScene.setWeatherPreset(WeatherPreset.getById(hudOverlay.getCurrentWeather().getDatCode()));
+        worldScene.setManualTimeOverride(hudOverlay.isManualTimeOverride());
+        worldScene.setManualTimeHour(hudOverlay.getManualTimeHour());
+        worldScene.setShowVisualZone(showVisualZone);
+        worldScene.setShowCharacterModels(showCharacterModels);
+        worldScene.setShowCollisionMesh(wireframe);
+        worldScene.setShowCollisionMarkers(showCollisionCylinders);
+
+        worldScene.getCamera().setTarget(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ());
+        worldScene.getCamera().setYaw(camera.getYaw());
+        worldScene.getCamera().setPitch(camera.getPitch());
+        worldScene.getCamera().setDistance(camera.getDistance());
+
+        worldScene.update(dt, vTime);
+        worldScene.render(fbWidth, fbHeight);
+
+        float aspect = (float) fbWidth / (float) fbHeight;
+        float[] proj = new float[16];
+        float[] view = new float[16];
+        worldScene.getCamera().getProjectionMatrix(aspect).get(proj);
+        worldScene.getCamera().getViewMatrix().get(view);
+        hudOverlay.renderNameplates(clientState, characterName, proj, view, fbWidth, fbHeight, now);
+
+        screenFader.render(handle, fbWidth, fbHeight);
+
+        hudOverlay.renderClockBanner(vTime, activeZoneline);
+        if (inGameMapPanel != null) {
+            inGameMapPanel.render(
+                    currentZoneId,
+                    clientState.getX(), clientState.getY(), clientState.getZ(), clientState.getYaw(),
+                    zoneInteractions,
+                    clientState.getRemoteEntities().values()
+            );
+        }
+    }
+
+    private void processPanelIntents() {
         if (panel.isPingRequested()) {
             debugLog.log("PING sent");
             keepAlive.sendPing();
@@ -408,96 +368,6 @@ public class InGameState implements ApplicationState {
             handleZoneTransfer(new ZoneTransferNotification(warpZoneId, "127.0.0.1", 9001, spawnX, spawnY, spawnZ));
         }
         panel.clearIntents();
-
-        if (clientState.getConnectionState() == ClientConnectionState.DISCONNECTED) {
-            stateService.changeState(unauthProvider::get);
-        }
-    }
-
-    private void renderClockBanner(VanadielTime vTime) {
-        float bannerX = Math.max(390.0f, (ImGui.getIO().getDisplaySizeX() - 520.0f) * 0.5f);
-        ImGui.setNextWindowPos(bannerX, 20, ImGuiCond.Once);
-        ImGui.setNextWindowSize(520, 0, ImGuiCond.Once);
-        ImGui.begin("Vana'diel Environment");
-        ImGui.textColored(1.0f, 0.85f, 0.35f, 1.0f, vTime.formatClockSummary());
-        ImGui.sameLine();
-        ImGui.textColored(0.4f, 0.85f, 1.0f, 1.0f, " | Weather: " + currentWeather.getDisplayName());
-
-        String[] weatherNames = Arrays.stream(WeatherType.values()).map(WeatherType::getDisplayName).toArray(String[]::new);
-        ImInt weatherIdx = new ImInt(currentWeather.ordinal());
-        if (ImGui.combo("Weather", weatherIdx, weatherNames)) {
-            currentWeather = WeatherType.values()[weatherIdx.get()];
-        }
-
-        if (ImGui.checkbox("Manual Time Override", manualTimeOverride)) {
-            manualTimeOverride = !manualTimeOverride;
-        }
-
-        if (manualTimeOverride) {
-            float[] hourArr = new float[]{manualTimeHour};
-            if (ImGui.sliderFloat("Time of Day", hourArr, 0.0f, 24.0f, "%.1f h")) {
-                manualTimeHour = hourArr[0];
-            }
-            if (ImGui.button("Dawn (05:00)")) manualTimeHour = 5.0f;
-            ImGui.sameLine();
-            if (ImGui.button("Noon (12:00)")) manualTimeHour = 12.0f;
-            ImGui.sameLine();
-            if (ImGui.button("Dusk (18:00)")) manualTimeHour = 18.0f;
-            ImGui.sameLine();
-            if (ImGui.button("Midnight (00:00)")) manualTimeHour = 0.0f;
-        }
-
-        if (activeZoneline != null) {
-            ImGui.separator();
-            ImGui.textColored(0.2f, 1.0f, 0.4f, 1.0f,
-                    ">>> [ZONELINE] Gate to " + activeZoneline.getDestId() + " (Walk across to change zone) <<<");
-        }
-        ImGui.end();
-    }
-
-    private void renderNameplates(float[] proj, float[] view, int fbWidth, int fbHeight, long now) {
-        float[] playerScreen = MatrixMath.projectToScreen(
-                clientState.getX(), clientState.getY() + 2.0f, clientState.getZ(),
-                proj, view, fbWidth, fbHeight
-        );
-        if (playerScreen != null) {
-            drawBillboardLabel(playerScreen[0], playerScreen[1], "##nameplate_local", characterName, 0.4f, 0.8f, 1.0f);
-        }
-
-        for (var entity : clientState.getRemoteEntities().values()) {
-            InterpolatedEntityState interp = clientState.sampleInterpolatedEntity(entity.characterId(), now);
-            float dx = interp.x() - clientState.getX();
-            float dz = interp.z() - clientState.getZ();
-            if (dx * dx + dz * dz > 2500.0f) {
-                continue;
-            }
-
-            float[] screen = MatrixMath.projectToScreen(
-                    interp.x(), interp.y() + 1.9f, interp.z(),
-                    proj, view, fbWidth, fbHeight
-            );
-            if (screen != null) {
-                boolean isNpc = entity.mainJobId() == JobId.NPC;
-                String label = isNpc
-                        ? "[NPC] " + entity.name()
-                        : entity.name() + " (" + JobId.toAbbreviation(entity.mainJobId()) + " Lv" + entity.level() + ")";
-                float r = isNpc ? 0.95f : 0.40f;
-                float g = isNpc ? 0.80f : 0.80f;
-                float b = isNpc ? 0.25f : 1.00f;
-                drawBillboardLabel(screen[0], screen[1], "##nameplate_" + entity.characterId(), label, r, g, b);
-            }
-        }
-    }
-
-    private void drawBillboardLabel(float screenX, float screenY, String windowId, String text, float r, float g, float b) {
-        int flags = ImGuiWindowFlags.NoDecoration
-                | ImGuiWindowFlags.NoInputs
-                | ImGuiWindowFlags.NoBackground
-                | ImGuiWindowFlags.AlwaysAutoResize;
-        ImGui.setNextWindowPos(screenX - 60, screenY, ImGuiCond.Always);
-        ImGui.begin(windowId, flags);
-        ImGui.textColored(r, g, b, 1.0f, text);
-        ImGui.end();
     }
 
     @Override
@@ -510,17 +380,6 @@ public class InGameState implements ApplicationState {
         if (inGameMapPanel != null) {
             try { inGameMapPanel.close(); } catch (Exception ignored) {}
         }
-    }
-
-    private static RaceGenderConfig resolveRaceForEntity(short jobId) {
-        if (jobId == JobId.NPC) return RaceGenderConfig.ElvaanM;
-        if (jobId == JobId.THIEF) return RaceGenderConfig.Mithra;
-        if (jobId == JobId.WHITE_MAGE) return RaceGenderConfig.TaruM;
-        if (jobId == JobId.BLACK_MAGE) return RaceGenderConfig.TaruF;
-        if (jobId == JobId.PALADIN) return RaceGenderConfig.ElvaanM;
-        if (jobId == JobId.RED_MAGE) return RaceGenderConfig.HumeF;
-        if (jobId == JobId.MONK) return RaceGenderConfig.Galka;
-        return RaceGenderConfig.HumeM;
     }
 
     @Override

@@ -9,7 +9,8 @@ public class Application {
 
   public static void main(String[] args) {
     try (ApplicationContext context = Micronaut.run(Application.class, args)) {
-      log.info("Gateway, LoginServer, and LobbyServer are running. Waiting for connections...");
+      log.info("Application started with active environments: {}. Waiting for connections...",
+        context.getEnvironment().getActiveNames());
       Thread.currentThread().join();
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();

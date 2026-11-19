@@ -1,5 +1,6 @@
 package com.example.zone.collision;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.config.ZoneServerProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class ZoneCollisionServiceTest {
 
@@ -29,9 +31,17 @@ class ZoneCollisionServiceTest {
         collisionService.init();
     }
 
+    private static void assumeRetailZoneDatPresent() {
+        assumeTrue(
+                FfxiPathConfig.resolveRomFile("ROM/1/31.DAT").isPresent(),
+                "Skipping test: retail FFXI Zone 230 DAT (ROM/1/31.DAT) not present"
+        );
+    }
+
     @Test
     @DisplayName("ZoneCollisionService loads authoritative South San d'Oria (Zone 230) collision mesh")
     void testLoadZoneCollision() {
+        assumeRetailZoneDatPresent();
         assertTrue(collisionService.hasCollision(230), "Zone 230 should be loaded and present in collision cache");
         assertTrue(collisionService.getCollisionMap(230).isPresent());
         assertEquals(40, collisionService.getCollisionMap(230).get().numBlocksWide());
@@ -40,6 +50,7 @@ class ZoneCollisionServiceTest {
     @Test
     @DisplayName("Normal ground movement clamps to floor height without reconciliation flag")
     void testGroundMovementClamping() {
+        assumeRetailZoneDatPresent();
         // Spawn near (-50, -30), where floor is at y = -2.0f
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,
@@ -55,6 +66,7 @@ class ZoneCollisionServiceTest {
     @Test
     @DisplayName("Falling through the floor triggers reconciliation and snaps to ground")
     void testFloorPenetrationReconciliation() {
+        assumeRetailZoneDatPresent();
         // Target Y is far below floor at y = -10.0f
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,
@@ -70,6 +82,7 @@ class ZoneCollisionServiceTest {
     @Test
     @DisplayName("Exceeding max jump/flight height triggers reconciliation and clamps to jump ceiling")
     void testFlyHackReconciliation() {
+        assumeRetailZoneDatPresent();
         // Target Y is 40m in the air (floor is at y = -2.0f, maxJump is 3.5f -> ceiling = 1.5f)
         ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
                 230,

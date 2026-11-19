@@ -1,5 +1,6 @@
 package com.ffxi.viewer;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.ffxi.export.TextureDecoder;
 import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshVertex;
@@ -36,7 +37,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 public class ZoneRenderingSnapshotSuiteTest {
 
-    private static final Path FFXI_ROOT = Path.of("/home/samuel_l_hyman/Games/final-fantasy-xi-online/drive_c/Program Files (x86)/PlayOnline/SquareEnix/FINAL FANTASY XI");
+    private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     public enum ProjectionMode {

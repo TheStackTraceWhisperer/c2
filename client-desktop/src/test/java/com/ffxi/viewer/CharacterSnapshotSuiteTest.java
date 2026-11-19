@@ -1,5 +1,6 @@
 package com.ffxi.viewer;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.CompositeCharacterModel;
 import com.example.asset.skeleton.SkinnedMesh;
@@ -21,9 +22,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class CharacterSnapshotSuiteTest {
 
+    private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     record RaceConfig(RaceModelLoader.CharacterRace race, String snapshotKey) {}
@@ -31,6 +34,7 @@ public class CharacterSnapshotSuiteTest {
     @Test
     @DisplayName("Render and snapshot authentic idle animation poses for all playable race and gender combinations")
     void testRenderAndSnapshotAllPlayableRaces() throws Exception {
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
         Files.createDirectories(OUTPUT_DIR);
 
         RaceConfig[] playableRaces = new RaceConfig[] {

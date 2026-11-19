@@ -8,7 +8,9 @@ import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
@@ -20,8 +22,9 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Singleton
@@ -30,28 +33,50 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MmoFleetOperator {
 
+  private static final String DEFAULT_NAMESPACE = "default";
+  private static final String DEFAULT_IMAGE = "platform-modulith:latest";
+  private static final String DEFAULT_IMAGE_PULL_POLICY = "Never";
+
   private final KubernetesClient k8s;
   private final WorldJdbcRepository worldRepository;
   private final ZoneInstanceJdbcRepository zoneInstanceRepository;
 
   @Value("${app.operator.namespace:default}")
-  private String namespace;
+  private String namespace = DEFAULT_NAMESPACE;
 
   @Nullable
   @Value("${app.operator.image}")
   private String configuredImage;
 
+  @Value("${app.operator.image-pull-policy:Never}")
+  private String imagePullPolicy = DEFAULT_IMAGE_PULL_POLICY;
+
+  private String getNamespace() {
+    return (namespace != null && !namespace.isBlank()) ? namespace : DEFAULT_NAMESPACE;
+  }
+
   private String getImage() {
     return (configuredImage != null && !configuredImage.isBlank())
       ? configuredImage
-      : "platform-modulith:latest";
+      : DEFAULT_IMAGE;
+  }
+
+  private String getImagePullPolicy() {
+    return (imagePullPolicy != null && !imagePullPolicy.isBlank())
+      ? imagePullPolicy
+      : DEFAULT_IMAGE_PULL_POLICY;
+  }
+
+  void overrideConfigForTest(String namespace, String configuredImage, String imagePullPolicy) {
+    this.namespace = namespace;
+    this.configuredImage = configuredImage;
+    this.imagePullPolicy = imagePullPolicy;
   }
 
   @PostConstruct
   public void init() {
-    log.info("[OPERATOR] MMO Fleet Operator initialized in namespace '{}' using image '{}'",
-      namespace, getImage());
-    reconcile();
+    log.info("[OPERATOR] MMO Fleet Operator initialized in namespace '{}' using image '{}' (pullPolicy={})",
+      getNamespace(), getImage(), getImagePullPolicy());
   }
 
   @Scheduled(fixedDelay = "2s", initialDelay = "1s")
@@ -68,68 +93,141 @@ public class MmoFleetOperator {
 
   private void reconcileWorlds() {
     Iterable<WorldRecord> desiredWorlds = worldRepository.findAll();
-
-    Map<Integer, Pod> worldPods = k8s.pods().inNamespace(namespace)
-      .withLabel("app.mmo/component", "world")
-      .list().getItems().stream()
-      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null && p.getMetadata().getLabels().containsKey("app.mmo/world-id"))
-      .collect(Collectors.toMap(
-        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/world-id")),
-        p -> p,
-        (existing, duplicate) -> existing
-      ));
+    Map<Integer, Pod> worldPods = indexPodsByIntLabel("world", "app.mmo/world-id");
 
     for (WorldRecord world : desiredWorlds) {
       Pod pod = worldPods.get(world.id());
-      if (pod == null) {
-        log.info("[OPERATOR] Provisioning missing World Pod for World #{} ({})", world.id(), world.name());
-        spawnWorldPod(world);
-      } else {
-        String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
-        String podIp = pod.getStatus() != null ? pod.getStatus().getPodIP() : null;
-
-        if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
-          if (!podIp.equals(world.host()) || !"ONLINE".equals(world.status())) {
-            log.info("[OPERATOR] World #{} is RUNNING. Syncing host={}:{} to DB", world.id(), podIp, world.port());
-            worldRepository.updateEndpoint(world.id(), podIp, world.port(), "ONLINE");
-          }
-        }
-      }
+      String labelDesc = "World #" + world.id() + " (" + world.name() + ")";
+      reconcileEntityPod(
+        world.id(),
+        labelDesc,
+        world.host(),
+        world.status(),
+        world.port(),
+        pod,
+        () -> spawnWorldPod(world),
+        worldRepository::updateEndpoint
+      );
     }
   }
 
   private void reconcileZones() {
     Iterable<ZoneInstanceRecord> desiredZones = zoneInstanceRepository.findAll();
-
-    // Map keyed uniquely by surrogate instance ID
-    Map<Integer, Pod> zonePods = k8s.pods().inNamespace(namespace)
-      .withLabel("app.mmo/component", "zone")
-      .list().getItems().stream()
-      .filter(p -> p.getMetadata() != null && p.getMetadata().getLabels() != null
-        && p.getMetadata().getLabels().containsKey("app.mmo/instance-id"))
-      .collect(Collectors.toMap(
-        p -> Integer.parseInt(p.getMetadata().getLabels().get("app.mmo/instance-id")),
-        p -> p,
-        (existing, duplicate) -> existing
-      ));
+    Map<Integer, Pod> zonePods = indexPodsByIntLabel("zone", "app.mmo/instance-id");
 
     for (ZoneInstanceRecord instance : desiredZones) {
       Pod pod = zonePods.get(instance.id());
-      if (pod == null) {
-        log.info("[OPERATOR] Provisioning missing Zone Pod for Instance #{} (World #{}, Zone #{}, Tag '{}')",
-          instance.id(), instance.worldId(), instance.zoneId(), instance.instanceTag());
-        spawnZonePod(instance);
-      } else {
-        String phase = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
-        String podIp = pod.getStatus() != null ? pod.getStatus().getPodIP() : null;
+      String labelDesc = "Zone Instance #" + instance.id()
+        + " (World #" + instance.worldId()
+        + ", Zone #" + instance.zoneId()
+        + ", Tag '" + instance.instanceTag() + "')";
+      reconcileEntityPod(
+        instance.id(),
+        labelDesc,
+        instance.host(),
+        instance.status(),
+        instance.port(),
+        pod,
+        () -> spawnZonePod(instance),
+        zoneInstanceRepository::updateEndpoint
+      );
+    }
+  }
 
-        if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
-          if (!podIp.equals(instance.host()) || !"ONLINE".equals(instance.status())) {
-            log.info("[OPERATOR] Zone Instance #{} (w{}-zone-{}) is RUNNING. Syncing host={}:{} to DB",
-              instance.id(), instance.worldId(), instance.zoneId(), podIp, instance.port());
-            zoneInstanceRepository.updateEndpoint(instance.id(), podIp, instance.port(), "ONLINE");
-          }
-        }
+  private Map<Integer, Pod> indexPodsByIntLabel(String component, String labelKey) {
+    Map<Integer, Pod> indexed = new HashMap<>();
+    List<Pod> pods = k8s.pods().inNamespace(getNamespace())
+      .withLabel("app.mmo/component", component)
+      .list()
+      .getItems();
+
+    if (pods == null) {
+      return indexed;
+    }
+
+    for (Pod pod : pods) {
+      if (pod == null || pod.getMetadata() == null || pod.getMetadata().getLabels() == null) {
+        continue;
+      }
+      String rawId = pod.getMetadata().getLabels().get(labelKey);
+      if (rawId == null) {
+        continue;
+      }
+      try {
+        int id = Integer.parseInt(rawId);
+        indexed.putIfAbsent(id, pod);
+      } catch (NumberFormatException nfe) {
+        log.warn("[OPERATOR] Ignoring {} pod '{}' with non-numeric label {}='{}'",
+          component, pod.getMetadata().getName(), labelKey, rawId);
+      }
+    }
+    return indexed;
+  }
+
+  @FunctionalInterface
+  private interface EndpointUpdater {
+    void update(int id, String host, int port, String status);
+  }
+
+  private void reconcileEntityPod(
+      int entityId,
+      String entityLabel,
+      String currentHost,
+      String currentStatus,
+      int port,
+      Pod pod,
+      Runnable spawnAction,
+      EndpointUpdater updater) {
+    if (pod == null) {
+      if ("ONLINE".equals(currentStatus)) {
+        log.warn("[OPERATOR] {} pod missing while DB status was ONLINE; marking OFFLINE", entityLabel);
+        updater.update(entityId, "", port, "OFFLINE");
+      }
+      log.info("[OPERATOR] Provisioning missing Pod for {}", entityLabel);
+      try {
+        spawnAction.run();
+      } catch (KubernetesClientException e) {
+        log.warn("[OPERATOR] Failed to spawn pod for {}: {}", entityLabel, e.getMessage());
+      }
+      return;
+    }
+
+    boolean terminating = pod.getMetadata() != null && pod.getMetadata().getDeletionTimestamp() != null;
+    if (terminating) {
+      if ("ONLINE".equals(currentStatus)) {
+        log.warn("[OPERATOR] {} pod is terminating; marking OFFLINE", entityLabel);
+        updater.update(entityId, "", port, "OFFLINE");
+      }
+      return;
+    }
+
+    String phase = (pod.getStatus() != null && pod.getStatus().getPhase() != null)
+      ? pod.getStatus().getPhase()
+      : "Unknown";
+    String podIp = pod.getStatus() != null ? pod.getStatus().getPodIP() : null;
+
+    if ("Running".equals(phase) && podIp != null && !podIp.isBlank()) {
+      if (!podIp.equals(currentHost) || !"ONLINE".equals(currentStatus)) {
+        log.info("[OPERATOR] {} is RUNNING. Syncing host={}:{} to DB", entityLabel, podIp, port);
+        updater.update(entityId, podIp, port, "ONLINE");
+      }
+    } else if ("Failed".equals(phase)) {
+      if ("ONLINE".equals(currentStatus)) {
+        log.warn("[OPERATOR] {} pod is Failed while DB status was ONLINE; marking OFFLINE", entityLabel);
+        updater.update(entityId, "", port, "OFFLINE");
+      }
+      String podName = pod.getMetadata() != null ? pod.getMetadata().getName() : "<unnamed>";
+      log.warn("[OPERATOR] Deleting Failed pod '{}' for {} and recreating", podName, entityLabel);
+      try {
+        k8s.pods().inNamespace(getNamespace()).resource(pod).delete();
+        spawnAction.run();
+      } catch (KubernetesClientException e) {
+        log.warn("[OPERATOR] Recreate for {} deferred to next reconciliation: {}", entityLabel, e.getMessage());
+      }
+    } else if ("Unknown".equals(phase)) {
+      if ("ONLINE".equals(currentStatus)) {
+        log.warn("[OPERATOR] {} pod is in Unknown phase; marking OFFLINE", entityLabel);
+        updater.update(entityId, "", port, "OFFLINE");
       }
     }
   }
@@ -138,7 +236,7 @@ public class MmoFleetOperator {
     Container container = new ContainerBuilder()
       .withName("world")
       .withImage(getImage())
-      .withImagePullPolicy("Never")
+      .withImagePullPolicy(getImagePullPolicy())
       .addNewEnv().withName("MICRONAUT_ENVIRONMENTS").withValue("world").endEnv()
       .addNewEnv().withName("FLYWAY_DATASOURCES_DEFAULT_ENABLED").withValue("false").endEnv()
       .addNewEnv().withName("APP_WORLD_HOST").withValue("0.0.0.0").endEnv()
@@ -150,22 +248,43 @@ public class MmoFleetOperator {
       .withName("platform-common-config")
       .endConfigMapRef()
       .endEnvFrom()
+      .withNewResources()
+      .addToRequests("cpu", new Quantity("100m"))
+      .addToRequests("memory", new Quantity("256Mi"))
+      .addToLimits("cpu", new Quantity("500m"))
+      .addToLimits("memory", new Quantity("512Mi"))
+      .endResources()
+      .addNewVolumeMount()
+      .withName("jwt-keys")
+      .withMountPath("/certs/jwt")
+      .withReadOnly(true)
+      .endVolumeMount()
       .build();
 
     Pod pod = new PodBuilder()
       .withNewMetadata()
       .withName("world-" + world.id())
-      .withNamespace(namespace)
+      .withNamespace(getNamespace())
       .addToLabels("app.mmo/component", "world")
       .addToLabels("app.mmo/world-id", String.valueOf(world.id()))
       .endMetadata()
       .withNewSpec()
       .withContainers(container)
+      .addNewVolume()
+      .withName("jwt-keys")
+      .withNewSecret()
+      .withSecretName("jwt-keypair-secret")
+      .addNewItem()
+      .withKey("tls.crt")
+      .withPath("tls.crt")
+      .endItem()
+      .endSecret()
+      .endVolume()
       .withRestartPolicy("Always")
       .endSpec()
       .build();
 
-    k8s.pods().inNamespace(namespace).resource(pod).create();
+    k8s.pods().inNamespace(getNamespace()).resource(pod).create();
   }
 
   private void spawnZonePod(ZoneInstanceRecord instance) {
@@ -174,7 +293,7 @@ public class MmoFleetOperator {
     Container container = new ContainerBuilder()
       .withName("zone")
       .withImage(getImage())
-      .withImagePullPolicy("Never")
+      .withImagePullPolicy(getImagePullPolicy())
       .addNewEnv().withName("MICRONAUT_ENVIRONMENTS").withValue("zone").endEnv()
       .addNewEnv().withName("FLYWAY_DATASOURCES_DEFAULT_ENABLED").withValue("false").endEnv()
       .addNewEnv().withName("APP_ZONE_HOST").withValue("0.0.0.0").endEnv()
@@ -186,12 +305,18 @@ public class MmoFleetOperator {
       .withName("platform-common-config")
       .endConfigMapRef()
       .endEnvFrom()
+      .withNewResources()
+      .addToRequests("cpu", new Quantity("100m"))
+      .addToRequests("memory", new Quantity("256Mi"))
+      .addToLimits("cpu", new Quantity("500m"))
+      .addToLimits("memory", new Quantity("512Mi"))
+      .endResources()
       .build();
 
     Pod pod = new PodBuilder()
       .withNewMetadata()
       .withName(podName)
-      .withNamespace(namespace)
+      .withNamespace(getNamespace())
       .addToLabels("app.mmo/component", "zone")
       .addToLabels("app.mmo/instance-id", String.valueOf(instance.id()))
       .addToLabels("app.mmo/zone-id", String.valueOf(instance.zoneId()))
@@ -204,6 +329,6 @@ public class MmoFleetOperator {
       .endSpec()
       .build();
 
-    k8s.pods().inNamespace(namespace).resource(pod).create();
+    k8s.pods().inNamespace(getNamespace()).resource(pod).create();
   }
 }

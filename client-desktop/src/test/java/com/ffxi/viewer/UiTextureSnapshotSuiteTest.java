@@ -1,5 +1,6 @@
 package com.ffxi.viewer;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.ffxi.export.TextureDecoder;
 import com.ffxi.io.ByteReader;
 import com.ffxi.model.DatResourceGraph;
@@ -26,6 +27,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Suite that extracts, decodes, and renders authentic retail FFXI user interface (UI)
@@ -34,13 +36,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class UiTextureSnapshotSuiteTest {
 
-    private static final Path FFXI_ROOT = Path.of("/home/samuel_l_hyman/Games/final-fantasy-xi-online/drive_c/Program Files (x86)/PlayOnline/SquareEnix/FINAL FANTASY XI");
+    private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     private FontMojiRenderer font;
 
     @BeforeEach
     void setUp() throws Exception {
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
         Files.createDirectories(OUTPUT_DIR);
         this.font = FontMojiRenderer.load(FFXI_ROOT);
         assertNotNull(this.font, "Authentic FontMojiRenderer must load from ROM/0/1.DAT");

@@ -1,5 +1,6 @@
 package com.ffxi.viewer;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.loader.RaceModelLoader;
 import com.example.asset.skeleton.AuthenticCharacterModelDecoder;
 import com.example.asset.skeleton.SkinnedMesh;
@@ -24,6 +25,7 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Suite that evaluates skeletal animation playback, multi-slot layering,
@@ -32,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class CharacterAnimationSnapshotSuiteTest {
 
-    private static final Path FFXI_ROOT = Path.of("/home/samuel_l_hyman/Games/final-fantasy-xi-online/drive_c/Program Files (x86)/PlayOnline/SquareEnix/FINAL FANTASY XI");
+    private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     record AnimCapture(
@@ -58,6 +60,7 @@ public class CharacterAnimationSnapshotSuiteTest {
     @Test
     @DisplayName("Loop through character animations, layers, and blends to verify skeletal skinning and bone weights")
     void testRenderAndSnapshotAllCharacterAnimations() throws Exception {
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
         Files.createDirectories(OUTPUT_DIR);
 
         List<AnimCapture> captures = List.of(

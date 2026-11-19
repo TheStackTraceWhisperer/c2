@@ -93,7 +93,7 @@ spec:
             - name: MICRONAUT_ENVIRONMENTS
               value: "login"
             - name: FLYWAY_DATASOURCES_DEFAULT_ENABLED
-              value: "true"
+              value: "false"
             - name: APP_LOGIN_HOST
               value: "0.0.0.0"
             - name: APP_LOGIN_PORT
@@ -166,3 +166,6 @@ spec:
         - name: jwt-keys
           secret:
             secretName: jwt-keypair-secret
+            items:
+              - key: tls.crt
+                path: tls.crt

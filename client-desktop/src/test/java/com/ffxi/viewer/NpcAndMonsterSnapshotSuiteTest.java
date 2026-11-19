@@ -1,5 +1,6 @@
 package com.ffxi.viewer;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.skeleton.AuthenticCharacterModelDecoder;
 import com.example.asset.skeleton.SkinnedMesh;
 import com.example.asset.skeleton.SkinnedSubMesh;
@@ -21,6 +22,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Suite that extracts authentic retail FFXI monsters and non-player characters (NPCs)
@@ -29,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class NpcAndMonsterSnapshotSuiteTest {
 
-    private static final Path FFXI_ROOT = Path.of("/home/samuel_l_hyman/Games/final-fantasy-xi-online/drive_c/Program Files (x86)/PlayOnline/SquareEnix/FINAL FANTASY XI");
+    private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
     private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     record EntityTarget(
@@ -52,6 +54,7 @@ public class NpcAndMonsterSnapshotSuiteTest {
     @Test
     @DisplayName("Render and snapshot authentic retail FFXI monsters and NPCs")
     void testRenderAndSnapshotAllMonstersAndNpcs() throws Exception {
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
         Files.createDirectories(OUTPUT_DIR);
 
         List<EntityTarget> targets = List.of(

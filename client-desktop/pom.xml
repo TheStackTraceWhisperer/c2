@@ -36,7 +36,6 @@
     <dependency>
       <groupId>org.joml</groupId>
       <artifactId>joml</artifactId>
-      <version>1.10.9</version>
     </dependency>
 
     <!-- Micronaut & DI -->
@@ -115,6 +114,7 @@
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
     </dependency>
 
     <!-- Testing -->
@@ -150,24 +150,36 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
+        <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <release>${release.version}</release>
-          <parameters>true</parameters>
-          <annotationProcessorPaths combine.children="override">
-            <path>
-              <groupId>org.projectlombok</groupId>
-              <artifactId>lombok</artifactId>
-              <version>${lombok.version}</version>
-            </path>
-            <path>
-              <groupId>io.micronaut</groupId>
-              <artifactId>micronaut-inject-java</artifactId>
-              <version>${micronaut.core.version}</version>
-            </path>
-          </annotationProcessorPaths>
+          <excludes>
+            <exclude>**/*SnapshotSuiteTest.java</exclude>
+            <exclude>**/*IT.java</exclude>
+          </excludes>
         </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>snapshots</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <includes combine.self="override">
+                <include>**/*SnapshotSuiteTest.java</include>
+              </includes>
+              <excludes combine.self="override">
+                <exclude>**/*IT.java</exclude>
+              </excludes>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -18,12 +18,10 @@
     <dependency>
       <groupId>com.example</groupId>
       <artifactId>common-protocol</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.joml</groupId>
       <artifactId>joml</artifactId>
-      <version>1.10.9</version>
     </dependency>
     <dependency>
       <groupId>org.slf4j</groupId>

@@ -28,6 +28,7 @@ import java.util.*;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Third-Person Polar Camera Snapshot Suite.
@@ -52,6 +53,9 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @BeforeAll
     static void initCharacterModel() throws Exception {
         Files.createDirectories(OUTPUT_DIR);
+        if (!Files.isDirectory(FFXI_ROOT)) {
+            return;
+        }
 
         try {
             Path rom01 = FFXI_ROOT.resolve("ROM/0/1.DAT");
@@ -125,7 +129,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Default third-person camera state: player facing away (North) with camera positioned behind")
     void testDefaultThirdPersonCameraBehindCharacter() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         float charX = 0.0f, charY = 0.0f, charZ = 0.0f;
         float charYaw = 0.0f; // Player facing away (North, -Z)
@@ -159,7 +164,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Full 360-degree orbit around player at 45-degree intervals")
     void testOrbit360DegreesAt45DegreeIntervals() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         record OrbitAngle(float yawDeg, String filename, String title, String description) {}
 
@@ -203,7 +209,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Vertical camera pitch elevation from low hero angle to high tactical overview")
     void testPitchElevationAngles() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         record PitchAngle(float pitchDeg, String filename, String title, String description) {}
 
@@ -243,7 +250,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Camera boom zoom distance intervals from close-up to tactical wide-angle")
     void testZoomDistanceIntervals() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         record ZoomDistance(float dist, String filename, String title, String description) {}
 
@@ -271,7 +279,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Chase camera follows behind character across all four cardinal facing directions")
     void testChaseCameraInAllCardinalDirections() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         record CardinalChase(float facingDeg, String filename, String title, String description) {}
 
@@ -300,7 +309,8 @@ public class ThirdPersonCameraSnapshotSuiteTest {
     @Test
     @DisplayName("Player rotates in place while third-person camera remains stationary looking North")
     void testCharacterInPlaceTurningWithStationaryCamera() throws Exception {
-        if (cachedSlots == null) return;
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+        assumeTrue(cachedSlots != null, "Character model must be initialized");
 
         record TurnAngle(float charYawDeg, String filename, String title, String description) {}
 

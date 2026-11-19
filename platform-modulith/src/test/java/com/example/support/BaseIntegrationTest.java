@@ -18,6 +18,10 @@ import org.junit.jupiter.api.TestInstance;
 
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Map;
 
@@ -71,6 +75,9 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
   @Inject
   protected Argon2PasswordEncoder passwordEncoder;
 
+  @Inject
+  protected DataSource dataSource;
+
   protected QuicClient client;
 
   @BeforeEach
@@ -111,7 +118,12 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
 
   protected void seedDatabase() {
     activeSessionRepository.deleteAll();
-    characterRepository.deleteTestCharacters();
+    try (Connection conn = dataSource.getConnection();
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM player.characters WHERE id NOT IN (1001, 1002, 1003)")) {
+      ps.executeUpdate();
+    } catch (SQLException e) {
+      throw new IllegalStateException("Failed to clean up test characters", e);
+    }
 
     // Account 1: Admin
     if (accountRepository.findByUsername(TEST_USERNAME).isEmpty()) {

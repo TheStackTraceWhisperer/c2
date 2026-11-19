@@ -5,7 +5,6 @@ import com.example.client.ClientConfiguration;
 import com.example.client.DefaultClientConfiguration;
 import com.example.client.QuicClient;
 import com.example.client.desktop.concurrent.TaskScheduler;
-import com.example.client.desktop.properties.DesktopClientProperties;
 import com.example.client.state.ClientConnectionState;
 import com.example.client.state.ClientState;
 import com.example.common.dto.GatewayErrorResponse;
@@ -16,6 +15,7 @@ import com.example.common.protocol.PacketMessage;
 import com.example.lobby.dto.*;
 import com.example.login.dto.LoginRequest;
 import com.example.login.dto.LoginResponse;
+import com.example.login.dto.ReconnectResponse;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.JoinWorldResponse;
 import com.example.world.dto.ZoneTransferNotification;
@@ -23,13 +23,18 @@ import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.dto.ZoneStateDeltaMessage;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.function.Consumer;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Singleton
@@ -39,20 +44,39 @@ public class DesktopNetworkAdapter implements ClientCallback {
     private final QuicClient quicClient;
     private final TaskScheduler taskScheduler;
     @Getter private final ClientState clientState;
-    private final DesktopClientProperties properties;
     private final ClientConfiguration clientConfiguration;
     private final com.example.client.desktop.engine.services.state.ApplicationStateService stateService;
 
-    @Setter
-    private volatile Consumer<PongMessage> pongListener;
+    private final AtomicLong sessionEpoch = new AtomicLong(0L);
+    private volatile Thread outboundThread;
+    private final ExecutorService outboundExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "desktop-network-outbound");
+        t.setDaemon(true);
+        outboundThread = t;
+        return t;
+    });
 
     @PostConstruct
     public void init() {
         registerPacketHandlers();
     }
 
+    @PreDestroy
+    public void shutdown() {
+        outboundExecutor.shutdown();
+        try {
+            if (!outboundExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                outboundExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            outboundExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private void registerPacketHandlers() {
         quicClient.on(MessageType.LOGIN_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
+        quicClient.on(MessageType.RECONNECT_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
         quicClient.on(MessageType.CHARACTER_LIST_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
         quicClient.on(MessageType.CREATE_CHARACTER_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
         quicClient.on(MessageType.SELECT_CHARACTER_RESPONSE, (ctx, packet) -> onPacketReceived(packet));
@@ -69,6 +93,7 @@ public class DesktopNetworkAdapter implements ClientCallback {
         taskScheduler.runOnMainThread(() -> {
             switch (packet) {
                 case LoginResponse resp -> onLoginResponse(resp);
+                case ReconnectResponse resp -> onReconnectResponse(resp);
                 case CharacterListResponse resp -> onCharacterListResponse(resp);
                 case CreateCharacterResponse resp -> onCharacterCreateResponse(resp);
                 case SelectCharacterResponse resp -> onCharacterSelectResponse(resp);
@@ -103,12 +128,31 @@ public class DesktopNetworkAdapter implements ClientCallback {
             clientState.setLastErrorMessage("");
             clientState.setConnectionState(ClientConnectionState.AUTHENTICATED);
             log.info("DesktopNetworkAdapter -> AUTHENTICATED accountId={}", resp.accountId());
-            sendCharacterList(resp.accountId(), resp.token());
         } else {
             String msg = resp.errorMessage() != null ? resp.errorMessage() : "Authentication failed";
             clientState.setLastErrorMessage(msg);
             clientState.setConnectionState(ClientConnectionState.DISCONNECTED);
             log.warn("DesktopNetworkAdapter -> AUTH_FAILED: {}", msg);
+        }
+    }
+
+    public void onReconnectResponse(ReconnectResponse resp) {
+        if (resp.success()) {
+            clientState.setAccountId(resp.accountId());
+            clientState.setLastErrorMessage("");
+            if (resp.characterId() > 0L) {
+                clientState.setSelectedCharacterId(resp.characterId());
+                clientState.setConnectionState(ClientConnectionState.IN_WORLD);
+            } else {
+                clientState.setConnectionState(ClientConnectionState.AUTHENTICATED);
+            }
+            log.info("DesktopNetworkAdapter -> RECONNECT succeeded accountId={}, characterId={}",
+                    resp.accountId(), resp.characterId());
+        } else {
+            String msg = resp.errorMessage() != null ? resp.errorMessage() : "Reconnection failed";
+            clientState.setLastErrorMessage(msg);
+            clientState.setConnectionState(ClientConnectionState.DISCONNECTED);
+            log.warn("DesktopNetworkAdapter -> RECONNECT rejected: {}", msg);
         }
     }
 
@@ -163,9 +207,6 @@ public class DesktopNetworkAdapter implements ClientCallback {
     public void onPongResponse(PongMessage resp) {
         long latency = Math.max(0, System.currentTimeMillis() - resp.timestamp());
         clientState.updateLatency(latency);
-        if (pongListener != null) {
-            pongListener.accept(resp);
-        }
     }
 
     public void onErrorResponse(GatewayErrorResponse err) {
@@ -196,10 +237,29 @@ public class DesktopNetworkAdapter implements ClientCallback {
     // --- Outbound Network Operations ---
 
     public void connect() throws Exception {
-        connect(properties.getDefaultServerHost(), properties.getDefaultServerPort());
+        var gateway = clientConfiguration.getGateway();
+        connect(gateway.getHostname(), gateway.getPort());
     }
 
     public void connect(String host, int port) throws Exception {
+        if (Thread.currentThread() == outboundThread) {
+            connectInternal(host, port);
+            return;
+        }
+        try {
+            outboundExecutor.submit(() -> {
+                connectInternal(host, port);
+                return null;
+            }).get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof Exception ex) {
+                throw ex;
+            }
+            throw new RuntimeException(e.getCause());
+        }
+    }
+
+    private void connectInternal(String host, int port) throws Exception {
         if (!quicClient.isConnected()) {
             if (clientConfiguration instanceof DefaultClientConfiguration dcc) {
                 dcc.getGateway().setHostname(host);
@@ -238,11 +298,8 @@ public class DesktopNetworkAdapter implements ClientCallback {
     }
 
     public void sendCharacterDelete(long characterId) {
-        clientState.getCharacters().removeIf(c -> c.characterId() == characterId);
-        if (clientState.getSelectedCharacterId() != null && clientState.getSelectedCharacterId() == characterId) {
-            clientState.setSelectedCharacterId(null);
-        }
-        clientState.notifyListeners();
+        log.warn("DesktopNetworkAdapter -> Character deletion requested for id={}, but deletion is not yet supported by server", characterId);
+        clientState.setLastErrorMessage("Character deletion is not yet supported by server");
     }
 
     public void sendPlay(String authToken) {
@@ -258,33 +315,58 @@ public class DesktopNetworkAdapter implements ClientCallback {
     }
 
     public void sendLogout() {
-        if (quicClient.isConnected()) {
-            try {
-                quicClient.close();
-            } catch (Exception e) {
-                log.warn("DesktopNetworkAdapter -> Error closing quicClient on logout: {}", e.getMessage());
-            }
-        }
+        sessionEpoch.incrementAndGet();
         clientState.reset();
+        if (outboundExecutor.isShutdown()) {
+            return;
+        }
+        try {
+            outboundExecutor.execute(() -> {
+                if (quicClient.isConnected()) {
+                    try {
+                        quicClient.close();
+                    } catch (Exception e) {
+                        log.warn("DesktopNetworkAdapter -> Error closing quicClient on logout: {}", e.getMessage());
+                    }
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            log.debug("DesktopNetworkAdapter -> Logout close skipped during shutdown");
+        }
     }
 
     private void sendPacket(PacketMessage message) {
-        taskScheduler.submit(() -> {
-            try {
-                if (!quicClient.isConnected()) {
-                    connect();
+        if (outboundExecutor.isShutdown()) {
+            log.warn("DesktopNetworkAdapter -> Ignoring {} after shutdown", message.getClass().getSimpleName());
+            return;
+        }
+        final long epoch = sessionEpoch.get();
+        try {
+            outboundExecutor.execute(() -> {
+                if (sessionEpoch.get() != epoch) {
+                    log.debug("DesktopNetworkAdapter -> Dropping stale packet {} after logout", message.getClass().getSimpleName());
+                    return;
                 }
-                quicClient.send(message);
-            } catch (Exception e) {
-                log.error("DesktopNetworkAdapter -> Failed to send packet {}: {}", message.getClass().getSimpleName(), e.getMessage(), e);
-                taskScheduler.runOnMainThread(() -> {
-                    clientState.setLastErrorMessage("Network error: " + e.getMessage());
-                    if (clientState.getConnectionState() == ClientConnectionState.CONNECTING) {
-                        clientState.setConnectionState(ClientConnectionState.DISCONNECTED);
+                try {
+                    if (!quicClient.isConnected()) {
+                        var gateway = clientConfiguration.getGateway();
+                        connectInternal(gateway.getHostname(), gateway.getPort());
                     }
-                });
-            }
-            return null;
-        });
+                    quicClient.send(message);
+                } catch (Exception e) {
+                    log.error("DesktopNetworkAdapter -> Failed to send packet {}: {}", message.getClass().getSimpleName(), e.getMessage(), e);
+                    taskScheduler.runOnMainThread(() -> {
+                        if (sessionEpoch.get() == epoch) {
+                            clientState.setLastErrorMessage("Network error: " + e.getMessage());
+                            if (clientState.getConnectionState() == ClientConnectionState.CONNECTING) {
+                                clientState.setConnectionState(ClientConnectionState.DISCONNECTED);
+                            }
+                        }
+                    });
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            log.warn("DesktopNetworkAdapter -> Outbound executor rejected {}: {}", message.getClass().getSimpleName(), e.getMessage());
+        }
     }
 }

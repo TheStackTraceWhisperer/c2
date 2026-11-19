@@ -10,6 +10,7 @@ import com.example.lobby.dto.CharacterSummary;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
 @Prototype
@@ -37,14 +38,22 @@ public class AuthenticatedState implements ApplicationState {
 
     @Override
     public void onUpdate(float dt) {
-        GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        try {
+            GL.getCapabilities();
+            GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        } catch (IllegalStateException ignored) {
+            // Headless unit test without active OpenGL context
+        }
 
         panel.render(clientState);
         debugLog.render();
 
-        processIntents();
+        boolean transitioned = processIntents();
         panel.clearIntents();
+        if (transitioned) {
+            return;
+        }
 
         // Transition when character selection completes
         Long selectedId = clientState.getSelectedCharacterId();
@@ -65,7 +74,7 @@ public class AuthenticatedState implements ApplicationState {
     @Override
     public void onExit() {}
 
-    private void processIntents() {
+    private boolean processIntents() {
         if (panel.isRefreshRequested()) {
             networkAdapter.sendCharacterList(accountId, clientState.getAuthToken());
         }
@@ -73,6 +82,7 @@ public class AuthenticatedState implements ApplicationState {
             debugLog.log("Signed out");
             networkAdapter.sendLogout();
             stateService.changeState(unauthProvider::get);
+            return true;
         }
         if (panel.getSelectCharacterId() != null) {
             networkAdapter.sendCharacterSelect(clientState.getAuthToken(), panel.getSelectCharacterId());
@@ -96,5 +106,6 @@ public class AuthenticatedState implements ApplicationState {
             );
             panel.hideCreateForm();
         }
+        return false;
     }
 }

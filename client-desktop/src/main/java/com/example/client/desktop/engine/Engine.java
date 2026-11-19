@@ -24,6 +24,7 @@ public final class Engine implements Runnable {
     private final FrameTimeService frameTime;
     private final TaskScheduler taskScheduler;
 
+    private final List<IService> startedServices = new ArrayList<>();
     private EngineState state = EngineState.NEW;
     private int frames = 0;
 
@@ -56,6 +57,7 @@ public final class Engine implements Runnable {
         for (IService service : sortedServices) {
             log.debug("Starting service: {}", service.getClass().getSimpleName());
             service.start();
+            startedServices.add(service);
         }
         state = EngineState.INITIALIZED;
         log.info("Engine initialized successfully");
@@ -65,7 +67,6 @@ public final class Engine implements Runnable {
         if (state != EngineState.INITIALIZED) {
             throw new IllegalStateException("Cannot tick uninitialized engine");
         }
-        windowService.pollEvents();
 
         // Drains network callbacks and queued tasks safely on the render thread
         taskScheduler.processForegroundTasks();
@@ -90,14 +91,16 @@ public final class Engine implements Runnable {
         if (state == EngineState.SHUTDOWN) return;
         log.info("Shutting down Catalyst Engine");
 
-        List<IService> reversed = sortedServices.stream()
-                .sorted(Comparator.comparingInt(IService::executionOrder).reversed())
-                .toList();
-
-        for (IService service : reversed) {
+        for (int i = startedServices.size() - 1; i >= 0; i--) {
+            IService service = startedServices.get(i);
             log.debug("Stopping service: {}", service.getClass().getSimpleName());
-            service.stop();
+            try {
+                service.stop();
+            } catch (Throwable t) {
+                log.error("Error stopping service {}: {}", service.getClass().getSimpleName(), t.getMessage(), t);
+            }
         }
+        startedServices.clear();
         state = EngineState.SHUTDOWN;
     }
 

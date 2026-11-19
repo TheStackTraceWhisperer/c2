@@ -8,4 +8,5 @@ public interface WindowProperties {
     @Bindable(defaultValue = "1280") int getWidth();
     @Bindable(defaultValue = "720")  int getHeight();
     @Bindable(defaultValue = "Catalyst Client") String getTitle();
+    @Bindable(defaultValue = "true") boolean isVsync();
 }

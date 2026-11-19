@@ -1,15 +1,17 @@
 package com.example.client.desktop.net;
 
-import com.example.client.desktop.concurrent.TaskHandle;
-import com.example.client.desktop.concurrent.TaskScheduler;
-import com.example.client.desktop.concurrent.TaskStatus;
 import com.example.common.dto.PongMessage;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Singleton
@@ -17,63 +19,61 @@ import java.time.Instant;
 public class DesktopKeepAliveService {
 
     private final DesktopNetworkAdapter networkAdapter;
-    private final TaskScheduler taskScheduler;
 
-    private TaskHandle<?> task;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "desktop-keepalive");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private volatile ScheduledFuture<?> task;
 
     @Getter private volatile String status = "idle";
     @Getter private volatile long lastRttMs = -1;
     @Getter private volatile Instant lastOkAt = null;
 
-    private String sessionId;
+    private volatile String sessionId;
     private volatile long lastPingSentTimeMs;
 
-    public void start(String sessionId, long intervalMs) {
+    public synchronized void start(String sessionId, long intervalMs) {
+        if (isActive()) {
+            log.warn("DesktopKeepAliveService already active for session={}, ignoring duplicate start", this.sessionId);
+            return;
+        }
         this.sessionId = sessionId;
         this.status = "connected";
         long interval = Math.max(250L, intervalMs);
 
-        schedulePingLoop(interval);
+        this.task = scheduler.scheduleWithFixedDelay(this::runPingTick, 0L, interval, TimeUnit.MILLISECONDS);
         log.info("DesktopKeepAliveService started session={} interval={}ms", sessionId, interval);
     }
 
-    private void schedulePingLoop(long intervalMs) {
-        task = taskScheduler.submit(() -> {
+    private synchronized void runPingTick() {
+        if (!isActive()) {
+            return;
+        }
+        try {
             sendPing();
-            return null;
-        }, (res) -> {
-            if (isActive()) {
-                taskScheduler.submit(() -> {
-                    Thread.sleep(intervalMs);
-                    return null;
-                }, (r) -> {
-                    if (isActive()) {
-                        schedulePingLoop(intervalMs);
-                    }
-                }, (err) -> log.warn("Error in keepalive delay: {}", err.getMessage()));
-            }
-        }, (err) -> {
-            log.warn("Error running ping: {}", err.getMessage());
-            if (isActive()) {
-                taskScheduler.submit(() -> {
-                    Thread.sleep(intervalMs);
-                    return null;
-                }, (r) -> {
-                    if (isActive()) {
-                        schedulePingLoop(intervalMs);
-                    }
-                }, (e) -> {});
-            }
-        });
+        } catch (Throwable t) {
+            status = "failed";
+            log.warn("Error running keepalive ping: {}", t.getMessage(), t);
+        }
     }
 
-    public void stop() {
-        if (task != null) {
-            task.cancel(true);
-            task = null;
+    public synchronized void stop() {
+        ScheduledFuture<?> current = this.task;
+        this.task = null;
+        if (current != null) {
+            current.cancel(true);
         }
         status = "idle";
         log.info("DesktopKeepAliveService stopped");
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        stop();
+        scheduler.shutdownNow();
     }
 
     public void sendPing() {
@@ -98,6 +98,7 @@ public class DesktopKeepAliveService {
     }
 
     public boolean isActive() {
-        return task != null && task.getStatus() != TaskStatus.CANCELLED;
+        ScheduledFuture<?> current = this.task;
+        return current != null && !current.isCancelled() && !current.isDone();
     }
 }

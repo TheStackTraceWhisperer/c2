@@ -189,8 +189,8 @@ public class MovementInputHandler {
         }
 
         // 4. Immediate local prediction: integrate velocity onto simulation state
+        // Keep internal simY authoritative rather than overwriting with smoothed visibleY (prevents Y drift)
         simX += vx * dt;
-        simY = currentY;
         simZ += vz * dt;
 
         // 5. Exponentially decay visual error offset towards zero

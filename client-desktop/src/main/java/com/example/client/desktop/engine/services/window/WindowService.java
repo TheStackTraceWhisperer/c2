@@ -52,7 +52,7 @@ public final class WindowService implements IService {
         }
 
         GL.createCapabilities();
-        GLFW.glfwSwapInterval(1);
+        GLFW.glfwSwapInterval(props.isVsync() ? 1 : 0);
         GL30.glViewport(0, 0, props.getWidth(), props.getHeight());
 
         try {

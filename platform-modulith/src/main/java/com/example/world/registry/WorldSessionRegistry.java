@@ -19,10 +19,10 @@ public class WorldSessionRegistry {
   public static class WorldPlayerSession {
     private final long sessionId;
     private final long characterId;
-    private int currentZoneId;
-    private EndpointTarget currentZoneEndpoint;
-    private long joinedTimestamp;
-    private ChannelHandlerContext context;
+    private volatile int currentZoneId;
+    private volatile EndpointTarget currentZoneEndpoint;
+    private volatile long joinedTimestamp;
+    private volatile ChannelHandlerContext context;
   }
 
   private final Map<Long, WorldPlayerSession> sessions = new ConcurrentHashMap<>();
@@ -61,7 +61,7 @@ public class WorldSessionRegistry {
   public void removeSession(long sessionId) {
     WorldPlayerSession session = sessions.remove(sessionId);
     if (session != null) {
-      characterToSession.remove(session.getCharacterId());
+      characterToSession.remove(session.getCharacterId(), sessionId);
     }
   }
 

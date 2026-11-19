@@ -18,8 +18,8 @@ public final class CollisionObject {
     private final CollisionMesh mesh;
     private final CollisionTransform transform;
 
-    private List<CollisionTriangle> worldSpaceTriangles;
-    private BoundingBox worldSpaceBoundingBox;
+    private volatile List<CollisionTriangle> worldSpaceTriangles;
+    private volatile BoundingBox worldSpaceBoundingBox;
 
     public CollisionObject(int fileOffset, CollisionMesh mesh, CollisionTransform transform) {
         this.fileOffset = fileOffset;
@@ -40,28 +40,42 @@ public final class CollisionObject {
     }
 
     public List<CollisionTriangle> worldSpaceTriangles() {
-        if (worldSpaceTriangles == null) {
-            Matrix3f invTranspose = transform.toCollisionSpace().truncateTo3x3().transpose();
-            List<CollisionTriangle> transformed = new ArrayList<>(mesh.triangles().size());
+        List<CollisionTriangle> result = worldSpaceTriangles;
+        if (result == null) {
+            synchronized (this) {
+                result = worldSpaceTriangles;
+                if (result == null) {
+                    Matrix3f invTranspose = transform.toCollisionSpace().truncateTo3x3().transpose();
+                    List<CollisionTriangle> transformed = new ArrayList<>(mesh.triangles().size());
 
-            for (CollisionTriangle tri : mesh.triangles()) {
-                transformed.add(tri.transform(transform.toWorldSpace(), invTranspose));
+                    for (CollisionTriangle tri : mesh.triangles()) {
+                        transformed.add(tri.transform(transform.toWorldSpace(), invTranspose));
+                    }
+                    result = Collections.unmodifiableList(transformed);
+                    worldSpaceTriangles = result;
+                }
             }
-            worldSpaceTriangles = Collections.unmodifiableList(transformed);
         }
-        return worldSpaceTriangles;
+        return result;
     }
 
     public BoundingBox worldSpaceBoundingBox() {
-        if (worldSpaceBoundingBox == null) {
-            BoundingBox.Builder builder = BoundingBox.builder();
-            for (CollisionTriangle tri : worldSpaceTriangles()) {
-                builder.include(tri.v0());
-                builder.include(tri.v1());
-                builder.include(tri.v2());
+        BoundingBox result = worldSpaceBoundingBox;
+        if (result == null) {
+            synchronized (this) {
+                result = worldSpaceBoundingBox;
+                if (result == null) {
+                    BoundingBox.Builder builder = BoundingBox.builder();
+                    for (CollisionTriangle tri : worldSpaceTriangles()) {
+                        builder.include(tri.v0());
+                        builder.include(tri.v1());
+                        builder.include(tri.v2());
+                    }
+                    result = builder.build();
+                    worldSpaceBoundingBox = result;
+                }
             }
-            worldSpaceBoundingBox = builder.build();
         }
-        return worldSpaceBoundingBox;
+        return result;
     }
 }

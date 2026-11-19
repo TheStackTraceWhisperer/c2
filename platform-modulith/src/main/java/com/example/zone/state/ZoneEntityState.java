@@ -30,7 +30,11 @@ public class ZoneEntityState {
   private int moveFlags;
 
   private long lastUpdatedTick;
+  private long displacementTick;
+  private double tickDisplacement;
+  private int worldId = 1;
   private boolean dirty;
+  private boolean networkDirty;
   private ChannelHandlerContext channelContext;
 
   private boolean npc;
@@ -75,6 +79,7 @@ public class ZoneEntityState {
     this.moveFlags = moveFlags;
     this.lastUpdatedTick = lastUpdatedTick;
     this.dirty = true;
+    this.networkDirty = false;
     this.channelContext = ctx;
     this.npc = false;
   }
@@ -94,6 +99,7 @@ public class ZoneEntityState {
     state.setLevel(1);
     state.setNpc(true);
     state.setDirty(false);
+    state.setNetworkDirty(false);
     return state;
   }
 

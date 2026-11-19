@@ -440,11 +440,12 @@ class ZoneSimulationEngineTest {
             asyncEngine.enqueueMovement(ctx1, 2001L, 4001L, new PlayerMovementRequest(11.0f, 0f, 10f, 0f, 0f, 0f, 0f, 0f, MovementFlags.FORWARD, 2L));
             asyncEngine.enqueueMovement(ctx2, 2002L, 4002L, new PlayerMovementRequest(20.5f, 0f, 20f, 0f, 0f, 0f, 0f, 0f, MovementFlags.FORWARD, 1L));
 
-            // tick() must return immediately without blocking on slowRepo.findById(4001L)
+            // tick() must return without blocking on slowRepo.findById(4001L) (which stays latched for 5s)
             long startNs = System.nanoTime();
             asyncEngine.tick();
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs);
-            assertThat(elapsedMs).isLessThan(200L);
+            assertThat(elapsedMs).isLessThan(2000L);
+            assertThat(dbRelease.getCount()).isEqualTo(1L);
 
             // Registered player 4002 was still processed immediately
             assertThat(out2).anySatisfy(p -> {

@@ -1,6 +1,5 @@
 package com.example.login;
 
-import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.MessageType;
 import com.example.config.LoginServerProperties;
 import com.example.login.handler.LoginRequestHandler;
@@ -25,12 +24,11 @@ public class LoginServer extends AbstractBackendServer {
 
   public LoginServer(
     LoginServerProperties properties,
-    IndexedPacketRouter router,
     LoginRequestHandler loginHandler,
     PingPacketHandler pingHandler,
     SessionDisconnectedHandler sessionDisconnectedHandler,
     ReconnectRequestHandler reconnectHandler) {
-    super("LOGIN", properties.getHost(), properties.getPort(), router);
+    super("LOGIN", properties.getHost(), properties.getPort());
     this.loginHandler = loginHandler;
     this.pingHandler = pingHandler;
     this.sessionDisconnectedHandler = sessionDisconnectedHandler;

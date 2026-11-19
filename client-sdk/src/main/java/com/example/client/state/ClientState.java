@@ -6,6 +6,7 @@ import com.example.client.interp.InterpolationSnapshot;
 import com.example.lobby.dto.CharacterSummary;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
+import com.example.zone.dto.ZoneStateDeltaMessage;
 import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.Setter;
@@ -58,8 +59,14 @@ public class ClientState {
   ) {}
 
   public void setConnectionState(ClientConnectionState connectionState) {
+    setConnectionState(connectionState, true);
+  }
+
+  public void setConnectionState(ClientConnectionState connectionState, boolean notify) {
     this.connectionState = connectionState;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   public void setSelectedCharacterId(Long selectedCharacterId) {
@@ -68,8 +75,14 @@ public class ClientState {
   }
 
   public void setLastErrorMessage(String lastErrorMessage) {
+    setLastErrorMessage(lastErrorMessage, true);
+  }
+
+  public void setLastErrorMessage(String lastErrorMessage, boolean notify) {
     this.lastErrorMessage = lastErrorMessage != null ? lastErrorMessage : "";
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   public List<CharacterSummary> getCharacterList() {
@@ -77,6 +90,47 @@ public class ClientState {
   }
 
   public void addOrUpdateRemoteEntity(EntitySpawnRecord spawn) {
+    applySpawn(spawn, System.currentTimeMillis());
+    notifyListeners();
+  }
+
+  public void updateRemoteEntityMovement(EntityMovementUpdate update) {
+    if (applyMovement(update, System.currentTimeMillis())) {
+      notifyListeners();
+    }
+  }
+
+  public void removeRemoteEntity(long characterId) {
+    applyDespawn(characterId);
+    notifyListeners();
+  }
+
+  public void applyZoneStateDelta(ZoneStateDeltaMessage delta) {
+    if (delta == null) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    if (delta.spawns() != null) {
+      for (EntitySpawnRecord spawn : delta.spawns()) {
+        applySpawn(spawn, now);
+      }
+    }
+    if (delta.updates() != null) {
+      for (EntityMovementUpdate update : delta.updates()) {
+        applyMovement(update, now);
+      }
+    }
+    if (delta.despawns() != null) {
+      for (Long despawnId : delta.despawns()) {
+        if (despawnId != null) {
+          applyDespawn(despawnId);
+        }
+      }
+    }
+    notifyListeners();
+  }
+
+  private void applySpawn(EntitySpawnRecord spawn, long now) {
     remoteEntities.put(spawn.characterId(), new RemoteEntityState(
       spawn.characterId(), spawn.name(), spawn.mainJobId(), spawn.subJobId(), spawn.level(),
       spawn.x(), spawn.y(), spawn.z(),
@@ -84,40 +138,38 @@ public class ClientState {
       spawn.yaw(), spawn.pitch(), 0
     ));
 
-    long now = System.currentTimeMillis();
     EntityInterpolationBuffer buffer = interpolationBuffers.computeIfAbsent(spawn.characterId(), id -> new EntityInterpolationBuffer());
     buffer.pushSnapshot(new InterpolationSnapshot(
       now, spawn.x(), spawn.y(), spawn.z(),
       spawn.vx(), spawn.vy(), spawn.vz(),
       spawn.yaw(), spawn.pitch(), 0
     ));
-
-    notifyListeners();
   }
 
-  public void updateRemoteEntityMovement(EntityMovementUpdate update) {
-    remoteEntities.computeIfPresent(update.characterId(), (id, old) -> new RemoteEntityState(
+  private boolean applyMovement(EntityMovementUpdate update, long now) {
+    RemoteEntityState updated = remoteEntities.computeIfPresent(update.characterId(), (id, old) -> new RemoteEntityState(
       old.characterId(), old.name(), old.mainJobId(), old.subJobId(), old.level(),
       update.x(), update.y(), update.z(),
       update.vx(), update.vy(), update.vz(),
       update.yaw(), update.pitch(), update.moveFlags()
     ));
 
-    long now = System.currentTimeMillis();
+    if (updated == null) {
+      return false;
+    }
+
     EntityInterpolationBuffer buffer = interpolationBuffers.computeIfAbsent(update.characterId(), id -> new EntityInterpolationBuffer());
     buffer.pushSnapshot(new InterpolationSnapshot(
       now, update.x(), update.y(), update.z(),
       update.vx(), update.vy(), update.vz(),
       update.yaw(), update.pitch(), update.moveFlags()
     ));
-
-    notifyListeners();
+    return true;
   }
 
-  public void removeRemoteEntity(long characterId) {
+  private void applyDespawn(long characterId) {
     remoteEntities.remove(characterId);
     interpolationBuffers.remove(characterId);
-    notifyListeners();
   }
 
   public InterpolatedEntityState sampleInterpolatedEntity(long characterId, long currentClientTimeMs) {
@@ -215,6 +267,7 @@ public class ClientState {
     this.currentLatencyMs = 0L;
     this.characters.clear();
     this.remoteEntities.clear();
+    this.interpolationBuffers.clear();
     notifyListeners();
   }
 }

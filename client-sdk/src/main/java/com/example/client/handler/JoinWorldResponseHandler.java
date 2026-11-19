@@ -21,10 +21,13 @@ public class JoinWorldResponseHandler implements PacketHandler<JoinWorldResponse
     log.info("[CLIENT-HANDLER] JoinWorldResponse received: success={}, initialZoneId={}",
       packet.success(), packet.initialZoneId());
     if (packet.success()) {
-      clientState.clearRemoteEntities();
       clientState.setCurrentZoneId(packet.initialZoneId());
-      clientState.setConnectionState(ClientConnectionState.IN_ZONE);
-      clientState.notifyListeners();
+      clientState.setLastErrorMessage("", false);
+      clientState.setConnectionState(ClientConnectionState.IN_ZONE, false);
+      clientState.clearRemoteEntities();
+    } else {
+      log.error("[CLIENT-HANDLER] Join world rejected: {}", packet.errorMessage());
+      clientState.setLastErrorMessage(packet.errorMessage());
     }
   }
 }

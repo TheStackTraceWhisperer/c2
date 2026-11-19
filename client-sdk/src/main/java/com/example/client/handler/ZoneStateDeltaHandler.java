@@ -18,15 +18,11 @@ public class ZoneStateDeltaHandler implements PacketHandler<ZoneStateDeltaMessag
   @Override
   public void handle(ChannelHandlerContext ctx, ZoneStateDeltaMessage packet) {
     log.debug("[CLIENT-HANDLER] AoI Delta Tick #{}: Spawns={}, Updates={}, Despawns={}",
-      packet.serverTick(), packet.spawns().size(), packet.updates().size(), packet.despawns().size());
+      packet.serverTick(),
+      packet.spawns() != null ? packet.spawns().size() : 0,
+      packet.updates() != null ? packet.updates().size() : 0,
+      packet.despawns() != null ? packet.despawns().size() : 0);
 
-    // Spawns
-    packet.spawns().forEach(clientState::addOrUpdateRemoteEntity);
-    // Updates
-    packet.updates().forEach(clientState::updateRemoteEntityMovement);
-    // Despawns
-    packet.despawns().forEach(clientState::removeRemoteEntity);
-
-    clientState.notifyListeners();
+    clientState.applyZoneStateDelta(packet);
   }
 }

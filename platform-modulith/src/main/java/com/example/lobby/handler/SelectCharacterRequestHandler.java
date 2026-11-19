@@ -52,6 +52,13 @@ public class SelectCharacterRequestHandler implements PacketHandler<SelectCharac
       }
 
       TokenClaims claims = claimsOpt.get();
+      if (!LobbySessionValidator.isSessionAuthorized(activeSessionRepository, sessionId, claims.accountId())) {
+        log.warn("[LOBBY-SERVER] Session mismatch for select character attempt: Session #{} vs accountId={}",
+          sessionId, claims.accountId());
+        ctx.writeAndFlush(new SelectCharacterResponse(false, packet.characterId(), "Session mismatch"));
+        return;
+      }
+
       Optional<CharacterRecord> characterOpt = characterRepository.findByAccountAndCharacterId(claims.accountId(), packet.characterId());
       if (characterOpt.isEmpty()) {
         log.warn("[LOBBY-SERVER] Character #{} not found for accountId={}", packet.characterId(), claims.accountId());

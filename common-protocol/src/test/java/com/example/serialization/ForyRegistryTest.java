@@ -28,6 +28,7 @@ import java.lang.reflect.Modifier;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class ForyRegistryTest {
 
@@ -116,7 +117,12 @@ public class ForyRegistryTest {
       new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 100L, true),
       new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f),
       new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1),
-      new ZoneStateDeltaMessage(500L, List.of(), List.of(), List.of())
+      new ZoneStateDeltaMessage(
+        500L,
+        List.of(new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f)),
+        List.of(new EntityMovementUpdate(1001L, 1.5f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1)),
+        List.of(1002L)
+      )
     );
 
     for (Object original : sampleMessages) {
@@ -131,5 +137,15 @@ public class ForyRegistryTest {
         assertThat(packet.messageId()).as("PacketMessage %s messageId should be positive", original.getClass().getSimpleName()).isGreaterThan((short) 0);
       }
     }
+  }
+
+  @Test
+  @DisplayName("Security: ForySerializationProvider requires explicit class registration")
+  void testRequireClassRegistration() {
+    ThreadSafeFory fory = ForySerializationProvider.get();
+    record UnregisteredClientDto(String secret) {}
+
+    assertThatThrownBy(() -> fory.serialize(new UnregisteredClientDto("x")))
+      .isInstanceOf(RuntimeException.class);
   }
 }

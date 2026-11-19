@@ -4,6 +4,7 @@ import com.example.client.state.ClientState;
 import com.example.common.dto.PongMessage;
 import com.example.common.handler.PacketHandler;
 import io.netty.channel.ChannelHandlerContext;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,6 +18,7 @@ public class PongPacketHandler implements PacketHandler<PongMessage> {
     this(null);
   }
 
+  @Inject
   public PongPacketHandler(ClientState clientState) {
     this.clientState = clientState;
   }

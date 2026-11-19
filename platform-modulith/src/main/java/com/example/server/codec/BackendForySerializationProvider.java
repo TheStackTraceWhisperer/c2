@@ -8,11 +8,13 @@ import com.example.server.protocol.SetSessionWorldControlMessage;
 import com.example.server.protocol.SetSessionZoneControlMessage;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.config.CompatibleMode;
 
 public final class BackendForySerializationProvider {
 
   private static final ThreadSafeFory FORY = Fory.builder()
     .withXlang(true)
+    .withCompatibleMode(CompatibleMode.COMPATIBLE)
     .requireClassRegistration(true)
     .buildThreadSafeFory();
 

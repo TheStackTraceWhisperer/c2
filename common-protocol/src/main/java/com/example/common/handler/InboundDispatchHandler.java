@@ -14,7 +14,10 @@ public class InboundDispatchHandler extends SimpleChannelInboundHandler<PacketMe
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, PacketMessage msg) throws Exception {
-    router.route(ctx, msg);
+    if (!router.route(ctx, msg)) {
+      log.warn("[DISPATCH] Dropping unregistered packet svc={}, msgId={} on channel={}",
+        msg.serviceId(), msg.messageId(), ctx.channel());
+    }
   }
 
   @Override

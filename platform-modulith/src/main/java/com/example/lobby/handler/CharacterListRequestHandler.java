@@ -9,10 +9,11 @@ import com.example.server.auth.TokenClaims;
 import com.example.server.auth.TokenVerifier;
 import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
+import com.example.server.repository.ActiveSessionJdbcRepository;
 import com.example.server.repository.CharacterRepository;
 import io.netty.channel.ChannelHandlerContext;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
@@ -21,12 +22,31 @@ import java.util.Optional;
 
 @Slf4j
 @Singleton
-@RequiredArgsConstructor
 public class CharacterListRequestHandler implements PacketHandler<CharacterListRequest> {
 
   private final TokenVerifier tokenVerifier;
   private final CharacterRepository characterRepository;
+  private final ActiveSessionJdbcRepository activeSessionRepository;
   private final VirtualThreadTaskDispatcher dispatcher;
+
+  public CharacterListRequestHandler(
+    TokenVerifier tokenVerifier,
+    CharacterRepository characterRepository,
+    VirtualThreadTaskDispatcher dispatcher) {
+    this(tokenVerifier, characterRepository, null, dispatcher);
+  }
+
+  @Inject
+  public CharacterListRequestHandler(
+    TokenVerifier tokenVerifier,
+    CharacterRepository characterRepository,
+    ActiveSessionJdbcRepository activeSessionRepository,
+    VirtualThreadTaskDispatcher dispatcher) {
+    this.tokenVerifier = tokenVerifier;
+    this.characterRepository = characterRepository;
+    this.activeSessionRepository = activeSessionRepository;
+    this.dispatcher = dispatcher;
+  }
 
   @Override
   public void handle(ChannelHandlerContext ctx, CharacterListRequest packet) {
@@ -48,6 +68,13 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
       }
 
       TokenClaims claims = claimsOpt.get();
+      if (!LobbySessionValidator.isSessionAuthorized(activeSessionRepository, sessionId, claims.accountId())) {
+        log.warn("[LOBBY-SERVER] Session mismatch for character list query: Session #{} vs accountId={}",
+          sessionId, claims.accountId());
+        ctx.writeAndFlush(new CharacterListResponse(0L, Collections.emptyList()));
+        return;
+      }
+
       log.info("[LOBBY-SERVER] Verified accountId={} for character list query", claims.accountId());
 
       List<CharacterRecord> records = characterRepository.findByAccountId(claims.accountId());

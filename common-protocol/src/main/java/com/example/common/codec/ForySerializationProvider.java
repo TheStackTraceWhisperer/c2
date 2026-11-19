@@ -18,12 +18,14 @@ import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.dto.ZoneStateDeltaMessage;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.config.CompatibleMode;
 
 public final class ForySerializationProvider {
 
   private static final ThreadSafeFory FORY = Fory.builder()
     .withXlang(true)
-    .requireClassRegistration(false)
+    .withCompatibleMode(CompatibleMode.COMPATIBLE)
+    .requireClassRegistration(true)
     .buildThreadSafeFory();
 
   static {

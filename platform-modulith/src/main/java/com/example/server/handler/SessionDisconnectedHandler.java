@@ -33,23 +33,36 @@ public class SessionDisconnectedHandler implements PacketHandler<SessionDisconne
 
   @Override
   public void handle(ChannelHandlerContext ctx, SessionDisconnectedEvent packet) {
-    Long sessionId = ctx.channel().attr(SessionContext.SESSION_ID).get();
+    Long sessionId = (ctx != null && ctx.channel() != null)
+      ? ctx.channel().attr(SessionContext.SESSION_ID).get()
+      : null;
     long targetSessionId = (sessionId != null && sessionId > 0L) ? sessionId : packet.sessionId();
 
-    log.info("[BACKEND-CLEANUP] Evicting active session lock for Session #{} (ts: {})",
-      targetSessionId, packet.timestamp());
+    if (!packet.zoneTransfer()) {
+      log.info("[BACKEND-CLEANUP] Evicting active session lock for Session #{} (ts: {})",
+        targetSessionId, packet.timestamp());
 
-    dispatcher.dispatch(() -> {
-      try {
-        activeSessionRepository.deleteBySessionId(targetSessionId);
-      } catch (Exception e) {
-        log.warn("[BACKEND-CLEANUP] Active session eviction failed: {}", e.getMessage());
-      }
-    });
+      dispatcher.dispatch(() -> {
+        try {
+          activeSessionRepository.deleteBySessionId(targetSessionId);
+        } catch (Exception e) {
+          log.warn("[BACKEND-CLEANUP] Active session eviction failed: {}", e.getMessage());
+        }
+      });
+    } else {
+      log.info("[BACKEND-CLEANUP] Zone-transfer disconnect for Session #{} (ts: {}); keeping active session row",
+        targetSessionId, packet.timestamp());
+    }
+
+    SessionDisconnectedEvent sanitized = new SessionDisconnectedEvent(
+      targetSessionId,
+      packet.timestamp(),
+      packet.zoneTransfer()
+    );
 
     for (Consumer<SessionDisconnectedEvent> listener : disconnectListeners) {
       try {
-        listener.accept(packet);
+        listener.accept(sanitized);
       } catch (Exception e) {
         log.error("Error invoking disconnect listener", e);
       }

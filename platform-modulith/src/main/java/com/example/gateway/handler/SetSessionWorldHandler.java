@@ -29,7 +29,8 @@ public class SetSessionWorldHandler implements PacketHandler<SetSessionWorldCont
         session.getSessionId(), msg.worldId(), msg.host(), msg.port());
 
       if (oldEndpoint != null && (oldEndpoint.port() != msg.port() || !oldEndpoint.host().equals(msg.host()))) {
-        long oldKey = BackendConnectionManager.makeKey(ServiceType.WORLD, oldEndpoint.host(), oldEndpoint.port());
+        BackendConnectionManager.EndpointKey oldKey =
+          new BackendConnectionManager.EndpointKey(ServiceType.WORLD, oldEndpoint.host(), oldEndpoint.port());
         QuicStreamChannel oldStream = session.getBackendStreams().remove(oldKey);
         if (oldStream != null && oldStream.isActive()) {
           oldStream.close();

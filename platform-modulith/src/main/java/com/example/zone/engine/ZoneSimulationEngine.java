@@ -158,15 +158,21 @@ public class ZoneSimulationEngine {
     }
     List<NpcRecord> npcs = npcRepository.findByZoneId(properties.getZoneId());
     int loaded = 0;
+    int skipped = 0;
     for (NpcRecord r : npcs) {
-      if ("cutscene_only".equalsIgnoreCase(r.status())) {
+      if (!NpcSpawnFilter.shouldSpawn(r)) {
+        skipped++;
         continue;
       }
       ZoneEntityState npcState = ZoneEntityState.createNpc(r);
       registerNpc(npcState);
       loaded++;
     }
-    log.info("[ZONE-ENGINE] Spawned {} authentic LandSandBoat NPCs into Zone #{}", loaded, properties.getZoneId());
+    log.info(
+        "[ZONE-ENGINE] Spawned {} authentic LandSandBoat NPCs into Zone #{} (filtered/skipped {})",
+        loaded,
+        properties.getZoneId(),
+        skipped);
   }
 
   public int getAuthoritativeZoneId() {

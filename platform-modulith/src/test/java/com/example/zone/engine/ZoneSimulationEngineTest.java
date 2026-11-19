@@ -392,6 +392,122 @@ class ZoneSimulationEngineTest {
     }
 
     @Test
+    @DisplayName("LSB Spawn Filter: loadAuthenticNpcs registers valid actors and skips doors, ships, status_4, blanks, zero-model standard, and cutscene_only")
+    void testLoadAuthenticNpcsAppliesNpcSpawnFilter() {
+        NpcJdbcRepository mockNpcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> {
+                    if ("findByZoneId".equals(method.getName())) {
+                        return List.of(
+                                // Valid: equipped normal NPC
+                                new NpcRecord(
+                                        17719297L, "Ceraule",
+                                        -86.077f, 1.999f, -34.793f, (short) 115,
+                                        230, "normal", 27, (short) 1, (short) 32, (short) 14,
+                                        "equipped", (short) 3, (short) 2,
+                                        4108, 8204, 12300, 16396, 20492, 24576, 28672, 0, 0, true
+                                ),
+                                // Valid: standard normal NPC with modelId > 0
+                                new NpcRecord(
+                                        17719481L, "Well",
+                                        -25.189f, -2.000f, 39.299f, (short) 64,
+                                        230, "normal", 27, (short) 1, (short) 32, (short) 1,
+                                        "standard", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 996, true
+                                ),
+                                // Valid: chocobo normal NPC
+                                new NpcRecord(
+                                        17719401L, "Chocobo",
+                                        9.956f, -3.000f, -110.892f, (short) 0,
+                                        230, "normal", 27, (short) 1, (short) 32, (short) 1,
+                                        "chocobo", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                ),
+                                // Skipped: door look_type
+                                new NpcRecord(
+                                        17719501L, "_6r0",
+                                        12.0f, 0.0f, 15.0f, (short) 0,
+                                        230, "normal", 4099, (short) 0, (short) 0, (short) 0,
+                                        "door", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                ),
+                                // Skipped: ship look_type
+                                new NpcRecord(
+                                        17719502L, "Ship_Trigger",
+                                        0.0f, 0.0f, 0.0f, (short) 0,
+                                        230, "normal", 0, (short) 0, (short) 0, (short) 0,
+                                        "ship", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                ),
+                                // Skipped: status_4
+                                new NpcRecord(
+                                        17719503L, "HiddenEventNpc",
+                                        5.0f, 0.0f, 5.0f, (short) 0,
+                                        230, "status_4", 27, (short) 0, (short) 32, (short) 0,
+                                        "equipped", (short) 1, (short) 1,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                ),
+                                // Skipped: blank trigger name
+                                new NpcRecord(
+                                        17719504L, "blank",
+                                        0.0f, 0.0f, 0.0f, (short) 0,
+                                        230, "normal", 2327, (short) 0, (short) 32, (short) 0,
+                                        "standard", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 963, false
+                                ),
+                                // Skipped: cutscene_only
+                                new NpcRecord(
+                                        17719505L, "CutsceneActor",
+                                        1.0f, 0.0f, 1.0f, (short) 0,
+                                        230, "cutscene_only", 27, (short) 0, (short) 32, (short) 0,
+                                        "equipped", (short) 1, (short) 1,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                ),
+                                // Skipped: standard with modelId=0
+                                new NpcRecord(
+                                        17719506L, "UnmodeledTrigger",
+                                        2.0f, 0.0f, 2.0f, (short) 0,
+                                        230, "normal", 27, (short) 0, (short) 32, (short) 0,
+                                        "standard", (short) 0, (short) 0,
+                                        0, 0, 0, 0, 0, 0, 0, 0, 0, false
+                                )
+                        );
+                    }
+                    return null;
+                }
+        );
+
+        ZoneSimulationEngine filteredEngine = new ZoneSimulationEngine(
+                props,
+                spatialGrid,
+                charRepo,
+                zoneLineRepo,
+                dispatcher,
+                collisionService,
+                new NpcPatrolSimulation(),
+                mockNpcRepo
+        );
+        filteredEngine.start();
+
+        try {
+            assertThat(filteredEngine.getEntityCount()).isEqualTo(3);
+            assertThat(filteredEngine.getEntity(17719297L)).isNotNull();
+            assertThat(filteredEngine.getEntity(17719481L)).isNotNull();
+            assertThat(filteredEngine.getEntity(17719401L)).isNotNull();
+
+            assertThat(filteredEngine.getEntity(17719501L)).isNull();
+            assertThat(filteredEngine.getEntity(17719502L)).isNull();
+            assertThat(filteredEngine.getEntity(17719503L)).isNull();
+            assertThat(filteredEngine.getEntity(17719504L)).isNull();
+            assertThat(filteredEngine.getEntity(17719505L)).isNull();
+            assertThat(filteredEngine.getEntity(17719506L)).isNull();
+        } finally {
+            filteredEngine.stop();
+        }
+    }
+
+    @Test
     @DisplayName("Non-blocking first-movement registration: deduplicates async DB loads via commandQueue without stalling tick")
     void testNonBlockingFirstMovementRegistration() throws Exception {
         CountDownLatch dbStarted = new CountDownLatch(1);

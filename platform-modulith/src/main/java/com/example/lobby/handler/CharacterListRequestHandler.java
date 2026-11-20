@@ -89,7 +89,10 @@ public class CharacterListRequestHandler implements PacketHandler<CharacterListR
           (int) r.mainJobLevel(),
           r.nationId(),
           r.mainJobId(),
-          r.subJobId()
+          r.subJobId(),
+          r.faceId(),
+          r.hairId(),
+          r.sizeId()
         ))
         .toList();
 

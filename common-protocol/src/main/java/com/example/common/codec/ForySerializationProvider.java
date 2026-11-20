@@ -11,6 +11,8 @@ import com.example.login.dto.ReconnectResponse;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.JoinWorldResponse;
 import com.example.world.dto.ZoneTransferNotification;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -64,6 +66,8 @@ public final class ForySerializationProvider {
     fory.register(EntitySpawnRecord.class, 402);
     fory.register(EntityMovementUpdate.class, 403);
     fory.register(ZoneStateDeltaMessage.class, 404);
+    fory.register(ActorAppearance.class, 405);
+    fory.register(ActorLookType.class, 406);
   }
 
   public static ThreadSafeFory get() {

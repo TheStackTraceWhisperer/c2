@@ -33,10 +33,23 @@ class ServerForySyncTest {
     ThreadSafeFory backendFory = BackendForySerializationProvider.get();
 
     CharacterSummary summary = new CharacterSummary(
-      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0
+      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0,
+      (short) 5, (short) 2, (short) 1
+    );
+    ActorAppearance equippedAppearance = ActorAppearance.fromRawNpcLook(
+      "equipped", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 0,
+      0, 1, 27, 32
+    );
+    ActorAppearance standardAppearance = ActorAppearance.forStandardModel(996, 1, 27, 32);
+    ActorAppearance chocoboAppearance = ActorAppearance.fromRawNpcLook(
+      "chocobo", 0, 34,
+      0, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 25, 32
     );
     EntitySpawnRecord spawn = new EntitySpawnRecord(
-      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f
+      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f,
+      equippedAppearance
     );
     EntityMovementUpdate move = new EntityMovementUpdate(
       1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1
@@ -62,6 +75,14 @@ class ServerForySyncTest {
       new ZoneTransferNotification(231, "h", 9001, 1f, 2f, 3f),
       new PlayerMovementRequest(1f, 2f, 3f, 0f, 0f, 0f, 0f, 0f, 1, 1L),
       new PlayerMovementResponse(1L, 1f, 2f, 3f, 0f, 0f, 0f, 0f, 0f, 1, 2L, 1L, false),
+      ActorLookType.NONE,
+      ActorLookType.EQUIPPED,
+      ActorLookType.STANDARD,
+      ActorLookType.CHOCOBO,
+      ActorLookType.AUTOMATON,
+      equippedAppearance,
+      standardAppearance,
+      chocoboAppearance,
       spawn,
       move,
       new ZoneStateDeltaMessage(2L, List.of(spawn), List.of(move), List.of(3L))

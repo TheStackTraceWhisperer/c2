@@ -220,6 +220,10 @@ public class ZoneSimulationEngine {
         state.setMainJobId(r.mainJobId());
         state.setSubJobId(r.subJobId());
         state.setLevel((int) r.mainJobLevel());
+        state.setLookType("equipped");
+        state.setRaceId(r.raceId());
+        state.setFaceId(r.faceId());
+        state.setSizeId(r.sizeId());
       });
 
       spatialGrid.updatePosition(characterId, initX, initZ);
@@ -628,7 +632,8 @@ public class ZoneSimulationEngine {
             neighbor.getLevel(),
             neighbor.getX(), neighbor.getY(), neighbor.getZ(),
             neighbor.getVx(), neighbor.getVy(), neighbor.getVz(),
-            neighbor.getYaw(), neighbor.getPitch()
+            neighbor.getYaw(), neighbor.getPitch(),
+            neighbor.toActorAppearance()
           ));
         } else if (neighbor.isNetworkDirty()) {
           updates.add(new EntityMovementUpdate(

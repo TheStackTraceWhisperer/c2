@@ -14,6 +14,8 @@ import com.example.login.dto.ReconnectResponse;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.JoinWorldResponse;
 import com.example.world.dto.ZoneTransferNotification;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -92,7 +94,24 @@ public class ForyRegistryTest {
     ThreadSafeFory fory = ForySerializationProvider.get();
 
     CharacterSummary summary = new CharacterSummary(
-      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0
+      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0,
+      (short) 4, (short) 2, (short) 2
+    );
+    ActorAppearance equippedAppearance = ActorAppearance.fromRawNpcLook(
+      "equipped", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 32775,
+      0, 1, 27, 32
+    );
+    ActorAppearance standardAppearance = ActorAppearance.forStandardModel(996, 1, 27, 32);
+    ActorAppearance chocoboAppearance = ActorAppearance.fromRawNpcLook(
+      "chocobo", 0, 34,
+      0, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 25, 32
+    );
+    EntitySpawnRecord spawnWithAppearance = new EntitySpawnRecord(
+      1001L, "Ceraule", (short) 1, (short) 0, 10,
+      1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f,
+      equippedAppearance
     );
 
     List<Object> sampleMessages = List.of(
@@ -115,11 +134,23 @@ public class ForyRegistryTest {
       new ZoneTransferNotification(231, "zone-host-2", 9002, 10.0f, 20.0f, 30.0f),
       new PlayerMovementRequest(1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 100L),
       new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 100L, true),
-      new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f),
+      ActorLookType.NONE,
+      ActorLookType.EQUIPPED,
+      ActorLookType.STANDARD,
+      ActorLookType.CHOCOBO,
+      ActorLookType.AUTOMATON,
+      equippedAppearance,
+      standardAppearance,
+      chocoboAppearance,
+      spawnWithAppearance,
       new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1),
       new ZoneStateDeltaMessage(
         500L,
-        List.of(new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f)),
+        List.of(
+          spawnWithAppearance,
+          new EntitySpawnRecord(1002L, "Well", (short) 0, (short) 0, 1, 4.0f, 0.0f, 5.0f, 0f, 0f, 0f, 0f, 0f, standardAppearance),
+          new EntitySpawnRecord(1003L, "Chocobo", (short) 0, (short) 0, 1, 6.0f, 0.0f, 7.0f, 0f, 0f, 0f, 0f, 0f, chocoboAppearance)
+        ),
         List.of(new EntityMovementUpdate(1001L, 1.5f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1)),
         List.of(1002L)
       )
@@ -137,6 +168,101 @@ public class ForyRegistryTest {
         assertThat(packet.messageId()).as("PacketMessage %s messageId should be positive", original.getClass().getSimpleName()).isGreaterThan((short) 0);
       }
     }
+  }
+
+  @Test
+  @DisplayName("ActorAppearance.fromRawNpcLook strips 0x0FFF slot prefixes, resolves chocobo faceId->raceId, and handles all look types")
+  void testActorAppearanceFromRawNpcLook() {
+    // Equipped: Ceraule slot words with 4-bit prefixes (0x100C..0x7000)
+    ActorAppearance equipped = ActorAppearance.fromRawNpcLook(
+      " equipped ", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 32785,
+      999, 1, 27, 32
+    );
+    assertThat(equipped.lookType()).isEqualTo(ActorLookType.EQUIPPED);
+    assertThat(equipped.raceId()).isEqualTo(3);
+    assertThat(equipped.faceId()).isEqualTo(2);
+    assertThat(equipped.head()).isEqualTo(12);
+    assertThat(equipped.body()).isEqualTo(12);
+    assertThat(equipped.hands()).isEqualTo(12);
+    assertThat(equipped.legs()).isEqualTo(12);
+    assertThat(equipped.feet()).isEqualTo(12);
+    assertThat(equipped.mainWeapon()).isEqualTo(0);
+    assertThat(equipped.subShield()).isEqualTo(0);
+    assertThat(equipped.ranged()).isEqualTo(17);
+    assertThat(equipped.modelId()).isEqualTo(0);
+    assertThat(equipped.size()).isEqualTo(1);
+    assertThat(equipped.animationSub()).isEqualTo(1);
+    assertThat(equipped.entityFlags()).isEqualTo(27);
+    assertThat(equipped.namePrefix()).isEqualTo(32);
+
+    // Chocobo: V2__npc_list.sql stores chocobo race (32..36) in faceId with raceId=0
+    ActorAppearance chocoboFromFace = ActorAppearance.fromRawNpcLook(
+      "CHOCOBO", 0, 34,
+      0x1002, 0x2003, 0x3004, 0x4005, 0x5006, 0x6007, 0x7008, 0x8009,
+      55, 2, 25, 32
+    );
+    assertThat(chocoboFromFace.lookType()).isEqualTo(ActorLookType.CHOCOBO);
+    assertThat(chocoboFromFace.raceId()).isEqualTo(34);
+    assertThat(chocoboFromFace.faceId()).isEqualTo(0);
+    assertThat(chocoboFromFace.head()).isEqualTo(2);
+    assertThat(chocoboFromFace.body()).isEqualTo(3);
+    assertThat(chocoboFromFace.hands()).isEqualTo(4);
+    assertThat(chocoboFromFace.legs()).isEqualTo(5);
+    assertThat(chocoboFromFace.feet()).isEqualTo(6);
+    assertThat(chocoboFromFace.mainWeapon()).isEqualTo(0);
+    assertThat(chocoboFromFace.subShield()).isEqualTo(0);
+    assertThat(chocoboFromFace.ranged()).isEqualTo(0);
+    assertThat(chocoboFromFace.modelId()).isEqualTo(0);
+    assertThat(chocoboFromFace.size()).isEqualTo(1);
+
+    // Chocobo fallback to 32 when neither raceId nor faceId is in 32..36
+    ActorAppearance chocoboFallback = ActorAppearance.fromRawNpcLook(
+      "chocobo", 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0
+    );
+    assertThat(chocoboFallback.raceId()).isEqualTo(32);
+    assertThat(chocoboFallback.faceId()).isEqualTo(0);
+
+    // Standard & Automaton zero race/face/slots and keep modelId
+    ActorAppearance standard = ActorAppearance.fromRawNpcLook(
+      "standard", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 0,
+      996, 1, 27, 32
+    );
+    assertThat(standard).isEqualTo(ActorAppearance.forStandardModel(996, 1, 27, 32));
+
+    ActorAppearance automaton = ActorAppearance.fromRawNpcLook(
+      "automaton", 3, 2,
+      4108, 8204, 0, 0, 0, 0, 0, 0,
+      1977, 0, 27, 32
+    );
+    assertThat(automaton.lookType()).isEqualTo(ActorLookType.AUTOMATON);
+    assertThat(automaton.modelId()).isEqualTo(1977);
+    assertThat(automaton.raceId()).isEqualTo(0);
+    assertThat(automaton.head()).isEqualTo(0);
+
+    // Unknown / blank / null look type -> NONE
+    assertThat(ActorAppearance.fromRawNpcLook(null, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1))
+      .isEqualTo(ActorAppearance.NONE);
+    assertThat(ActorAppearance.fromRawNpcLook("door", 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1))
+      .isEqualTo(ActorAppearance.NONE);
+    assertThat(ActorLookType.fromDbValue("   ")).isEqualTo(ActorLookType.NONE);
+
+    // Null lookType normalization in compact constructor & backwards-compatible constructors
+    ActorAppearance nullNormalized = new ActorAppearance(null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0);
+    assertThat(nullNormalized.lookType()).isEqualTo(ActorLookType.NONE);
+
+    EntitySpawnRecord legacySpawn = new EntitySpawnRecord(1L, "Legacy", (short) 1, (short) 0, 1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+    assertThat(legacySpawn.appearance()).isEqualTo(ActorAppearance.NONE);
+    EntitySpawnRecord nullAppearanceSpawn = new EntitySpawnRecord(1L, "NullApp", (short) 1, (short) 0, 1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, null);
+    assertThat(nullAppearanceSpawn.appearance()).isEqualTo(ActorAppearance.NONE);
+
+    CharacterSummary legacySummary = new CharacterSummary(1L, "Old", 1, (short) 1, (short) 0, 230, 1, (short) 1, (short) 1, (short) 0);
+    assertThat(legacySummary.faceId()).isEqualTo((short) 0);
+    assertThat(legacySummary.hairId()).isEqualTo((short) 0);
+    assertThat(legacySummary.sizeId()).isEqualTo((short) 1);
   }
 
   @Test

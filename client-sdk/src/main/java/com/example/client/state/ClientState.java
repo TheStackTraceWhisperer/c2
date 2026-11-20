@@ -3,7 +3,9 @@ package com.example.client.state;
 import com.example.client.interp.EntityInterpolationBuffer;
 import com.example.client.interp.InterpolatedEntityState;
 import com.example.client.interp.InterpolationSnapshot;
+import com.example.common.protocol.RaceId;
 import com.example.lobby.dto.CharacterSummary;
+import com.example.zone.dto.ActorAppearance;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.ZoneStateDeltaMessage;
@@ -55,8 +57,33 @@ public class ClientState {
     float x, float y, float z,
     float vx, float vy, float vz,
     float yaw, float pitch,
-    int moveFlags
-  ) {}
+    int moveFlags,
+    ActorAppearance appearance
+  ) {
+    public RemoteEntityState {
+      if (appearance == null) {
+        appearance = ActorAppearance.NONE;
+      }
+    }
+
+    public RemoteEntityState(
+      long characterId,
+      String name,
+      short mainJobId,
+      short subJobId,
+      int level,
+      float x, float y, float z,
+      float vx, float vy, float vz,
+      float yaw, float pitch,
+      int moveFlags
+    ) {
+      this(
+        characterId, name, mainJobId, subJobId, level,
+        x, y, z, vx, vy, vz, yaw, pitch, moveFlags,
+        ActorAppearance.NONE
+      );
+    }
+  }
 
   public void setConnectionState(ClientConnectionState connectionState) {
     setConnectionState(connectionState, true);
@@ -87,6 +114,18 @@ public class ClientState {
 
   public List<CharacterSummary> getCharacterList() {
     return characters;
+  }
+
+  public ActorAppearance getSelectedCharacterAppearance() {
+    Long selectedId = this.selectedCharacterId;
+    if (selectedId != null) {
+      for (CharacterSummary c : characters) {
+        if (c.characterId() == selectedId) {
+          return ActorAppearance.forPlayer(c.raceId(), c.faceId(), c.sizeId());
+        }
+      }
+    }
+    return ActorAppearance.forPlayer(RaceId.HUME_MALE, 0, 1);
   }
 
   public void addOrUpdateRemoteEntity(EntitySpawnRecord spawn) {
@@ -135,7 +174,8 @@ public class ClientState {
       spawn.characterId(), spawn.name(), spawn.mainJobId(), spawn.subJobId(), spawn.level(),
       spawn.x(), spawn.y(), spawn.z(),
       spawn.vx(), spawn.vy(), spawn.vz(),
-      spawn.yaw(), spawn.pitch(), 0
+      spawn.yaw(), spawn.pitch(), 0,
+      spawn.appearance()
     ));
 
     EntityInterpolationBuffer buffer = interpolationBuffers.computeIfAbsent(spawn.characterId(), id -> new EntityInterpolationBuffer());
@@ -151,7 +191,8 @@ public class ClientState {
       old.characterId(), old.name(), old.mainJobId(), old.subJobId(), old.level(),
       update.x(), update.y(), update.z(),
       update.vx(), update.vy(), update.vz(),
-      update.yaw(), update.pitch(), update.moveFlags()
+      update.yaw(), update.pitch(), update.moveFlags(),
+      old.appearance()
     ));
 
     if (updated == null) {

@@ -15,6 +15,8 @@ import com.example.server.protocol.*;
 import com.example.world.dto.JoinWorldRequest;
 import com.example.world.dto.JoinWorldResponse;
 import com.example.world.dto.ZoneTransferNotification;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.example.zone.dto.EntityMovementUpdate;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
@@ -37,7 +39,23 @@ public class ForySyncIT {
     ThreadSafeFory backendFory = BackendForySerializationProvider.get();
 
     CharacterSummary summary = new CharacterSummary(
-      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0
+      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0,
+      (short) 5, (short) 2, (short) 1
+    );
+    ActorAppearance equippedAppearance = ActorAppearance.fromRawNpcLook(
+      "equipped", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 0,
+      0, 1, 27, 32
+    );
+    ActorAppearance standardAppearance = ActorAppearance.forStandardModel(996, 1, 27, 32);
+    ActorAppearance chocoboAppearance = ActorAppearance.fromRawNpcLook(
+      "chocobo", 0, 34,
+      0, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 25, 32
+    );
+    EntitySpawnRecord populatedSpawn = new EntitySpawnRecord(
+      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f,
+      equippedAppearance
     );
 
     List<Object> allPayloads = List.of(
@@ -75,14 +93,22 @@ public class ForySyncIT {
       new JoinWorldResponse(true, 230, "zone-host", 9001, "joined"),
       new ZoneTransferNotification(231, "zone-host-2", 9002, 1.0f, 2.0f, 3.0f),
 
-      // Zone (400 - 404)
+      // Zone (400 - 406)
       new PlayerMovementRequest(1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 10L),
       new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 10L, true),
-      new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f),
+      ActorLookType.NONE,
+      ActorLookType.EQUIPPED,
+      ActorLookType.STANDARD,
+      ActorLookType.CHOCOBO,
+      ActorLookType.AUTOMATON,
+      equippedAppearance,
+      standardAppearance,
+      chocoboAppearance,
+      populatedSpawn,
       new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1),
       new ZoneStateDeltaMessage(
         500L,
-        List.of(new EntitySpawnRecord(1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f)),
+        List.of(populatedSpawn),
         List.of(new EntityMovementUpdate(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1)),
         List.of(2002L)
       )
@@ -105,10 +131,23 @@ public class ForySyncIT {
     ThreadSafeFory backendFory = BackendForySerializationProvider.get();
 
     CharacterSummary summary = new CharacterSummary(
-      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0
+      1001L, "Hero", 1, (short) 1, (short) 1, 230, 10, (short) 1, (short) 1, (short) 0,
+      (short) 5, (short) 2, (short) 1
+    );
+    ActorAppearance equippedAppearance = ActorAppearance.fromRawNpcLook(
+      "equipped", 3, 2,
+      4108, 8204, 12300, 16396, 20492, 24576, 28672, 0,
+      0, 1, 27, 32
+    );
+    ActorAppearance standardAppearance = ActorAppearance.forStandardModel(996, 1, 27, 32);
+    ActorAppearance chocoboAppearance = ActorAppearance.fromRawNpcLook(
+      "chocobo", 0, 34,
+      0, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 25, 32
     );
     EntitySpawnRecord spawn = new EntitySpawnRecord(
-      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f
+      1001L, "Hero", (short) 1, (short) 0, 10, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f,
+      equippedAppearance
     );
     EntityMovementUpdate move = new EntityMovementUpdate(
       1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1
@@ -134,6 +173,14 @@ public class ForySyncIT {
       new ZoneTransferNotification(231, "zone-host-2", 9002, 1.0f, 2.0f, 3.0f),
       new PlayerMovementRequest(1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 10L),
       new PlayerMovementResponse(1001L, 1.0f, 2.0f, 3.0f, 0.1f, 0.2f, 0.3f, 90.0f, 0.0f, 1, 500L, 10L, true),
+      ActorLookType.NONE,
+      ActorLookType.EQUIPPED,
+      ActorLookType.STANDARD,
+      ActorLookType.CHOCOBO,
+      ActorLookType.AUTOMATON,
+      equippedAppearance,
+      standardAppearance,
+      chocoboAppearance,
       spawn,
       move,
       new ZoneStateDeltaMessage(500L, List.of(spawn), List.of(move), List.of(2002L))

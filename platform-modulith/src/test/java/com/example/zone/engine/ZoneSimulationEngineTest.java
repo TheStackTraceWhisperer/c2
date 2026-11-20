@@ -373,14 +373,14 @@ class ZoneSimulationEngineTest {
             assertThat(ceraule.getX()).isEqualTo(-86.077f);
             assertThat(ceraule.getY()).isEqualTo(1.999f);
             assertThat(ceraule.getZ()).isEqualTo(-34.793f);
-            assertThat(ceraule.getYaw()).isEqualTo(115 * 360.0f / 256.0f);
-            assertThat(ceraule.getAnimationSub()).isEqualTo(1); // Sitting / resting pose
+            assertThat(ceraule.getYaw()).isEqualTo((((115 * 360.0f / 256.0f) + 90.0f) % 360.0f));
+            assertThat(ceraule.getAnimationSub()).isEqualTo(1);
             assertThat(ceraule.isNpc()).isTrue();
 
             assertThat(engineWithNpcs.getEntity(17719298L)).isNotNull();
             ZoneEntityState aubejart = engineWithNpcs.getEntity(17719298L);
             assertThat(aubejart.getName()).isEqualTo("Aubejart");
-            assertThat(aubejart.getYaw()).isEqualTo(64 * 360.0f / 256.0f);
+            assertThat(aubejart.getYaw()).isEqualTo((((64 * 360.0f / 256.0f) + 90.0f) % 360.0f));
             assertThat(aubejart.getAnimationSub()).isEqualTo(1);
 
             // Verify spatial grid indexing

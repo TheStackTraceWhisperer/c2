@@ -5,6 +5,7 @@ import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.common.time.VanadielTime;
+import com.example.zone.dto.ActorAppearance;
 import com.ffxi.io.FileTableManager;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.tables.ZoneConfig;
@@ -157,6 +158,14 @@ public class WorldScene implements AutoCloseable {
      */
     public AuthenticCharacterInstance createCharacterInstance(Path ffxiRoot, RaceGenderConfig race) throws IOException {
         return characterAssetCache.acquireInstance(ffxiRoot, race);
+    }
+
+    /**
+     * Acquires an actor visual instance (equipped PC/NPC, chocobo, or standard NPC model)
+     * using the shared {@link CharacterAssetCache}.
+     */
+    public AuthenticCharacterInstance createCharacterInstance(Path ffxiRoot, ActorAppearance appearance) throws IOException {
+        return characterAssetCache.acquireInstance(ffxiRoot, appearance);
     }
 
     /**

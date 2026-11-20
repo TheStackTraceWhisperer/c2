@@ -27,13 +27,14 @@ CATEGORIES = {
     "integration": {
         "title": "Live Server-Client E2E Integration",
         "icon": "🌐",
-        "desc": "End-to-end integration: authoritative 20 Hz ZoneSimulationEngine, LandSandBoat authentic NPC spatial synchronization, ClientState remote entity tracking, and in-engine 1080p camera rendering in Southern San d'Oria (Zone 230).",
+        "desc": "End-to-end integration: authoritative 20 Hz ZoneSimulationEngine, full V2__npc_list.sql LandSandBoat NPC dataset with ActorAppearance streaming, ClientState remote entity tracking, and in-engine 1080p multi-model rendering across Southern San d'Oria (Zone 230) and Lower Jeuno (Zone 245).",
         "pattern": "e2e_live_*.png",
         "subsections": [
-            ("Authoritative Spawning, Movement & LSB NPC Rendezvous", [
+            ("Authoritative Spawning, Movement & LSB NPC Rendezvous (Zones 230 & 245)", [
                 "e2e_live_01_south_sandoria_world_spawn.png",
                 "e2e_live_02_south_sandoria_npc_plaza.png",
-                "e2e_live_03_south_sandoria_ceraule_rest.png"
+                "e2e_live_03_south_sandoria_ceraule_rendezvous.png",
+                "e2e_live_04_lower_jeuno_aldo.png"
             ])
         ]
     },
@@ -85,7 +86,7 @@ CATEGORIES = {
             ("Boom Zoom Distances (2.5m, 6.0m, 13.0m)", [
                 "camera_zoom_close_2_5m.png", "camera_zoom_standard_6m.png", "camera_zoom_distance_13m.png"
             ]),
-            ("Cardinal Chase Following (North -Z, East +X, South +Z, West -X)", [
+            ("Cardinal Chase Following (North +Z, East +X, South -Z, West -X)", [
                 "camera_chase_facing_north.png", "camera_chase_facing_east.png",
                 "camera_chase_facing_south.png", "camera_chase_facing_west.png"
             ]),
@@ -112,7 +113,7 @@ CATEGORIES = {
                 "zone_248_selbina_windmill_harbor.png", "zone_249_mhaura_port_pier.png",
                 "zone_100_west_ronfaure_overlook.png", "zone_102_la_theine_crag_plateau.png"
             ]),
-            ("Top-Down Orthographic Maps (North = -Z)", [
+            ("Top-Down Orthographic Maps (North = +Z)", [
                 "zone_230_south_san_doria_topdown_ortho.png", "zone_231_north_san_doria_topdown_ortho.png",
                 "zone_232_port_san_doria_topdown_ortho.png", "zone_233_chateau_d_oraguille_topdown_ortho.png",
                 "zone_234_bastok_mines_topdown_ortho.png", "zone_235_bastok_markets_topdown_ortho.png",
@@ -127,7 +128,7 @@ CATEGORIES = {
     "ingame_maps": {
         "title": "In-Game Maps & Cartography",
         "icon": "🗺️",
-        "desc": "Authentic retail in-game 2D maps decoded directly from ROM DATs (MENUMAP DXT3 & 256-color palette textures) featuring key landmark POI reticles, world-space extents, origin offsets, and true North=-Z orientation.",
+        "desc": "Authentic retail in-game 2D maps decoded directly from ROM DATs (MENUMAP DXT3 & 256-color palette textures) featuring key landmark POI reticles, world-space extents, origin offsets, and true North=+Z orientation.",
         "pattern": "map_zone_*.png",
         "subsections": [
             ("Kingdom of San d'Oria (Zones 230 - 233)", [
@@ -708,12 +709,12 @@ BASE_PAGE_TEMPLATE = """<!DOCTYPE html>
                     <span class="brand-tag">XIM Authentic</span>
                 </a>
                 <div class="top-actions">
-                    <div class="coord-indicator" title="Retail FFXI Coordinate Kinematics: North is -Z, East is +X, South is +Z, West is -X, Up is +Y">
-                        <span><b>N:</b> -Z</span>
+                    <div class="coord-indicator" title="Retail FFXI Coordinate Kinematics: North is +Z, East is +X, South is -Z, West is -X, Up is -Y">
+                        <span><b>N:</b> +Z</span>
                         <span><b>E:</b> +X</span>
-                        <span><b>S:</b> +Z</span>
+                        <span><b>S:</b> -Z</span>
                         <span><b>W:</b> -X</span>
-                        <span><b>Up:</b> +Y</span>
+                        <span><b>Up:</b> -Y</span>
                     </div>
                     <button class="refresh-button" onclick="location.reload()" title="Reload captures">↻ Refresh</button>
                 </div>
@@ -722,6 +723,11 @@ BASE_PAGE_TEMPLATE = """<!DOCTYPE html>
                 <a class="chip {active_toc}" href="/">
                     <span>📖</span>
                     <span>Table of Contents</span>
+                </a>
+                <a class="chip {active_integration}" href="/?cat=integration">
+                    <span>🌐</span>
+                    <span>Integration</span>
+                    <span class="chip-badge">{count_integration}</span>
                 </a>
                 <a class="chip {active_walkthrough}" href="/?cat=walkthrough">
                     <span>🚶‍♂️</span>
@@ -904,6 +910,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title="Table of Contents",
             active_toc="active",
+            active_integration="",
             active_walkthrough="",
             active_ingame_maps="",
             active_camera="",
@@ -912,6 +919,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="",
             active_ui="",
             active_all="",
+            count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],
@@ -956,6 +964,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title=cat['title'],
             active_toc="",
+            active_integration="active" if cat_key == "integration" else "",
             active_walkthrough="active" if cat_key == "walkthrough" else "",
             active_ingame_maps="active" if cat_key == "ingame_maps" else "",
             active_camera="active" if cat_key == "camera" else "",
@@ -964,6 +973,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="active" if cat_key == "monsters_npcs" else "",
             active_ui="active" if cat_key == "ui" else "",
             active_all="",
+            count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],
@@ -1000,6 +1010,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         html = BASE_PAGE_TEMPLATE.format(
             page_title="All Snapshots",
             active_toc="",
+            active_integration="",
             active_walkthrough="",
             active_ingame_maps="",
             active_camera="",
@@ -1008,6 +1019,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="",
             active_ui="",
             active_all="active",
+            count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
             count_camera=counts["camera"],

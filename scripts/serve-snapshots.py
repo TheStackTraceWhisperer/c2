@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlparse, parse_qs
 from datetime import datetime
 
 DEFAULT_PORT = 8088
+REPORTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "target", "reports"))
 SNAPSHOT_DIRS = [
     os.path.abspath("workspace/c2/client-desktop/target/snapshots"),
     os.path.abspath("client-desktop/target/snapshots"),
@@ -769,6 +770,11 @@ BASE_PAGE_TEMPLATE = """<!DOCTYPE html>
                     <span>All Captures</span>
                     <span class="chip-badge">{count_all}</span>
                 </a>
+                <a class="chip {active_reports}" href="/?cat=reports">
+                    <span>📊</span>
+                    <span>Reports</span>
+                    <span class="chip-badge">{count_reports}</span>
+                </a>
             </nav>
         </div>
     </header>
@@ -820,13 +826,22 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         if path in ("/", "/index.html", "/toc"):
+            report = qs.get("report", [""])[0]
+            if report:
+                self.serve_report_file(os.path.basename(report))
+                return
             cat = qs.get("cat", [""])[0].lower()
             if not cat or cat == "toc":
                 self.serve_toc()
+            elif cat == "reports":
+                self.serve_reports()
             elif cat in CATEGORIES:
                 self.serve_category(cat)
             else:
                 self.serve_all_gallery()
+        elif path.startswith("/reports/"):
+            filename = os.path.basename(path)
+            self.serve_report_file(filename)
         elif path.startswith("/snapshots/"):
             filename = os.path.basename(path)
             self.serve_file(filename)
@@ -837,6 +852,17 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         files = []
         for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.glb"):
             files.extend(glob.glob(os.path.join(self.snapshots_dir, ext)))
+        files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        return files
+
+    def get_all_reports(self):
+        if not REPORTS_DIR or not os.path.isdir(REPORTS_DIR):
+            return []
+        files = [
+            path
+            for path in glob.glob(os.path.join(REPORTS_DIR, "*.html"))
+            if os.path.basename(path).lower() != "index.html"
+        ]
         files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
         return files
 
@@ -854,11 +880,17 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         for key in CATEGORIES:
             counts[key] = self.count_category(key, all_files_set)
         counts["all"] = len(all_files_set)
+        counts["reports"] = len(self.get_all_reports())
         return counts
+
+    def _format_report_title(self, fname):
+        stem = os.path.splitext(fname)[0]
+        return stem.replace("-", " ").replace("_", " ").title()
 
     def serve_toc(self):
         all_files = {os.path.basename(p): p for p in self.get_all_snapshots()}
         counts = self.get_counts(all_files)
+        report_files = self.get_all_reports()
 
         cards_html = []
         for key, cat in CATEGORIES.items():
@@ -891,6 +923,27 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             </a>
             """)
 
+        for rpath in report_files:
+            fname = os.path.basename(rpath)
+            title = self._format_report_title(fname)
+            sz = os.path.getsize(rpath)
+            size_str = f"{sz / 1024:.1f} KB" if sz < 1024 * 1024 else f"{sz / (1024 * 1024):.2f} MB"
+            mtime = datetime.fromtimestamp(os.path.getmtime(rpath)).strftime("%Y-%m-%d %H:%M:%S")
+            cards_html.append(f"""
+            <a class="toc-card" href="/?report={fname}">
+                <div class="toc-card-header">
+                    <div class="toc-card-title"><span>📊</span> {title}</div>
+                    <span class="toc-card-badge">HTML Report</span>
+                </div>
+                <div class="toc-card-desc">
+                    Interactive codebase audit report (<code>{fname}</code> &bull; {size_str} &bull; updated {mtime}).
+                </div>
+                <div class="toc-card-footer">
+                    <span>Open Report &rarr;</span>
+                </div>
+            </a>
+            """)
+
         content = f"""
         <div class="page-header">
             <div>
@@ -898,7 +951,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
                 <p>
                     Interactive test gallery for the C2 / FFXI rendering pipeline.
                     Select a category below or use the navigation chips above to inspect third-person camera polar orbits,
-                    top-down ortho maps, character animation blending, monsters, and UI systems.
+                    top-down ortho maps, character animation blending, monsters, UI systems, and HTML reports.
                 </p>
             </div>
         </div>
@@ -919,6 +972,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="",
             active_ui="",
             active_all="",
+            active_reports="",
             count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
@@ -928,6 +982,75 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             count_monsters_npcs=counts["monsters_npcs"],
             count_ui=counts["ui"],
             count_all=counts["all"],
+            count_reports=counts["reports"],
+            page_content=content
+        )
+        self.send_html(html)
+
+    def serve_reports(self):
+        all_files = {os.path.basename(p): p for p in self.get_all_snapshots()}
+        counts = self.get_counts(all_files)
+        report_files = self.get_all_reports()
+
+        cards_html = []
+        for rpath in report_files:
+            fname = os.path.basename(rpath)
+            title = self._format_report_title(fname)
+            sz = os.path.getsize(rpath)
+            size_str = f"{sz / 1024:.1f} KB" if sz < 1024 * 1024 else f"{sz / (1024 * 1024):.2f} MB"
+            mtime = datetime.fromtimestamp(os.path.getmtime(rpath)).strftime("%Y-%m-%d %H:%M:%S")
+            cards_html.append(f"""
+            <a class="toc-card" href="/?report={fname}">
+                <div class="toc-card-header">
+                    <div class="toc-card-title"><span>📊</span> {title}</div>
+                    <span class="toc-card-badge">{size_str}</span>
+                </div>
+                <div class="toc-card-desc">
+                    File: <code>{fname}</code> &bull; Modified: {mtime}
+                </div>
+                <div class="toc-card-footer">
+                    <span>Open Report &rarr;</span>
+                </div>
+            </a>
+            """)
+
+        body = f'<div class="toc-grid">{"".join(cards_html)}</div>' if cards_html else '<p style="color:var(--text-dim);">No HTML reports found.</p>'
+        content = f"""
+        <div class="page-header">
+            <div>
+                <h1><span>📊</span> Engineering &amp; Audit Reports ({len(report_files)})</h1>
+                <p>Interactive HTML reports served from <code>{REPORTS_DIR}</code>.</p>
+            </div>
+            <div>
+                <a class="refresh-button" href="/" style="text-decoration:none;">&larr; Back to ToC</a>
+            </div>
+        </div>
+        {body}
+        """
+
+        html = BASE_PAGE_TEMPLATE.format(
+            page_title="Reports",
+            active_toc="",
+            active_integration="",
+            active_walkthrough="",
+            active_ingame_maps="",
+            active_camera="",
+            active_zones="",
+            active_animations="",
+            active_monsters_npcs="",
+            active_ui="",
+            active_all="",
+            active_reports="active",
+            count_integration=counts.get("integration", 0),
+            count_walkthrough=counts.get("walkthrough", 0),
+            count_ingame_maps=counts.get("ingame_maps", 0),
+            count_camera=counts["camera"],
+            count_zones=counts["zones"],
+            count_animations=counts["animations"],
+            count_monsters_npcs=counts["monsters_npcs"],
+            count_ui=counts["ui"],
+            count_all=counts["all"],
+            count_reports=counts["reports"],
             page_content=content
         )
         self.send_html(html)
@@ -973,6 +1096,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="active" if cat_key == "monsters_npcs" else "",
             active_ui="active" if cat_key == "ui" else "",
             active_all="",
+            active_reports="",
             count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
@@ -982,6 +1106,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             count_monsters_npcs=counts["monsters_npcs"],
             count_ui=counts["ui"],
             count_all=counts["all"],
+            count_reports=counts["reports"],
             page_content=content
         )
         self.send_html(html)
@@ -1019,6 +1144,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             active_monsters_npcs="",
             active_ui="",
             active_all="active",
+            active_reports="",
             count_integration=counts.get("integration", 0),
             count_walkthrough=counts.get("walkthrough", 0),
             count_ingame_maps=counts.get("ingame_maps", 0),
@@ -1028,6 +1154,7 @@ class SnapshotHandler(BaseHTTPRequestHandler):
             count_monsters_npcs=counts["monsters_npcs"],
             count_ui=counts["ui"],
             count_all=counts["all"],
+            count_reports=counts["reports"],
             page_content=content
         )
         self.send_html(html)
@@ -1070,7 +1197,44 @@ class SnapshotHandler(BaseHTTPRequestHandler):
         </div>
         """
 
+    def _resolve_report_path(self, filename):
+        if (
+            not filename
+            or not filename.lower().endswith(".html")
+            or filename.lower() == "index.html"
+            or not REPORTS_DIR
+        ):
+            return None
+        base_abs = os.path.abspath(REPORTS_DIR)
+        candidate = os.path.abspath(os.path.join(base_abs, filename))
+        if candidate.startswith(base_abs + os.sep) and os.path.isfile(candidate):
+            return candidate
+        return None
+
+    def serve_report_file(self, filename):
+        resolved = self._resolve_report_path(filename)
+        if not resolved:
+            self.send_error(404, "Report Not Found")
+            return
+
+        with open(resolved, "rb") as f:
+            data = f.read()
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def serve_file(self, filename):
+        if filename.lower().endswith(".html") and self._resolve_report_path(filename):
+            self.serve_report_file(filename)
+            return
+
         safe_path = os.path.abspath(os.path.join(self.snapshots_dir, filename))
         if not safe_path.startswith(self.snapshots_dir) or not os.path.isfile(safe_path):
             self.send_error(404, "File Not Found")

@@ -101,4 +101,41 @@ public class ArchitectureTest {
   static final ArchRule common_protocol_must_not_depend_on_micronaut =
     noClasses().that().resideInAPackage("com.example.common..")
       .should().dependOnClassesThat().resideInAPackage("io.micronaut..");
+
+  // --- 5. Server, Operator & Protocol DTO Boundaries ---
+
+  @ArchTest
+  static final ArchRule server_must_not_depend_on_rendering_or_ui_frameworks =
+    noClasses().that().resideOutsideOfPackage("com.example.client..")
+      .should().dependOnClassesThat().resideInAnyPackage(
+        "org.lwjgl..",
+        "imgui..",
+        "com.ffxi.viewer.."
+      );
+
+  @ArchTest
+  static final ArchRule operator_should_not_depend_on_game_service_runtimes =
+    noClasses().that().resideInAPackage("com.example.operator..")
+      .should().dependOnClassesThat().resideInAnyPackage(
+        "com.example.gateway..",
+        "com.example.login..",
+        "com.example.lobby..",
+        "com.example.world..",
+        "com.example.zone.."
+      );
+
+  @ArchTest
+  static final ArchRule protocol_dtos_must_not_depend_on_server_runtime_or_micronaut =
+    noClasses().that().resideInAnyPackage(
+        "com.example.login.dto..",
+        "com.example.lobby.dto..",
+        "com.example.world.dto..",
+        "com.example.zone.dto.."
+      )
+      .should().dependOnClassesThat().resideInAnyPackage(
+        "com.example.server..",
+        "com.example.gateway..",
+        "com.example.operator..",
+        "io.micronaut.."
+      );
 }

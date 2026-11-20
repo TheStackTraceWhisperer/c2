@@ -38,7 +38,7 @@ import static org.awaitility.Awaitility.await;
 /**
  * End-to-End integration test covering the complete server-authoritative world simulation pipeline:
  * - Real binary DAT loading (Zone 230 South San d'Oria collision triangles & authentic swept-OBB zonelines)
- * - Authentic town NPC spawning from NpcTable-V3.DAT into spatial grid
+ * - Authoritative town NPC spawning into the spatial grid
  * - 20 Hz AoI delta streaming (spawn, movement updates, despawn) to Netty client channels
  * - Authoritative 3D collision validation: downward ground raycasting, floor penetration snapping, and fly-hack prevention
  * - Continuous NPC patrol simulation along waypoints

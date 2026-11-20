@@ -27,7 +27,7 @@ CATEGORIES = {
     "integration": {
         "title": "Live Server-Client E2E Integration",
         "icon": "🌐",
-        "desc": "End-to-end integration: authoritative 20 Hz ZoneSimulationEngine, full V2__npc_list.sql LandSandBoat NPC dataset with ActorAppearance streaming, ClientState remote entity tracking, and in-engine 1080p multi-model rendering across Southern San d'Oria (Zone 230) and Lower Jeuno (Zone 245).",
+        "desc": "End-to-end integration: authoritative 20 Hz ZoneSimulationEngine, LandSandBoat V2__npc_list.sql + V4 STATUS_DISAPPEAR/grounding dataset with ActorAppearance streaming, 0x45 ModelInfoParser size scaling, ClientState remote entity tracking, and in-engine 1080p multi-model rendering across Southern San d'Oria (Zone 230) and Lower Jeuno (Zone 245).",
         "pattern": "e2e_live_*.png",
         "subsections": [
             ("Authoritative Spawning, Movement & LSB NPC Rendezvous (Zones 230 & 245)", [

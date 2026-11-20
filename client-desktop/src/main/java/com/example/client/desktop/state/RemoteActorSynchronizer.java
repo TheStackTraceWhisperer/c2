@@ -17,8 +17,9 @@ import java.util.List;
 
 /**
  * Synchronizes local and remote AOI entities from {@link ClientState} into {@link WorldScene} actors.
- * Acquires character visual models through {@link WorldScene#createCharacterInstance(Path, RaceGenderConfig)}
- * (backed by {@code CharacterAssetCache}) and disposes despawned remote actors cleanly via {@link WorldScene#removeActor(long)}.
+ * Acquires character visual models through {@link WorldScene#createCharacterInstance(Path, ActorAppearance)}
+ * (with race fallback via {@link WorldScene#createCharacterInstance(Path, RaceGenderConfig)}, backed by
+ * {@code CharacterAssetCache}) and disposes despawned remote actors cleanly via {@link WorldScene#removeActor(long)}.
  */
 @Slf4j
 public final class RemoteActorSynchronizer {

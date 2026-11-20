@@ -9,8 +9,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +31,14 @@ class NpcSpawnFilterTest {
 
   private static final Pattern ZONE_ID_PATTERN = Pattern.compile(
       "^\\s*\\(\\s*(\\d+)\\s*,\\s*'[^']*'");
+
+  private static final Pattern V4_POS_Y_UPDATE_PATTERN = Pattern.compile(
+      "UPDATE\\s+game\\.npc_list\\s+SET\\s+pos_y\\s*=\\s*([-0-9.]+)\\s+WHERE\\s+id\\s*=\\s*(\\d+)",
+      Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+  private static final Pattern V4_DISAPPEAR_BLOCK_PATTERN = Pattern.compile(
+      "UPDATE\\s+game\\.npc_list\\s+SET\\s+status\\s*=\\s*'disappear'\\s+WHERE\\s+id\\s+IN\\s*\\(([^)]+)\\)",
+      Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
   @Test
   @DisplayName("Valid equipped, standard, chocobo, and automaton NPC records pass shouldSpawn (including animation_sub=1)")
@@ -67,6 +77,8 @@ class NpcSpawnFilterTest {
         2L, "Status4Actor", 10f, 0f, 10f, 245, "status_4", (short) 0, "equipped", 0))).isFalse();
     assertThat(NpcSpawnFilter.shouldSpawn(createNpc(
         3L, "Status5Actor", 10f, 0f, 10f, 245, "status_5", (short) 0, "standard", 100))).isFalse();
+    assertThat(NpcSpawnFilter.shouldSpawn(createNpc(
+        5L, "DisappearActor", 10f, 0f, 10f, 230, "disappear", (short) 0, "standard", 66))).isFalse();
     assertThat(NpcSpawnFilter.shouldSpawn(createNpc(
         4L, "NullStatusActor", 10f, 0f, 10f, 230, null, (short) 0, "equipped", 0))).isFalse();
   }
@@ -156,27 +168,92 @@ class NpcSpawnFilterTest {
     assertThat(aldo.modelId()).isEqualTo(78);
     assertThat(NpcSpawnFilter.shouldSpawn(aldo)).isTrue();
 
-    // Verify Zone 230 (Southern San d'Oria) filtering
-    List<NpcRecord> zone230All = allRows.stream().filter(r -> r.zoneId() == 230).toList();
+    // Verify Zone 230 (Southern San d'Oria) filtering after V4 migration
+    List<NpcRecord> postV4Rows = applyV4Migration(allRows, "/db/migration/V4__fix_npc_disappear_status_and_grounding.sql");
+    long disappearCount = postV4Rows.stream()
+        .filter(r -> "disappear".equals(r.status()))
+        .count();
+    assertThat(disappearCount).isEqualTo(773L);
+
+    NpcRecord claidie = postV4Rows.stream()
+        .filter(r -> r.id() == 17719370L)
+        .findFirst()
+        .orElseThrow();
+    assertThat(claidie.status()).isEqualTo("disappear");
+    assertThat(NpcSpawnFilter.shouldSpawn(claidie)).isFalse();
+
+    NpcRecord raminel = postV4Rows.stream()
+        .filter(r -> r.id() == 17719326L)
+        .findFirst()
+        .orElseThrow();
+    assertThat(raminel.posY()).isEqualTo(2.000f);
+    assertThat(NpcSpawnFilter.shouldSpawn(raminel)).isTrue();
+
+    List<NpcRecord> zone230All = postV4Rows.stream().filter(r -> r.zoneId() == 230).toList();
     List<NpcRecord> zone230Spawned = zone230All.stream().filter(NpcSpawnFilter::shouldSpawn).toList();
     assertThat(zone230All).hasSize(725);
-    assertThat(zone230Spawned).hasSize(194);
+    assertThat(zone230Spawned).hasSize(166);
     assertCleanSpawnSet(zone230Spawned);
     Set<String> zone230Names = zone230Spawned.stream().map(NpcRecord::name).collect(Collectors.toSet());
     assertThat(zone230Names)
-        .contains("Ceraule", "Aubejart", "Ephauge", "Well", "Chocobo")
-        .doesNotContain("Aldo", "blank");
+        .contains("Ceraule", "Aubejart", "Ephauge", "Machielle", "Corua", "Raminel",
+            "Rolandienne", "Repairer Moogle", "Well", "Chocobo")
+        .doesNotContain("Claidie", "Valeriano", "Valentione Single", "Aldo", "blank");
 
-    // Verify Zone 245 (Lower Jeuno) filtering
-    List<NpcRecord> zone245All = allRows.stream().filter(r -> r.zoneId() == 245).toList();
+    // Verify Zone 245 (Lower Jeuno) filtering after V4 migration
+    List<NpcRecord> zone245All = postV4Rows.stream().filter(r -> r.zoneId() == 245).toList();
     List<NpcRecord> zone245Spawned = zone245All.stream().filter(NpcSpawnFilter::shouldSpawn).toList();
     assertThat(zone245All).hasSize(336);
-    assertThat(zone245Spawned).hasSize(148);
+    assertThat(zone245Spawned).hasSize(123);
     assertCleanSpawnSet(zone245Spawned);
     Set<String> zone245Names = zone245Spawned.stream().map(NpcRecord::name).collect(Collectors.toSet());
     assertThat(zone245Names)
         .contains("Aldo", "Chocobo")
-        .doesNotContain("blank");
+        .doesNotContain("blank", "Cafe Maid");
+  }
+
+  private static List<NpcRecord> applyV4Migration(List<NpcRecord> baseRows, String resourcePath) throws Exception {
+    String sql;
+    try (InputStream in = NpcSpawnFilterTest.class.getResourceAsStream(resourcePath)) {
+      assertThat(in).as("Migration resource " + resourcePath).isNotNull();
+      sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    Set<Long> disappearIds = new HashSet<>();
+    Matcher disappearMatcher = V4_DISAPPEAR_BLOCK_PATTERN.matcher(sql);
+    while (disappearMatcher.find()) {
+      String[] tokens = disappearMatcher.group(1).split(",");
+      for (String token : tokens) {
+        String trimmed = token.trim();
+        if (!trimmed.isEmpty()) {
+          disappearIds.add(Long.parseLong(trimmed));
+        }
+      }
+    }
+
+    Map<Long, Float> updatedPosY = new HashMap<>();
+    Matcher posYMatcher = V4_POS_Y_UPDATE_PATTERN.matcher(sql);
+    while (posYMatcher.find()) {
+      float newY = Float.parseFloat(posYMatcher.group(1));
+      long id = Long.parseLong(posYMatcher.group(2));
+      updatedPosY.put(id, newY);
+    }
+
+    List<NpcRecord> updated = new ArrayList<>(baseRows.size());
+    for (NpcRecord r : baseRows) {
+      String newStatus = disappearIds.contains(r.id()) ? "disappear" : r.status();
+      float newPosY = updatedPosY.getOrDefault(r.id(), r.posY());
+      if (!newStatus.equals(r.status()) || Float.compare(newPosY, r.posY()) != 0) {
+        updated.add(new NpcRecord(
+            r.id(), r.name(), r.posX(), newPosY, r.posZ(), r.posRot(), r.zoneId(), newStatus,
+            r.entityFlags(), r.animationSub(), r.namePrefix(), r.moving(), r.lookType(),
+            r.raceId(), r.faceId(), r.head(), r.body(), r.hands(), r.legs(), r.feet(),
+            r.mainWeapon(), r.subShield(), r.ranged(), r.modelId(), r.widescan()));
+      } else {
+        updated.add(r);
+      }
+    }
+    return updated;
   }
 
   private static void assertCleanSpawnSet(List<NpcRecord> spawned) {

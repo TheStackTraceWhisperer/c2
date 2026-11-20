@@ -232,6 +232,38 @@ class CharacterModelLoaderActorTest {
         assertFalse(loaded.slot0Animations().isEmpty(), "Model 1977 must inherit animations from base model 1976");
     }
 
+    @Test
+    @DisplayName("Retail: loadActor resolves 0x45 size_info model scale across children, PCs, Chocobo, and standard NPCs")
+    void testModelScaleFromSizeInfo() throws Exception {
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "Retail FFXI installation required at " + FFXI_ROOT);
+
+        LoadedCharacter raminel = CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forStandardModel(2474, 4, 4194331, 32));
+        assertValidActor(raminel, "Raminel");
+        assertEquals(0.95f, raminel.modelScale(), 1e-4f, "Raminel (model 2474, size 1) must scale to 0.95f");
+
+        LoadedCharacter aldo = CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forStandardModel(78, 0, 27, 32));
+        assertValidActor(aldo, "Aldo");
+        assertEquals(1.00f, aldo.modelScale(), 1e-4f);
+
+        LoadedCharacter trion = CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forStandardModel(64, 0, 27, 32));
+        assertValidActor(trion, "Trion");
+        assertEquals(1.00f, trion.modelScale(), 1e-4f);
+
+        LoadedCharacter chocobo = CharacterModelLoader.loadActor(FFXI_ROOT, new ActorAppearance(
+                ActorLookType.CHOCOBO, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 27, 32
+        ));
+        assertValidActor(chocobo, "Chocobo");
+        assertEquals(1.00f, chocobo.modelScale(), 1e-4f, "Unmounted Chocobo must remain at 1.00f base scale");
+
+        assertEquals(0.82f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(5, 0, 0)).modelScale(), 1e-4f);
+        assertEquals(0.87f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(5, 0, 1)).modelScale(), 1e-4f);
+        assertEquals(0.92f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(5, 0, 2)).modelScale(), 1e-4f);
+
+        assertEquals(0.95f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(1, 2, 0)).modelScale(), 1e-4f);
+        assertEquals(1.00f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(1, 2, 1)).modelScale(), 1e-4f);
+        assertEquals(1.05f, CharacterModelLoader.loadActor(FFXI_ROOT, ActorAppearance.forPlayer(1, 2, 2)).modelScale(), 1e-4f);
+    }
+
     private static void assertValidActor(LoadedCharacter loaded, String label) {
         assertNotNull(loaded, label + " must not be null");
         assertNotNull(loaded.skeleton(), label + " skeleton must not be null");

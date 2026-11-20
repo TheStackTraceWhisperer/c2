@@ -16,6 +16,7 @@ import com.ffxi.model.TextureResource;
 import com.ffxi.model.Vec3f;
 import com.ffxi.parser.DatParser;
 import com.ffxi.parser.InitSchedulerParser;
+import com.ffxi.parser.ModelInfoParser;
 import com.ffxi.tables.FfxiModelIndex;
 import com.ffxi.tables.ItemModelSlot;
 import com.ffxi.tables.RaceGenderConfig;
@@ -122,17 +123,32 @@ public final class CharacterModelLoader {
     }
 
     private static LoadedCharacter loadEquippedActor(FfxiModelIndex index, ActorAppearance appearance) throws IOException {
+        return loadEquippedActor(index, appearance, null);
+    }
+
+    private static LoadedCharacter loadEquippedActor(
+            FfxiModelIndex index,
+            ActorAppearance appearance,
+            int[] preferredSizeInfo
+    ) throws IOException {
         RaceGenderConfig race = (appearance.lookType() == ActorLookType.CHOCOBO)
                 ? RaceGenderConfig.fromRaceIdOrDefault(appearance.raceId(), RaceGenderConfig.Chocobo)
                 : RaceGenderConfig.fromRaceIdOrDefault(appearance.raceId(), RaceGenderConfig.HumeM);
 
+        int[] sizeInfo = ModelInfoParser.emptySizeInfo();
+        ModelInfoParser.mergeSizeInfo(sizeInfo, preferredSizeInfo);
+
         String skeletonPath = requirePath(index.getSkeletonPath(race), "race skeleton for " + race.name());
         ParsedDat skeletonDat = loadDat(Path.of(skeletonPath));
+        ModelInfoParser.mergeSizeInfo(sizeInfo, ModelInfoParser.parseSizeInfo(skeletonDat.rawData()));
 
         String upperAnimPath = index.getUpperBodyAnimationPath(race);
         ParsedDat upperAnimationDat = (upperAnimPath != null && !upperAnimPath.isBlank())
                 ? loadDat(Path.of(upperAnimPath))
                 : null;
+        if (upperAnimationDat != null) {
+            ModelInfoParser.mergeSizeInfo(sizeInfo, ModelInfoParser.parseSizeInfo(upperAnimationDat.rawData()));
+        }
 
         List<SkeletonResource> skeletons = new ArrayList<>();
         List<SkeletonMeshResource> meshResources = new ArrayList<>();
@@ -217,6 +233,7 @@ public final class CharacterModelLoader {
                 continue;
             }
 
+            ModelInfoParser.mergeSizeInfo(sizeInfo, ModelInfoParser.parseSizeInfo(equipmentDat.rawData()));
             meshResources.addAll(slotMeshes);
             actualModelIds.put(slot, activeId);
 
@@ -244,15 +261,18 @@ public final class CharacterModelLoader {
         CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, idleUpper);
         Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
         Vector3f modelOffset = new Vector3f(-bounds.center().x(), -bounds.center().y(), -bounds.center().z());
+        int scaleSizeIndex = race.isChocobo() ? 0 : appearance.size();
+        float modelScale = ModelInfoParser.resolveScale(sizeInfo, scaleSizeIndex);
 
         log.debug(
-                "[VIEWER] Loaded equipped actor race={} skeleton={} joints meshes={} textures={} lower={} upper={}",
+                "[VIEWER] Loaded equipped actor race={} skeleton={} joints meshes={} textures={} lower={} upper={} scale={}",
                 race.name(),
                 skeleton.joints().size(),
                 meshes.size(),
                 textureSources.size(),
                 idleLower != null ? idleLower.sectionId() : "missing",
-                idleUpper != null ? idleUpper.sectionId() : "missing"
+                idleUpper != null ? idleUpper.sectionId() : "missing",
+                modelScale
         );
 
         return new LoadedCharacter(
@@ -264,7 +284,8 @@ public final class CharacterModelLoader {
                 bounds.radius(),
                 bounds.feetOffsetY(),
                 modelOffset,
-                actualModelIds
+                actualModelIds,
+                modelScale
         );
     }
 
@@ -295,7 +316,7 @@ public final class CharacterModelLoader {
                     appearance.entityFlags(),
                     appearance.namePrefix()
             );
-            return loadEquippedActor(index, scriptedAppearance);
+            return loadEquippedActor(index, scriptedAppearance, components.sizeInfo());
         }
 
         SkeletonResource skeleton = components.skeleton();
@@ -314,15 +335,17 @@ public final class CharacterModelLoader {
         CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, null);
         Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
         Vector3f modelOffset = new Vector3f(-bounds.center().x(), -bounds.center().y(), -bounds.center().z());
+        float modelScale = ModelInfoParser.resolveScale(components.sizeInfo(), appearance.size());
 
         log.debug(
-                "[VIEWER] Loaded standard actor modelId={} skeleton={} joints meshes={} textures={} anims={} hiddenMask=0x{}",
+                "[VIEWER] Loaded standard actor modelId={} skeleton={} joints meshes={} textures={} anims={} hiddenMask=0x{} scale={}",
                 modelId,
                 skeleton.joints().size(),
                 meshes.size(),
                 components.textureSources().size(),
                 slot0Animations.size(),
-                Integer.toHexString(effectiveMask)
+                Integer.toHexString(effectiveMask),
+                modelScale
         );
 
         return new LoadedCharacter(
@@ -334,7 +357,8 @@ public final class CharacterModelLoader {
                 bounds.radius(),
                 bounds.feetOffsetY(),
                 modelOffset,
-                Map.of()
+                Map.of(),
+                modelScale
         );
     }
 
@@ -346,6 +370,7 @@ public final class CharacterModelLoader {
         String datPath = requirePath(index.getNpcModelPath(modelId), "standard NPC model " + modelId);
         ParsedDat dat = loadDat(Path.of(datPath));
         InitSchedulerParser.InitSchedulerResult init = InitSchedulerParser.parse(dat.rawData());
+        int[] localSizeInfo = ModelInfoParser.parseSizeInfo(dat.rawData());
 
         List<SkeletonResource> skeletons = new ArrayList<>();
         List<SkeletonMeshResource> meshResources = new ArrayList<>();
@@ -370,7 +395,8 @@ public final class CharacterModelLoader {
                     slot0Animations,
                     textureSources,
                     init.hiddenWeaponMask(),
-                    null
+                    null,
+                    localSizeInfo
             );
         }
 
@@ -379,8 +405,21 @@ public final class CharacterModelLoader {
             int baseId = init.baseModelId().get();
             if (baseId != modelId && baseId > 0) {
                 StandardModelComponents base = loadStandardModelComponents(index, baseId, depth + 1);
+                int[] mergedSizeInfo = base.sizeInfo() != null
+                        ? base.sizeInfo().clone()
+                        : ModelInfoParser.emptySizeInfo();
+                ModelInfoParser.preferSizeInfo(mergedSizeInfo, localSizeInfo);
+
                 if (base.scriptedLook() != null) {
-                    return base;
+                    return new StandardModelComponents(
+                            null,
+                            List.of(),
+                            List.of(),
+                            Map.of(),
+                            base.hiddenWeaponMask() | init.hiddenWeaponMask(),
+                            base.scriptedLook(),
+                            mergedSizeInfo
+                    );
                 }
                 List<SkeletonMeshResource> mergedMeshes = new ArrayList<>(base.meshResources());
                 mergedMeshes.addAll(meshResources);
@@ -399,7 +438,8 @@ public final class CharacterModelLoader {
                         mergedAnimations,
                         mergedTextures,
                         mergedMask,
-                        null
+                        null,
+                        mergedSizeInfo
                 );
             }
         }
@@ -412,7 +452,8 @@ public final class CharacterModelLoader {
                     List.of(),
                     Map.of(),
                     init.hiddenWeaponMask(),
-                    init.scriptedLook().get()
+                    init.scriptedLook().get(),
+                    localSizeInfo
             );
         }
 
@@ -616,7 +657,8 @@ public final class CharacterModelLoader {
             List<SkeletonAnimationResource> slot0Animations,
             Map<String, CharacterTextureLoader.TextureSource> textureSources,
             int hiddenWeaponMask,
-            InitSchedulerParser.ScriptedLook scriptedLook
+            InitSchedulerParser.ScriptedLook scriptedLook,
+            int[] sizeInfo
     ) {
     }
 }

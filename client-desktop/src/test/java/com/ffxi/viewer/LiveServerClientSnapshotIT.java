@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * Verifies and visually demonstrates the complete, end-to-end integration of the engine:
  * 1. Authoritative 20 Hz ZoneSimulationEngine initializes with authentic DAT collision and zonelines.
- * 2. Full authentic LandSandBoat NPC dataset is loaded from V2__npc_list.sql and filtered via NpcSpawnFilter.
+ * 2. Full authentic LandSandBoat NPC dataset is loaded from V2__npc_list.sql + V4__fix_npc_disappear_status_and_grounding.sql and filtered via NpcSpawnFilter.
  * 3. Client session connects, receives authoritative spawn and AoI spatial delta streams with full ActorAppearance.
  * 4. ClientState tracks the player ("Adventurer") and nearby authentic town NPCs with their real models.
  * 5. Headless software rasterizer captures live, composite 1080p in-engine screenshots across
@@ -85,6 +85,16 @@ public class LiveServerClientSnapshotIT {
 
     private static final Pattern NPC_SQL_ROW_PATTERN = Pattern.compile(
             "\\((\\d+),\\s*'((?:''|[^'])*)',\\s*([-\\d.]+),\\s*([-\\d.]+),\\s*([-\\d.]+),\\s*(\\d+),\\s*(\\d+),\\s*'([^']*)',\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(?:'([^']*)'|NULL),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(true|false)\\)"
+    );
+
+    private static final Pattern V4_DISAPPEAR_BLOCK_PATTERN = Pattern.compile(
+            "UPDATE\\s+game\\.npc_list\\s+SET\\s+status\\s*=\\s*'disappear'\\s+WHERE\\s+id\\s+IN\\s*\\(([^)]+)\\)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+
+    private static final Pattern V4_POS_Y_UPDATE_PATTERN = Pattern.compile(
+            "UPDATE\\s+game\\.npc_list\\s+SET\\s+pos_y\\s*=\\s*([-0-9.]+)\\s+WHERE\\s+id\\s*=\\s*(\\d+)",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
 
     private static FontMojiRenderer fontMoji;
@@ -238,10 +248,10 @@ public class LiveServerClientSnapshotIT {
         assertNotNull(loadedZone230, "Zone 230 must be loaded");
         decodedZone230Textures = decodeAllZoneTextures(loadedZone230);
 
-        // 4. Initialize Live Authoritative Zone 230 Server with full V2__npc_list.sql rows
+        // 4. Initialize Live Authoritative Zone 230 Server with V2 + V4 NPC dataset
         List<NpcRecord> zone230Npcs = loadNpcRecordsFromMigrationSql(230);
         long spawnable230 = zone230Npcs.stream().filter(NpcSpawnFilter::shouldSpawn).count();
-        assertThat(spawnable230).as("Zone 230 filtered spawnable NPC count").isEqualTo(194L);
+        assertThat(spawnable230).as("Zone 230 filtered spawnable NPC count").isEqualTo(166L);
 
         testCharRepo230 = new TestCharacterRepo();
         serverEngine230 = createAndStartZoneEngine(230, 9000, zone230Npcs, testCharRepo230);
@@ -329,15 +339,15 @@ public class LiveServerClientSnapshotIT {
     }
 
     @Test
-    @DisplayName("E2E Integration Scenario 2: Walk in Southern San d'Oria Market Square near Corua and Machielle")
+    @DisplayName("E2E Integration Scenario 2: Walk in Southern San d'Oria Market Square near Raminel, Corua, and Machielle")
     void testE2EMovementAndRender() throws Exception {
         long charId = 1002L;
         long sessionId = 99002L;
         ClientSessionHarness harness = ClientSessionHarness.create();
 
         try {
-            // Adventurer spawns in Southern San d'Oria Market Square between Corua and Machielle
-            testCharRepo230.records.put(charId, createAdventurerRecord(charId, 230, -68.0f, 1.999f, -4.5f, 205.0f));
+            // Adventurer spawns in Southern San d'Oria Market Square and walks beside grounded child Raminel toward Machielle and Corua
+            testCharRepo230.records.put(charId, createAdventurerRecord(charId, 230, -71.0f, 1.999f, -7.2f, 200.0f));
             serverEngine230.registerSessionEntity(sessionId, charId, harness.ctx());
 
             await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -345,9 +355,9 @@ public class LiveServerClientSnapshotIT {
             });
 
             PlayerMovementRequest moveReq = new PlayerMovementRequest(
-                    -68.5f, 1.999f, -5.5f,
-                    -1.0f, 0.0f, -2.0f,
-                    205.0f, 0.0f,
+                    -71.4f, 1.999f, -8.4f,
+                    -0.4f, 0.0f, -1.2f,
+                    200.0f, 0.0f,
                     MovementFlags.FORWARD,
                     100L
             );
@@ -356,15 +366,16 @@ public class LiveServerClientSnapshotIT {
             await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
                 var ent = serverEngine230.getEntity(charId);
                 assertThat(ent).isNotNull();
-                assertThat(ent.getX()).isCloseTo(-68.5f, within(0.5f));
-                assertThat(ent.getZ()).isCloseTo(-5.5f, within(0.5f));
+                assertThat(ent.getX()).isCloseTo(-71.4f, within(0.5f));
+                assertThat(ent.getZ()).isCloseTo(-8.4f, within(0.5f));
                 harness.drainDeltas();
-                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719304L, 17719303L);
+                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719304L, 17719303L, 17719326L);
             });
 
             ClientState clientState = harness.clientState();
             var corua = clientState.getRemoteEntities().get(17719304L);
             var machielle = clientState.getRemoteEntities().get(17719303L);
+            var raminel = clientState.getRemoteEntities().get(17719326L);
 
             assertThat(corua.name()).isEqualTo("Corua");
             assertThat(corua.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
@@ -376,34 +387,42 @@ public class LiveServerClientSnapshotIT {
             assertThat(machielle.appearance().faceId()).isEqualTo(4);
             assertThat(machielle.appearance().body()).isEqualTo(19);
 
+            assertThat(raminel.name()).isEqualTo("Raminel");
+            assertThat(raminel.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(raminel.appearance().modelId()).isEqualTo(2474);
+            assertThat(raminel.y()).isCloseTo(2.000f, within(0.05f));
+            assertThat(actorRenderCache.getOrLoad(raminel.appearance()).character().modelScale())
+                    .isCloseTo(0.95f, within(0.01f));
+
             var playerState = serverEngine230.getEntity(charId);
             float px = playerState.getX();
             float py = playerState.getY();
             float pz = playerState.getZ();
 
-            // Frame Market Square from the open SW cobblestone courtyard looking NE so Machielle (left), Adventurer (center), and Corua (right) are all clearly visible
+            // Frame Market Square from the open south cobblestone plaza looking NNE so Raminel (child) and Adventurer
+            // stand at comparable depth with Machielle (left-back) and Corua (right) cleanly visible
             PolarCamera camera = new PolarCamera();
-            camera.setTarget(-69.5f, 1.999f, -5.0f);
+            camera.setTarget(-69.8f, 1.999f, -7.2f);
             camera.setTargetOffsetY(1.0f);
-            camera.setYaw(52.0f);
-            camera.setPitch(9.0f);
-            camera.setDistance(9.2f);
+            camera.setYaw(10.0f);
+            camera.setPitch(11.0f);
+            camera.setDistance(9.5f);
 
             SceneActor localPlayer = new SceneActor(
                     playerRender.character(), playerRender.textures(), playerWalkPose,
                     playerRender.nameplateHeight(),
-                    px, py, pz, 205.0f,
+                    px, py, pz, 200.0f,
                     PLAYER_NAME, new Color(140, 220, 255)
             );
             List<SceneActor> actors = buildStreamedSceneActors(
                     localPlayer, clientState, camera.getTargetX(), camera.getTargetZ(), 35.0f,
-                    Set.of(17719304L, 17719303L)
+                    Set.of(17719304L, 17719303L, 17719326L)
             );
 
             BufferedImage snapshot = renderLiveE2EFrame(
                     230, sessionId, loadedZone230, decodedZone230Textures, camera, actors,
                     "Southern San d'Oria Market Square | Multi-Model NPC Streaming",
-                    "Server-validated movement in Market Square with streamed standard NPC Corua (#142) and equipped ElvaanF Machielle.",
+                    "Grounded child Raminel (#2474, 0.95x), Adventurer, equipped ElvaanF Machielle, and Corua (#142).",
                     clientState.getRemoteEntities().size()
             );
 
@@ -418,7 +437,7 @@ public class LiveServerClientSnapshotIT {
     }
 
     @Test
-    @DisplayName("E2E Integration Scenario 3: Rendezvous with canonical NPC Ceraule (ID 17719297) and nearby Claidie")
+    @DisplayName("E2E Integration Scenario 3: Rendezvous with canonical NPC Ceraule (ID 17719297), Rolandienne, and Repairer Moogle")
     void testE2ECerauleRendezvousAndRender() throws Exception {
         long charId = 1003L;
         long sessionId = 99003L;
@@ -431,10 +450,15 @@ public class LiveServerClientSnapshotIT {
 
             await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
                 harness.drainDeltas();
-                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719297L, 17719370L);
+                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719297L, 17719638L, 17720019L);
             });
 
             ClientState clientState = harness.clientState();
+            assertThat(clientState.getRemoteEntities()).doesNotContainKey(17719370L);
+            assertThat(clientState.getRemoteEntities().values())
+                    .extracting(ClientState.RemoteEntityState::name)
+                    .doesNotContain("Claidie");
+
             var ceraule = clientState.getRemoteEntities().get(17719297L);
             assertThat(ceraule.name()).isEqualTo("Ceraule");
             assertThat(ceraule.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
@@ -443,12 +467,16 @@ public class LiveServerClientSnapshotIT {
             assertThat(ceraule.appearance().head()).isEqualTo(12);
             assertThat(ceraule.appearance().body()).isEqualTo(12);
 
-            var claidie = clientState.getRemoteEntities().get(17719370L);
-            assertThat(claidie.name()).isEqualTo("Claidie");
-            assertThat(claidie.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
-            assertThat(claidie.appearance().modelId()).isEqualTo(66);
+            var rolandienne = clientState.getRemoteEntities().get(17719638L);
+            assertThat(rolandienne.name()).isEqualTo("Rolandienne");
+            assertThat(rolandienne.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
 
-            // Frame Adventurer (left), Ceraule (center, standing idle), and Claidie (right) cleanly side-by-side
+            var repairerMoogle = clientState.getRemoteEntities().get(17720019L);
+            assertThat(repairerMoogle.name()).isEqualTo("Repairer Moogle");
+            assertThat(repairerMoogle.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(repairerMoogle.appearance().modelId()).isEqualTo(82);
+
+            // Frame Adventurer (left), Ceraule (center, standing idle), and Watch/Moogle plaza NPCs in the background
             PolarCamera camera = new PolarCamera();
             camera.setTarget(-86.2f, 1.999f, -34.2f);
             camera.setTargetOffsetY(1.0f);
@@ -464,13 +492,13 @@ public class LiveServerClientSnapshotIT {
             );
             List<SceneActor> actors = buildStreamedSceneActors(
                     localPlayer, clientState, camera.getTargetX(), camera.getTargetZ(), 35.0f,
-                    Set.of(17719297L, 17719370L)
+                    Set.of(17719297L, 17719638L, 17720019L)
             );
 
             BufferedImage snapshot = renderLiveE2EFrame(
                     230, sessionId, loadedZone230, decodedZone230Textures, camera, actors,
                     "Ceraule Rendezvous | Canonical Equipped & Standard NPCs",
-                    "Adventurer meeting Ceraule (#17719297, ElvaanM armor 12, standing idle) with Claidie (#66) streamed via Zone #230 AoI.",
+                    "Adventurer meeting Ceraule (#17719297, ElvaanM armor 12) with Rolandienne & Repairer Moogle (#82) via Zone #230 AoI.",
                     clientState.getRemoteEntities().size()
             );
 
@@ -489,7 +517,7 @@ public class LiveServerClientSnapshotIT {
     void testE2ELowerJeunoAldoRendezvous() throws Exception {
         List<NpcRecord> zone245Npcs = loadNpcRecordsFromMigrationSql(245);
         long spawnable245 = zone245Npcs.stream().filter(NpcSpawnFilter::shouldSpawn).count();
-        assertThat(spawnable245).as("Zone 245 filtered spawnable NPC count").isEqualTo(148L);
+        assertThat(spawnable245).as("Zone 245 filtered spawnable NPC count").isEqualTo(123L);
 
         LoadedZone loadedZone245 = ZoneModelLoader.loadZone(FFXI_ROOT, 245);
         assertNotNull(loadedZone245, "Zone 245 (Lower Jeuno) must be loaded");
@@ -539,7 +567,7 @@ public class LiveServerClientSnapshotIT {
             BufferedImage snapshot = renderLiveE2EFrame(
                     245, sessionId, loadedZone245, decodedZone245Textures, camera, actors,
                     "Lower Jeuno Rendezvous | Canonical Standard NPC Aldo (#78)",
-                    "ZoneSimulationEngine #245 loaded 148 authentic Lower Jeuno NPCs. Adventurer facing Tenshodo leader Aldo (model #78).",
+                    "ZoneSimulationEngine #245 loaded 123 authentic Lower Jeuno NPCs. Adventurer facing Tenshodo leader Aldo (model #78).",
                     clientState245.getRemoteEntities().size()
             );
 
@@ -610,9 +638,30 @@ public class LiveServerClientSnapshotIT {
     }
 
     private static List<NpcRecord> loadNpcRecordsFromMigrationSql(int zoneId) throws IOException {
-        String sql = readMigrationSqlText();
+        String v2Sql = readMigrationSqlResource("V2__npc_list.sql");
+        String v4Sql = readMigrationSqlResource("V4__fix_npc_disappear_status_and_grounding.sql");
+
+        Set<Long> disappearIds = new HashSet<>();
+        Matcher disappearMatcher = V4_DISAPPEAR_BLOCK_PATTERN.matcher(v4Sql);
+        while (disappearMatcher.find()) {
+            for (String token : disappearMatcher.group(1).split(",")) {
+                String trimmed = token.trim();
+                if (!trimmed.isEmpty()) {
+                    disappearIds.add(Long.parseLong(trimmed));
+                }
+            }
+        }
+
+        Map<Long, Float> updatedPosY = new HashMap<>();
+        Matcher posYMatcher = V4_POS_Y_UPDATE_PATTERN.matcher(v4Sql);
+        while (posYMatcher.find()) {
+            float newY = Float.parseFloat(posYMatcher.group(1));
+            long id = Long.parseLong(posYMatcher.group(2));
+            updatedPosY.put(id, newY);
+        }
+
         List<NpcRecord> result = new ArrayList<>();
-        Matcher m = NPC_SQL_ROW_PATTERN.matcher(sql);
+        Matcher m = NPC_SQL_ROW_PATTERN.matcher(v2Sql);
         while (m.find()) {
             int rowZoneId = Integer.parseInt(m.group(7));
             if (rowZoneId != zoneId) {
@@ -621,10 +670,10 @@ public class LiveServerClientSnapshotIT {
             long id = Long.parseLong(m.group(1));
             String name = m.group(2).replace("''", "'");
             float posX = Float.parseFloat(m.group(3));
-            float posY = Float.parseFloat(m.group(4));
+            float posY = updatedPosY.getOrDefault(id, Float.parseFloat(m.group(4)));
             float posZ = Float.parseFloat(m.group(5));
             short posRot = (short) Integer.parseInt(m.group(6));
-            String status = m.group(8);
+            String status = disappearIds.contains(id) ? "disappear" : m.group(8);
             int entityFlags = Integer.parseInt(m.group(9));
             short animationSub = (short) Integer.parseInt(m.group(10));
             short namePrefix = (short) Integer.parseInt(m.group(11));
@@ -654,22 +703,23 @@ public class LiveServerClientSnapshotIT {
         return result;
     }
 
-    private static String readMigrationSqlText() throws IOException {
-        try (InputStream in = LiveServerClientSnapshotIT.class.getClassLoader().getResourceAsStream("db/migration/V2__npc_list.sql")) {
+    private static String readMigrationSqlResource(String filename) throws IOException {
+        String resourcePath = "db/migration/" + filename;
+        try (InputStream in = LiveServerClientSnapshotIT.class.getClassLoader().getResourceAsStream(resourcePath)) {
             if (in != null) {
                 return new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
         }
         List<Path> candidates = List.of(
-                Path.of("../platform-modulith/src/main/resources/db/migration/V2__npc_list.sql"),
-                Path.of("platform-modulith/src/main/resources/db/migration/V2__npc_list.sql")
+                Path.of("../platform-modulith/src/main/resources", resourcePath),
+                Path.of("platform-modulith/src/main/resources", resourcePath)
         );
         for (Path candidate : candidates) {
             if (Files.isRegularFile(candidate)) {
                 return Files.readString(candidate, StandardCharsets.UTF_8);
             }
         }
-        throw new IOException("Unable to locate db/migration/V2__npc_list.sql on classpath or relative paths");
+        throw new IOException("Unable to locate " + resourcePath + " on classpath or relative paths");
     }
 
     private static List<SceneActor> buildStreamedSceneActors(
@@ -755,10 +805,10 @@ public class LiveServerClientSnapshotIT {
                 }
             }
         }
-        float extentAboveFeet = Float.isFinite(minY)
+        float extentAboveFeet = (Float.isFinite(minY)
                 ? (character.feetLocalY() - minY)
-                : (character.feetOffsetY() * 2.0f);
-        return Math.max(1.4f, Math.min(4.2f, extentAboveFeet + 0.18f));
+                : (character.feetOffsetY() * 2.0f)) * character.effectiveScale();
+        return Math.max(1.1f, Math.min(4.2f, extentAboveFeet + 0.18f));
     }
 
     private static BufferedImage renderLiveE2EFrame(
@@ -1289,9 +1339,11 @@ public class LiveServerClientSnapshotIT {
     ) {
         if (character == null || character.meshes().isEmpty()) return;
 
+        float scale = character.effectiveScale();
         Matrix4f charModelMat = new Matrix4f()
-                .translate(charX, charY - character.feetLocalY(), charZ)
-                .rotateY((float) Math.toRadians(charYaw - 90.0f));
+                .translate(charX, charY - character.feetLocalY() * scale, charZ)
+                .rotateY((float) Math.toRadians(charYaw - 90.0f))
+                .scale(scale);
 
         Vector4f scratch = new Vector4f();
         Vector4f accum = new Vector4f();

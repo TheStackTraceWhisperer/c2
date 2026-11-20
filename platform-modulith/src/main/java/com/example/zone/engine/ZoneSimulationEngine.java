@@ -1,5 +1,8 @@
 package com.example.zone.engine;
 
+import com.example.asset.collision.CollisionMap;
+import com.example.asset.geometry.RayHit;
+import com.example.asset.geometry.Vector3f;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.config.ZoneServerProperties;
@@ -56,6 +59,9 @@ public class ZoneSimulationEngine {
   public static final int MAX_DESPAWNS_PER_DELTA = 100;
   private static final long FLUSH_INTERVAL_TICKS = 600L; // 30s
   private static final int MAX_DEFERRED_MOVEMENTS_PER_CHAR = 64;
+  private static final int NPC_MOVING_NO_GROUND_SNAP_MASK = 0x8000;
+  private static final float NPC_FLOOR_RAY_OFFSET_Y = 0.5f;
+  private static final float NPC_FLOOR_RAY_MAX_DISTANCE = 5.0f;
 
   private final ZoneServerProperties properties;
   private final SpatialGrid spatialGrid;
@@ -165,6 +171,7 @@ public class ZoneSimulationEngine {
         continue;
       }
       ZoneEntityState npcState = ZoneEntityState.createNpc(r);
+      npcState.setY(resolveGroundedNpcY(r));
       registerNpc(npcState);
       loaded++;
     }
@@ -173,6 +180,34 @@ public class ZoneSimulationEngine {
         loaded,
         properties.getZoneId(),
         skipped);
+  }
+
+  /**
+   * Resolves the authoritative spawn height for an NPC record in native FFXI coordinates ({@code -Y = Up}).
+   * Grounded NPCs without {@code moving & 0x8000} snap downward onto the loaded zone collision floor when present.
+   */
+  float resolveGroundedNpcY(NpcRecord record) {
+    if (record == null) {
+      return 0.0f;
+    }
+    if (collisionService == null
+        || !properties.isCollisionEnabled()
+        || (record.moving() & NPC_MOVING_NO_GROUND_SNAP_MASK) != 0) {
+      return record.posY();
+    }
+    Optional<CollisionMap> mapOpt = collisionService.getCollisionMap(record.zoneId());
+    if (mapOpt.isEmpty()) {
+      return record.posY();
+    }
+    Optional<RayHit> hit = mapOpt.get().raycastFloor(
+        new Vector3f(record.posX(), record.posY(), record.posZ()),
+        NPC_FLOOR_RAY_OFFSET_Y,
+        NPC_FLOOR_RAY_MAX_DISTANCE,
+        true);
+    if (hit.isPresent() && Float.isFinite(hit.get().point().y())) {
+      return hit.get().point().y();
+    }
+    return record.posY();
   }
 
   public int getAuthoritativeZoneId() {

@@ -456,9 +456,11 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
         if (playerCharacter == null || playerCharacter.meshes().isEmpty()) return;
 
         // Matches AuthenticCharacterInstance charModelMat exactly
+        float scale = playerCharacter.effectiveScale();
         Matrix4f charModelMat = new Matrix4f()
-                .translate(charX, charY - playerCharacter.feetLocalY(), charZ)
-                .rotateY((float) Math.toRadians(charYaw - 90.0f));
+                .translate(charX, charY - playerCharacter.feetLocalY() * scale, charZ)
+                .rotateY((float) Math.toRadians(charYaw - 90.0f))
+                .scale(scale);
 
         Vector4f scratch = new Vector4f();
         Vector4f accum = new Vector4f();

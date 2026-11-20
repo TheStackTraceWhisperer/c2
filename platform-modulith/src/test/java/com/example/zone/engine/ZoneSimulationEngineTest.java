@@ -1,5 +1,16 @@
 package com.example.zone.engine;
 
+import com.example.asset.collision.CollisionMap;
+import com.example.asset.collision.CollisionMesh;
+import com.example.asset.collision.CollisionObject;
+import com.example.asset.collision.CollisionObjectGroup;
+import com.example.asset.collision.CollisionTransform;
+import com.example.asset.geometry.BoundingBox;
+import com.example.asset.geometry.CollisionTriangle;
+import com.example.asset.geometry.Matrix4f;
+import com.example.asset.geometry.TerrainType;
+import com.example.asset.geometry.TriFlags;
+import com.example.asset.geometry.Vector3f;
 import com.example.common.codec.ForySerializationProvider;
 import com.example.common.protocol.MovementFlags;
 import com.example.common.protocol.ProtocolConstants;
@@ -47,6 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.awaitility.Awaitility.await;
 
 class ZoneSimulationEngineTest {
@@ -1106,6 +1118,129 @@ class ZoneSimulationEngineTest {
             chObs.close();
             chPeer.close();
         }
+    }
+
+    @Test
+    @DisplayName("Grounded NPCs snap to CollisionMap floor on spawn while moving & 0x8000 NPCs keep raw DB height")
+    void testGroundedNpcSnapsToFloorAndFloatingBit15Preserved() {
+        ZoneServerProperties collisionProps = new ZoneServerProperties();
+        collisionProps.setHost("127.0.0.1");
+        collisionProps.setPort(9000);
+        collisionProps.setZoneId(230);
+        collisionProps.setCollisionEnabled(true);
+
+        ZoneCollisionService svc = new ZoneCollisionService(collisionProps);
+        svc.registerCollisionMap(230, buildSyntheticFloorMap(2.0f));
+
+        List<NpcRecord> zoneNpcs = List.of(
+                // Grounded NPC (moving = 8) above floor y = 2.0f should snap to y = 2.0f
+                new NpcRecord(
+                        17719326L, "Raminel",
+                        -10.0f, 0.687f, 10.0f, (short) 154,
+                        230, "normal", 4194331, (short) 4, (short) 32, (short) 8,
+                        "standard", (short) 0, (short) 0,
+                        0, 0, 0, 0, 0, 0, 0, 0, 2474, true
+                ),
+                // Airborne/fixed-height Moogle with bit 15 set (32783 = 0x800F, signed short = -32753) must NOT snap
+                new NpcRecord(
+                        17719437L, "Moogle",
+                        0.0f, 0.0f, 1.5f, (short) 64,
+                        230, "normal", 0, (short) 1, (short) 0, (short) 32783,
+                        "standard", (short) 0, (short) 0,
+                        0, 0, 0, 0, 0, 0, 0, 0, 82, true
+                )
+        );
+
+        NpcJdbcRepository npcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> "findByZoneId".equals(method.getName()) ? zoneNpcs : List.of()
+        );
+
+        ZoneSimulationEngine snappedEngine = new ZoneSimulationEngine(
+                collisionProps, new SpatialGrid(), charRepo, zoneLineRepo, dispatcher, svc, new NpcPatrolSimulation(), npcRepo
+        );
+        try {
+            snappedEngine.start();
+
+            ZoneEntityState raminel = snappedEngine.getEntity(17719326L);
+            assertThat(raminel).isNotNull();
+            assertThat(raminel.getY()).isCloseTo(2.0f, within(0.001f));
+
+            ZoneEntityState moogle = snappedEngine.getEntity(17719437L);
+            assertThat(moogle).isNotNull();
+            assertThat(moogle.getY()).isCloseTo(0.0f, within(0.001f));
+        } finally {
+            snappedEngine.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("Grounded NPC retains raw DB posY when no collision map is registered for its zone")
+    void testGroundedNpcRetainsRawYWhenCollisionMapMissing() {
+        ZoneServerProperties collisionProps = new ZoneServerProperties();
+        collisionProps.setHost("127.0.0.1");
+        collisionProps.setPort(9000);
+        collisionProps.setZoneId(230);
+        collisionProps.setCollisionEnabled(true);
+
+        ZoneCollisionService emptyCollisionSvc = new ZoneCollisionService(collisionProps);
+        List<NpcRecord> zoneNpcs = List.of(
+                new NpcRecord(
+                        17719634L, "Atmacite Refiner",
+                        -102.0f, 1.5f, -16.0f, (short) 64,
+                        230, "normal", 0, (short) 0, (short) 0, (short) 8,
+                        "equipped", (short) 4, (short) 7,
+                        4116, 8217, 12300, 16386, 20482, 24576, 28672, 0, 0, true
+                )
+        );
+        NpcJdbcRepository npcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> "findByZoneId".equals(method.getName()) ? zoneNpcs : List.of()
+        );
+
+        ZoneSimulationEngine noMapEngine = new ZoneSimulationEngine(
+                collisionProps, new SpatialGrid(), charRepo, zoneLineRepo, dispatcher, emptyCollisionSvc, new NpcPatrolSimulation(), npcRepo
+        );
+        try {
+            noMapEngine.start();
+
+            ZoneEntityState npc = noMapEngine.getEntity(17719634L);
+            assertThat(npc).isNotNull();
+            assertThat(npc.getY()).isCloseTo(1.5f, within(0.001f));
+        } finally {
+            noMapEngine.stop();
+        }
+    }
+
+    private static CollisionMap buildSyntheticFloorMap(float floorY) {
+        List<CollisionTriangle> triangles = List.of(
+                new CollisionTriangle(
+                        new Vector3f(-50f, floorY, -50f),
+                        new Vector3f(50f, floorY, -50f),
+                        new Vector3f(50f, floorY, 50f),
+                        Vector3f.UP,
+                        new TriFlags(0),
+                        TerrainType.STONE
+                ),
+                new CollisionTriangle(
+                        new Vector3f(-50f, floorY, -50f),
+                        new Vector3f(50f, floorY, 50f),
+                        new Vector3f(-50f, floorY, 50f),
+                        Vector3f.UP,
+                        new TriFlags(0),
+                        TerrainType.STONE
+                )
+        );
+        BoundingBox box = new BoundingBox(new Vector3f(-50f, floorY - 1f, -50f), new Vector3f(50f, floorY + 1f, 50f));
+        CollisionMesh mesh = new CollisionMesh(1, triangles, box);
+        Matrix4f identity = new Matrix4f();
+        CollisionTransform transform = new CollisionTransform(1, identity, identity, 0, 0, null);
+        CollisionObject obj = new CollisionObject(1, mesh, transform);
+        CollisionObjectGroup group = new CollisionObjectGroup(1, List.of(obj));
+        CollisionObjectGroup[][] grid = new CollisionObjectGroup[][]{{group}};
+        return new CollisionMap(1, 1, 200, 200, 1, 1, grid);
     }
 
     private static CharacterRecord characterRecord(long charId, int worldId, String name, int zoneId, float x, float y, float z) {

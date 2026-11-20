@@ -286,9 +286,9 @@ public class ThirdPersonCameraSnapshotSuiteTest {
         record CardinalChase(float facingDeg, String filename, String title, String description) {}
 
         List<CardinalChase> cardinals = List.of(
-                new CardinalChase(0.0f,   "camera_chase_facing_north.png", "Chase North (-Z) | Camera Directly Behind", "Player Facing North (000°): Camera Behind at +Z looking -Z"),
+                new CardinalChase(0.0f,   "camera_chase_facing_north.png", "Chase North (+Z) | Camera Directly Behind", "Player Facing North (000°): Camera Behind at -Z looking +Z"),
                 new CardinalChase(90.0f,  "camera_chase_facing_east.png",  "Chase East (+X) | Camera Directly Behind",  "Player Facing East (090°): Camera Behind at -X looking +X"),
-                new CardinalChase(180.0f, "camera_chase_facing_south.png", "Chase South (+Z) | Camera Directly Behind", "Player Facing South (180°): Camera Behind at -Z looking +Z"),
+                new CardinalChase(180.0f, "camera_chase_facing_south.png", "Chase South (-Z) | Camera Directly Behind", "Player Facing South (180°): Camera Behind at +Z looking -Z"),
                 new CardinalChase(270.0f, "camera_chase_facing_west.png",  "Chase West (-X) | Camera Directly Behind",  "Player Facing West (270°): Camera Behind at +X looking -X")
         );
 

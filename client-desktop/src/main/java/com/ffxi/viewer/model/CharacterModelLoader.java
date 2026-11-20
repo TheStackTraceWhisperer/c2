@@ -1,30 +1,31 @@
 package com.ffxi.viewer.model;
 
-import lombok.extern.slf4j.Slf4j;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.ffxi.io.ByteReader;
-import com.ffxi.io.FileTableManager;
-import com.ffxi.model.BgraColor;
 import com.ffxi.model.DatResourceGraph;
 import com.ffxi.model.DirectoryResource;
 import com.ffxi.model.ResourceNode;
 import com.ffxi.model.SkeletonAnimationResource;
 import com.ffxi.model.SkeletonMeshMesh;
+import com.ffxi.model.SkeletonMeshOcclusion;
 import com.ffxi.model.SkeletonMeshResource;
 import com.ffxi.model.SkeletonMeshVertex;
 import com.ffxi.model.SkeletonResource;
 import com.ffxi.model.TextureResource;
 import com.ffxi.model.Vec3f;
 import com.ffxi.parser.DatParser;
-import com.ffxi.tables.CharacterIdToResourceId;
+import com.ffxi.parser.InitSchedulerParser;
+import com.ffxi.tables.FfxiModelIndex;
 import com.ffxi.tables.ItemModelSlot;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.CharacterAnimator;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
+import lombok.extern.slf4j.Slf4j;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,41 +37,102 @@ import java.util.Map;
 @Slf4j
 public final class CharacterModelLoader {
 
-    public static LoadedCharacter loadCharacter(Path ffxiRoot, RaceGenderConfig race) throws IOException {
-        return loadCharacter(ffxiRoot, race, 0, 0, 0, 0, 0, 0);
+    private static final int MAX_INIT_INHERITANCE_DEPTH = 4;
+
+    private CharacterModelLoader() {
     }
 
-    public static LoadedCharacter loadCharacter(Path ffxiRoot, RaceGenderConfig race,
-            int faceModelId, int headModelId, int bodyModelId, int handsModelId, int legsModelId, int feetModelId) throws IOException {
-        
-        if (!Files.isDirectory(ffxiRoot)) {
-            throw new IllegalArgumentException("FFXI path does not exist: " + ffxiRoot.toAbsolutePath());
-        }
+    public static LoadedCharacter loadCharacter(Path ffxiRoot, RaceGenderConfig race) throws IOException {
+        return loadCharacter(ffxiRoot, race, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    }
 
-        File dllFile = com.ffxi.io.FileUtil.resolveCaseInsensitive(ffxiRoot.toFile(), "FFXiMain.dll");
-        if (dllFile == null || !dllFile.exists()) {
-            throw new IllegalArgumentException("FFXiMain.dll not found in: " + ffxiRoot.toAbsolutePath());
-        }
-
-        byte[] dllBytes = Files.readAllBytes(dllFile.toPath());
-        com.ffxi.crypto.KeyTables.loadFromDll(new ByteReader(dllBytes, dllFile.getName()));
-
-        FileTableManager fileTableManager = new FileTableManager();
-        fileTableManager.loadFromDirectory(ffxiRoot.toFile());
-
-        String skeletonPath = requirePath(
-                CharacterIdToResourceId.getRaceConfigPath(race, new ByteReader(dllBytes, dllFile.getName()), fileTableManager),
-                "race skeleton"
+    public static LoadedCharacter loadCharacter(
+            Path ffxiRoot,
+            RaceGenderConfig race,
+            int faceModelId,
+            int headModelId,
+            int bodyModelId,
+            int handsModelId,
+            int legsModelId,
+            int feetModelId
+    ) throws IOException {
+        return loadCharacter(
+                ffxiRoot,
+                race,
+                faceModelId,
+                headModelId,
+                bodyModelId,
+                handsModelId,
+                legsModelId,
+                feetModelId,
+                0,
+                0,
+                0
         );
-        log.info("{}", "[VIEWER] Reading skeleton DAT: " + skeletonPath);
+    }
+
+    public static LoadedCharacter loadCharacter(
+            Path ffxiRoot,
+            RaceGenderConfig race,
+            int faceModelId,
+            int headModelId,
+            int bodyModelId,
+            int handsModelId,
+            int legsModelId,
+            int feetModelId,
+            int mainWeaponId,
+            int subShieldId,
+            int rangedId
+    ) throws IOException {
+        RaceGenderConfig resolvedRace = race != null ? race : RaceGenderConfig.HumeM;
+        ActorLookType lookType = resolvedRace.isChocobo() ? ActorLookType.CHOCOBO : ActorLookType.EQUIPPED;
+        ActorAppearance appearance = new ActorAppearance(
+                lookType,
+                resolvedRace.index,
+                ActorAppearance.stripSlotPrefix(faceModelId),
+                ActorAppearance.stripSlotPrefix(headModelId),
+                ActorAppearance.stripSlotPrefix(bodyModelId),
+                ActorAppearance.stripSlotPrefix(handsModelId),
+                ActorAppearance.stripSlotPrefix(legsModelId),
+                ActorAppearance.stripSlotPrefix(feetModelId),
+                ActorAppearance.stripSlotPrefix(mainWeaponId),
+                ActorAppearance.stripSlotPrefix(subShieldId),
+                ActorAppearance.stripSlotPrefix(rangedId),
+                0,
+                1,
+                0,
+                0,
+                0
+        );
+        return loadActor(ffxiRoot, appearance);
+    }
+
+    public static LoadedCharacter loadActor(Path ffxiRoot, ActorAppearance appearance) throws IOException {
+        if (appearance == null || appearance.lookType() == ActorLookType.NONE) {
+            return loadActor(ffxiRoot, ActorAppearance.forPlayer(RaceGenderConfig.HumeM.index, 0, 1));
+        }
+
+        FfxiModelIndex index = FfxiModelIndex.getOrLoad(ffxiRoot);
+
+        return switch (appearance.lookType()) {
+            case EQUIPPED, CHOCOBO -> loadEquippedActor(index, appearance);
+            case STANDARD, AUTOMATON -> loadStandardActor(index, appearance);
+            case NONE -> loadEquippedActor(index, ActorAppearance.forPlayer(RaceGenderConfig.HumeM.index, 0, 1));
+        };
+    }
+
+    private static LoadedCharacter loadEquippedActor(FfxiModelIndex index, ActorAppearance appearance) throws IOException {
+        RaceGenderConfig race = (appearance.lookType() == ActorLookType.CHOCOBO)
+                ? RaceGenderConfig.fromRaceIdOrDefault(appearance.raceId(), RaceGenderConfig.Chocobo)
+                : RaceGenderConfig.fromRaceIdOrDefault(appearance.raceId(), RaceGenderConfig.HumeM);
+
+        String skeletonPath = requirePath(index.getSkeletonPath(race), "race skeleton for " + race.name());
         ParsedDat skeletonDat = loadDat(Path.of(skeletonPath));
 
-        String upperAnimPath = requirePath(
-                CharacterIdToResourceId.getUpperBodyAnimationPath(race, new ByteReader(dllBytes, dllFile.getName()), fileTableManager),
-                "upper-body animation"
-        );
-        log.info("{}", "[VIEWER] Reading upper animation DAT: " + upperAnimPath);
-        ParsedDat upperAnimationDat = loadDat(Path.of(upperAnimPath));
+        String upperAnimPath = index.getUpperBodyAnimationPath(race);
+        ParsedDat upperAnimationDat = (upperAnimPath != null && !upperAnimPath.isBlank())
+                ? loadDat(Path.of(upperAnimPath))
+                : null;
 
         List<SkeletonResource> skeletons = new ArrayList<>();
         List<SkeletonMeshResource> meshResources = new ArrayList<>();
@@ -83,127 +145,84 @@ public final class CharacterModelLoader {
         collectAnimations(skeletonDat.graph().rootDirectory(), slot0Animations);
         collectTextureSources(skeletonDat.graph().rootDirectory(), skeletonDat.rawData(), textureSources);
 
-        collectSkeletonMeshes(upperAnimationDat.graph().rootDirectory(), meshResources);
-        collectAnimations(upperAnimationDat.graph().rootDirectory(), slot1Animations);
-        collectTextureSources(upperAnimationDat.graph().rootDirectory(), upperAnimationDat.rawData(), textureSources);
-
-        log.info("[VIEWER] Loaded Slot 0 Animations (Base/Lower body):");
-        for (SkeletonAnimationResource anim : slot0Animations) {
-            log.info("{}", "  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
-        }
-        log.info("[VIEWER] Loaded Slot 1 Animations (Upper body override):");
-        for (SkeletonAnimationResource anim : slot1Animations) {
-            log.info("{}", "  - " + anim.sectionId() + " (frames: " + anim.frameCount() + ")");
+        if (upperAnimationDat != null) {
+            collectSkeletonMeshes(upperAnimationDat.graph().rootDirectory(), meshResources);
+            collectAnimations(upperAnimationDat.graph().rootDirectory(), slot1Animations);
+            collectTextureSources(upperAnimationDat.graph().rootDirectory(), upperAnimationDat.rawData(), textureSources);
         }
 
-        Map<ItemModelSlot, Integer> modelIds = new LinkedHashMap<>();
-        modelIds.put(ItemModelSlot.Face, faceModelId);
-        modelIds.put(ItemModelSlot.Head, headModelId);
-        modelIds.put(ItemModelSlot.Body, bodyModelId);
-        modelIds.put(ItemModelSlot.Hands, handsModelId);
-        modelIds.put(ItemModelSlot.Legs, legsModelId);
-        modelIds.put(ItemModelSlot.Feet, feetModelId);
+        Map<ItemModelSlot, Integer> requestedModelIds = new LinkedHashMap<>();
+        requestedModelIds.put(ItemModelSlot.Face, ActorAppearance.stripSlotPrefix(appearance.faceId()));
+        requestedModelIds.put(ItemModelSlot.Head, ActorAppearance.stripSlotPrefix(appearance.head()));
+        requestedModelIds.put(ItemModelSlot.Body, ActorAppearance.stripSlotPrefix(appearance.body()));
+        requestedModelIds.put(ItemModelSlot.Hands, ActorAppearance.stripSlotPrefix(appearance.hands()));
+        requestedModelIds.put(ItemModelSlot.Legs, ActorAppearance.stripSlotPrefix(appearance.legs()));
+        requestedModelIds.put(ItemModelSlot.Feet, ActorAppearance.stripSlotPrefix(appearance.feet()));
+        requestedModelIds.put(ItemModelSlot.Main, ActorAppearance.stripSlotPrefix(appearance.mainWeapon()));
+        requestedModelIds.put(ItemModelSlot.Sub, ActorAppearance.stripSlotPrefix(appearance.subShield()));
+        requestedModelIds.put(ItemModelSlot.Range, ActorAppearance.stripSlotPrefix(appearance.ranged()));
 
         Map<ItemModelSlot, Integer> actualModelIds = new LinkedHashMap<>();
 
-        for (Map.Entry<ItemModelSlot, Integer> entry : modelIds.entrySet()) {
+        for (Map.Entry<ItemModelSlot, Integer> entry : requestedModelIds.entrySet()) {
             ItemModelSlot slot = entry.getKey();
             int modelId = entry.getValue();
-            log.info("{}", "[VIEWER-DEBUG] --- Start processing slot: " + slot + " (requested modelId: " + modelId + ") ---");
-            
-            int activeId = modelId;
-            String meshPath = CharacterIdToResourceId.getEquipmentModelPath(
-                    race,
-                    slot,
-                    modelId,
-                    new ByteReader(dllBytes, dllFile.getName()),
-                    fileTableManager
-            );
-            log.info("{}", "[VIEWER-DEBUG] Initial resolution for slot " + slot + ", modelId " + modelId + " returned path: " + meshPath);
-            
-            boolean isDummy = false;
-            try {
-                if (meshPath != null) {
-                    long size = Files.size(Path.of(meshPath));
-                    if (size < 1024) {
-                        isDummy = true;
-                        log.info("{}", "[VIEWER-DEBUG] File " + meshPath + " is a dummy (size: " + size + " bytes).");
-                    }
-                    if (meshPath.equalsIgnoreCase(skeletonPath) || meshPath.equalsIgnoreCase(upperAnimPath)) {
-                        isDummy = true;
-                        log.info("{}", "[VIEWER-DEBUG] File " + meshPath + " matches skeleton or upper animation path.");
-                    }
-                }
-            } catch (Exception e) {
-                // ignore
-            }
-            if (isDummy && modelId != 0) {
-                log.info("[VIEWER-DEBUG] Setting meshPath to null to trigger fallback-to-0.");
-                meshPath = null;
-            }
-            
-            if (meshPath == null && modelId != 0) {
-                log.info("{}", "[VIEWER-DEBUG] Path was null. Attempting fallback to modelId 0 for slot: " + slot);
-                meshPath = CharacterIdToResourceId.getEquipmentModelPath(
-                        race,
-                        slot,
-                        0,
-                        new ByteReader(dllBytes, dllFile.getName()),
-                        fileTableManager
-                );
-                log.info("{}", "[VIEWER-DEBUG] Fallback resolution for slot " + slot + ", modelId 0 returned path: " + meshPath);
-                activeId = 0;
-            }
-            
-            log.info("{}", "[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to: " + meshPath);
-            if (meshPath == null) {
-                log.info("{}", "[VIEWER-DEBUG] No path found for slot " + slot + " (even after fallback to 0). Skipping slot.");
+
+            if (slot == ItemModelSlot.Face && race.isChocobo()) {
                 continue;
             }
-            
-            log.info("{}", "[VIEWER-DEBUG] Loading DAT file: " + meshPath);
+            if (isWeaponSlot(slot) && (modelId == 0 || race.isNpcRace())) {
+                continue;
+            }
+
+            boolean fallbackAllowed = isArmorOrFaceSlot(slot);
+            int activeId = modelId;
+            String meshPath = index.getEquipmentModelPath(race, slot, modelId);
+
+            if (isDummyEquipmentPath(meshPath, skeletonPath, upperAnimPath)) {
+                if (fallbackAllowed && modelId != 0) {
+                    meshPath = null;
+                } else if (isWeaponSlot(slot)) {
+                    continue;
+                }
+            }
+
+            if (meshPath == null && fallbackAllowed && modelId != 0) {
+                meshPath = index.getEquipmentModelPath(race, slot, 0);
+                activeId = 0;
+                if (isDummyEquipmentPath(meshPath, skeletonPath, upperAnimPath)) {
+                    meshPath = null;
+                }
+            }
+
+            if (meshPath == null) {
+                continue;
+            }
+
             ParsedDat equipmentDat = loadDat(Path.of(meshPath));
-            
             List<SkeletonMeshResource> slotMeshes = new ArrayList<>();
             collectSkeletonMeshes(equipmentDat.graph().rootDirectory(), slotMeshes);
-            log.info("{}", "[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from DAT: " + meshPath);
-            
-            if (slotMeshes.isEmpty() && modelId != 0) {
-                log.info("{}", "[VIEWER-DEBUG] Mesh list is empty. Attempting fallback to modelId 0 due to empty meshes for slot: " + slot);
-                String fallbackPath = CharacterIdToResourceId.getEquipmentModelPath(
-                        race,
-                        slot,
-                        0,
-                        new ByteReader(dllBytes, dllFile.getName()),
-                        fileTableManager
-                );
-                log.info("{}", "[VIEWER-DEBUG] Mesh empty fallback path resolution returned: " + fallbackPath);
-                
-                if (fallbackPath != null) {
-                    log.info("{}", "[VIEWER] Slot " + slot + " (modelId: " + modelId + ") resolved to empty mesh. Falling back to: " + fallbackPath);
+
+            if (slotMeshes.isEmpty() && fallbackAllowed && activeId != 0) {
+                String fallbackPath = index.getEquipmentModelPath(race, slot, 0);
+                if (fallbackPath != null && !isDummyEquipmentPath(fallbackPath, skeletonPath, upperAnimPath)) {
                     equipmentDat = loadDat(Path.of(fallbackPath));
                     slotMeshes.clear();
                     collectSkeletonMeshes(equipmentDat.graph().rootDirectory(), slotMeshes);
-                    log.info("{}", "[VIEWER-DEBUG] Collected " + slotMeshes.size() + " meshes from fallback DAT: " + fallbackPath);
                     activeId = 0;
                 }
             }
-            
+
+            if (slotMeshes.isEmpty() && isWeaponSlot(slot)) {
+                continue;
+            }
+
             meshResources.addAll(slotMeshes);
             actualModelIds.put(slot, activeId);
-            
-            for (SkeletonMeshResource meshRes : slotMeshes) {
-                log.info("{}", "  - Sub-resource Mesh: " + meshRes.sectionId());
-            }
-            
+
             Map<String, CharacterTextureLoader.TextureSource> slotTextures = new LinkedHashMap<>();
             collectTextureSources(equipmentDat.graph().rootDirectory(), equipmentDat.rawData(), slotTextures);
-            log.info("{}", "[VIEWER-DEBUG] Collected " + slotTextures.size() + " textures from DAT: " + meshPath);
             textureSources.putAll(slotTextures);
-            
-            for (String texName : slotTextures.keySet()) {
-                log.info("{}", "  - Sub-resource Texture: " + texName);
-            }
         }
 
         SkeletonResource skeleton = skeletons.stream()
@@ -211,10 +230,10 @@ public final class CharacterModelLoader {
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No skeleton resource found for " + race.name()));
 
-        List<SkeletonMeshMesh> meshes = new ArrayList<>();
-        for (SkeletonMeshResource meshResource : meshResources) {
-            meshes.addAll(meshResource.meshes());
-        }
+        List<SkeletonMeshMesh> meshes = SkeletonMeshOcclusion.filterVisibleMeshes(
+                meshResources,
+                SkeletonMeshOcclusion.DEFAULT_HIDDEN_WEAPON_MASK
+        );
         if (meshes.isEmpty()) {
             throw new IllegalStateException("No skeleton meshes found for " + race.name());
         }
@@ -224,17 +243,218 @@ public final class CharacterModelLoader {
 
         CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, idleUpper);
         Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
-        log.info(String.format("[VIEWER] Bounds: min=%s max=%s center=%s radius=%.3f", new Vector3f(bounds.center()).sub(new Vector3f(bounds.radius())), new Vector3f(bounds.center()).add(new Vector3f(bounds.radius())), bounds.center(), bounds.radius()));
-        Vector3f modelOffset = new Vector3f(
-                -bounds.center().x(),
-                -bounds.center().y(),
-                -bounds.center().z()
+        Vector3f modelOffset = new Vector3f(-bounds.center().x(), -bounds.center().y(), -bounds.center().z());
+
+        log.debug(
+                "[VIEWER] Loaded equipped actor race={} skeleton={} joints meshes={} textures={} lower={} upper={}",
+                race.name(),
+                skeleton.joints().size(),
+                meshes.size(),
+                textureSources.size(),
+                idleLower != null ? idleLower.sectionId() : "missing",
+                idleUpper != null ? idleUpper.sectionId() : "missing"
         );
-        log.info(String.format("[VIEWER] ModelOffset: %s", modelOffset));
 
-        log.info(String.format("[VIEWER] Race=%s skeleton=%d joints meshes=%d textures=%d lower=%s upper=%s", race.name(), skeleton.joints().size(), meshes.size(), textureSources.size(), idleLower != null ? idleLower.sectionId() : "missing", idleUpper != null ? idleUpper.sectionId() : "missing"));
+        return new LoadedCharacter(
+                skeleton,
+                meshes,
+                textureSources,
+                slot0Animations,
+                slot1Animations,
+                bounds.radius(),
+                bounds.feetOffsetY(),
+                modelOffset,
+                actualModelIds
+        );
+    }
 
-        return new LoadedCharacter(skeleton, meshes, textureSources, slot0Animations, slot1Animations, bounds.radius(), bounds.feetOffsetY(), modelOffset, actualModelIds);
+    private static LoadedCharacter loadStandardActor(FfxiModelIndex index, ActorAppearance appearance) throws IOException {
+        int modelId = appearance.modelId();
+        StandardModelComponents components = loadStandardModelComponents(index, modelId, 0);
+
+        if (components.scriptedLook() != null) {
+            InitSchedulerParser.ScriptedLook sl = components.scriptedLook();
+            ActorLookType lookType = (sl.race() >= 32 && sl.race() <= 36)
+                    ? ActorLookType.CHOCOBO
+                    : ActorLookType.EQUIPPED;
+            ActorAppearance scriptedAppearance = new ActorAppearance(
+                    lookType,
+                    sl.race(),
+                    ActorAppearance.stripSlotPrefix(sl.face()),
+                    ActorAppearance.stripSlotPrefix(sl.head()),
+                    ActorAppearance.stripSlotPrefix(sl.body()),
+                    ActorAppearance.stripSlotPrefix(sl.hands()),
+                    ActorAppearance.stripSlotPrefix(sl.legs()),
+                    ActorAppearance.stripSlotPrefix(sl.feet()),
+                    ActorAppearance.stripSlotPrefix(sl.main()),
+                    ActorAppearance.stripSlotPrefix(sl.sub()),
+                    0,
+                    0,
+                    appearance.size(),
+                    appearance.animationSub(),
+                    appearance.entityFlags(),
+                    appearance.namePrefix()
+            );
+            return loadEquippedActor(index, scriptedAppearance);
+        }
+
+        SkeletonResource skeleton = components.skeleton();
+        if (skeleton == null || skeleton.joints().isEmpty()) {
+            throw new IllegalStateException("No skeleton resource found for standard model " + modelId);
+        }
+
+        int effectiveMask = SkeletonMeshOcclusion.DEFAULT_HIDDEN_WEAPON_MASK | components.hiddenWeaponMask();
+        List<SkeletonMeshMesh> meshes = SkeletonMeshOcclusion.filterVisibleMeshes(components.meshResources(), effectiveMask);
+        if (meshes.isEmpty()) {
+            throw new IllegalStateException("No visible skeleton meshes found for standard model " + modelId);
+        }
+
+        List<SkeletonAnimationResource> slot0Animations = components.slot0Animations();
+        SkeletonAnimationResource idleLower = findAnimation(slot0Animations, "idl0");
+        CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, null);
+        Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
+        Vector3f modelOffset = new Vector3f(-bounds.center().x(), -bounds.center().y(), -bounds.center().z());
+
+        log.debug(
+                "[VIEWER] Loaded standard actor modelId={} skeleton={} joints meshes={} textures={} anims={} hiddenMask=0x{}",
+                modelId,
+                skeleton.joints().size(),
+                meshes.size(),
+                components.textureSources().size(),
+                slot0Animations.size(),
+                Integer.toHexString(effectiveMask)
+        );
+
+        return new LoadedCharacter(
+                skeleton,
+                meshes,
+                components.textureSources(),
+                slot0Animations,
+                List.of(),
+                bounds.radius(),
+                bounds.feetOffsetY(),
+                modelOffset,
+                Map.of()
+        );
+    }
+
+    private static StandardModelComponents loadStandardModelComponents(
+            FfxiModelIndex index,
+            int modelId,
+            int depth
+    ) throws IOException {
+        String datPath = requirePath(index.getNpcModelPath(modelId), "standard NPC model " + modelId);
+        ParsedDat dat = loadDat(Path.of(datPath));
+        InitSchedulerParser.InitSchedulerResult init = InitSchedulerParser.parse(dat.rawData());
+
+        List<SkeletonResource> skeletons = new ArrayList<>();
+        List<SkeletonMeshResource> meshResources = new ArrayList<>();
+        List<SkeletonAnimationResource> slot0Animations = new ArrayList<>();
+        Map<String, CharacterTextureLoader.TextureSource> textureSources = new LinkedHashMap<>();
+
+        collectSkeletons(dat.graph().rootDirectory(), skeletons);
+        collectSkeletonMeshes(dat.graph().rootDirectory(), meshResources);
+        collectAnimations(dat.graph().rootDirectory(), slot0Animations);
+        collectTextureSources(dat.graph().rootDirectory(), dat.rawData(), textureSources);
+
+        SkeletonResource localSkeleton = skeletons.stream()
+                .filter(candidate -> !candidate.joints().isEmpty())
+                .findFirst()
+                .orElse(null);
+
+        // Case 1: DAT directly contains a valid skeleton with joints.
+        if (localSkeleton != null) {
+            return new StandardModelComponents(
+                    localSkeleton,
+                    meshResources,
+                    slot0Animations,
+                    textureSources,
+                    init.hiddenWeaponMask(),
+                    null
+            );
+        }
+
+        // Case 2: Skeleton-less variant inheriting a base model via init 0x98 opcode.
+        if (init.baseModelId().isPresent() && depth < MAX_INIT_INHERITANCE_DEPTH) {
+            int baseId = init.baseModelId().get();
+            if (baseId != modelId && baseId > 0) {
+                StandardModelComponents base = loadStandardModelComponents(index, baseId, depth + 1);
+                if (base.scriptedLook() != null) {
+                    return base;
+                }
+                List<SkeletonMeshResource> mergedMeshes = new ArrayList<>(base.meshResources());
+                mergedMeshes.addAll(meshResources);
+
+                Map<String, CharacterTextureLoader.TextureSource> mergedTextures = new LinkedHashMap<>(base.textureSources());
+                mergedTextures.putAll(textureSources);
+
+                List<SkeletonAnimationResource> mergedAnimations = new ArrayList<>(slot0Animations);
+                mergedAnimations.addAll(base.slot0Animations());
+
+                int mergedMask = base.hiddenWeaponMask() | init.hiddenWeaponMask();
+
+                return new StandardModelComponents(
+                        base.skeleton(),
+                        mergedMeshes,
+                        mergedAnimations,
+                        mergedTextures,
+                        mergedMask,
+                        null
+                );
+            }
+        }
+
+        // Case 3: Skeleton-less init script specifying a PC/NPC equipped look (0x8d..0x95).
+        if (init.scriptedLook().isPresent()) {
+            return new StandardModelComponents(
+                    null,
+                    List.of(),
+                    List.of(),
+                    Map.of(),
+                    init.hiddenWeaponMask(),
+                    init.scriptedLook().get()
+            );
+        }
+
+        throw new IllegalStateException("Standard model " + modelId + " has no skeleton and no resolvable init redirect");
+    }
+
+    private static boolean isArmorOrFaceSlot(ItemModelSlot slot) {
+        return switch (slot) {
+            case Face, Head, Body, Hands, Legs, Feet -> true;
+            case Main, Sub, Range -> false;
+        };
+    }
+
+    private static boolean isWeaponSlot(ItemModelSlot slot) {
+        return switch (slot) {
+            case Main, Sub, Range -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isDummyEquipmentPath(String meshPath, String skeletonPath, String upperAnimPath) {
+        if (meshPath == null || meshPath.isBlank()) {
+            return true;
+        }
+        try {
+            Path path = Path.of(meshPath);
+            if (!Files.isRegularFile(path)) {
+                return true;
+            }
+            if (Files.size(path) < 1024) {
+                return true;
+            }
+            if (skeletonPath != null && meshPath.equalsIgnoreCase(skeletonPath)) {
+                return true;
+            }
+            if (upperAnimPath != null && meshPath.equalsIgnoreCase(upperAnimPath)) {
+                return true;
+            }
+        } catch (Exception ignored) {
+            return true;
+        }
+        return false;
     }
 
     private static ParsedDat loadDat(Path path) throws IOException {
@@ -388,5 +608,15 @@ public final class CharacterModelLoader {
     }
 
     private record Bounds(Vector3f center, float radius, float feetOffsetY) {
+    }
+
+    private record StandardModelComponents(
+            SkeletonResource skeleton,
+            List<SkeletonMeshResource> meshResources,
+            List<SkeletonAnimationResource> slot0Animations,
+            Map<String, CharacterTextureLoader.TextureSource> textureSources,
+            int hiddenWeaponMask,
+            InitSchedulerParser.ScriptedLook scriptedLook
+    ) {
     }
 }

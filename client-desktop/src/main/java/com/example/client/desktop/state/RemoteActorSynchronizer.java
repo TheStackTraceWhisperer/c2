@@ -6,6 +6,8 @@ import com.example.client.interp.InterpolatedEntityState;
 import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
 import com.example.common.protocol.MovementFlags;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.ffxi.tables.RaceGenderConfig;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,11 +54,28 @@ public final class RemoteActorSynchronizer {
                         : SceneActor.ActorType.PLAYER;
                 actor = new SceneActor(entity.characterId(), entity.name(), aType);
                 if (sceneInitialized) {
-                    try {
-                        RaceGenderConfig race = resolveRaceForEntity(entity.mainJobId());
-                        actor.setVisualModel(worldScene.createCharacterInstance(ffxiRoot, race));
-                    } catch (Exception e) {
-                        log.debug("Unable to create character model for entity {}: {}", entity.characterId(), e.toString());
+                    ActorAppearance appearance = entity.appearance();
+                    if (appearance != null && appearance.lookType() != ActorLookType.NONE) {
+                        try {
+                            actor.setVisualModel(worldScene.createCharacterInstance(ffxiRoot, appearance));
+                        } catch (Exception e) {
+                            log.warn("Failed to load appearance {} for entity {} ({}); falling back to default race: {}",
+                                    appearance, entity.characterId(), entity.name(), e.getMessage());
+                            try {
+                                RaceGenderConfig fallbackRace = resolveRaceForEntity(entity.mainJobId());
+                                actor.setVisualModel(worldScene.createCharacterInstance(ffxiRoot, fallbackRace));
+                            } catch (Exception fallbackEx) {
+                                log.debug("Unable to create fallback character model for entity {}: {}",
+                                        entity.characterId(), fallbackEx.toString());
+                            }
+                        }
+                    } else {
+                        try {
+                            RaceGenderConfig race = resolveRaceForEntity(entity.mainJobId());
+                            actor.setVisualModel(worldScene.createCharacterInstance(ffxiRoot, race));
+                        } catch (Exception e) {
+                            log.debug("Unable to create character model for entity {}: {}", entity.characterId(), e.toString());
+                        }
                     }
                 }
                 worldScene.addActor(actor);

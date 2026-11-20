@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class WorldSceneTest {
 
     @Test
-    @DisplayName("SceneCamera computes authentic view and projection matrices in third-person mode (North=-Z, East=+X)")
+    @DisplayName("SceneCamera computes authentic view and projection matrices in third-person mode (North=+Z, East=+X)")
     void testSceneCameraThirdPerson() {
         SceneCamera camera = new SceneCamera();
         camera.setMode(CameraMode.THIRD_PERSON);

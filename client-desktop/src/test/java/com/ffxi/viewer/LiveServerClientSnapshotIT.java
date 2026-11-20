@@ -9,15 +9,15 @@ import com.example.server.concurrent.VirtualThreadTaskDispatcher;
 import com.example.server.entity.CharacterRecord;
 import com.example.server.entity.CharacterStateSnapshot;
 import com.example.server.entity.NpcRecord;
-import com.example.server.entity.ZoneLineRecord;
 import com.example.server.repository.CharacterRepository;
 import com.example.server.repository.NpcJdbcRepository;
 import com.example.server.repository.ZoneLineJdbcRepository;
-import com.ffxi.tables.RaceGenderConfig;
 import com.example.zone.collision.ZoneCollisionService;
-import com.example.zone.dto.EntitySpawnRecord;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.ZoneStateDeltaMessage;
+import com.example.zone.engine.NpcSpawnFilter;
 import com.example.zone.engine.ZoneSimulationEngine;
 import com.example.zone.patrol.NpcPatrolSimulation;
 import com.example.zone.spatial.SpatialGrid;
@@ -41,7 +41,9 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -49,6 +51,8 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
@@ -62,11 +66,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * Verifies and visually demonstrates the complete, end-to-end integration of the engine:
  * 1. Authoritative 20 Hz ZoneSimulationEngine initializes with authentic DAT collision and zonelines.
- * 2. Authentic LandSandBoat NPC dataset is injected via NpcJdbcRepository.
- * 3. Client session connects, receives authoritative spawn and AoI spatial delta streams (ZoneStateDeltaMessage).
- * 4. ClientState tracks the player and nearby authentic town NPCs.
- * 5. Headless software rasterizer captures live, composite 1080p in-engine screenshots of the player
- *    interacting with the world and canonical NPCs in Southern San d'Oria.
+ * 2. Full authentic LandSandBoat NPC dataset is loaded from V2__npc_list.sql and filtered via NpcSpawnFilter.
+ * 3. Client session connects, receives authoritative spawn and AoI spatial delta streams with full ActorAppearance.
+ * 4. ClientState tracks the player ("Adventurer") and nearby authentic town NPCs with their real models.
+ * 5. Headless software rasterizer captures live, composite 1080p in-engine screenshots across
+ *    Southern San d'Oria (Zone 230) and Lower Jeuno (Zone 245).
  */
 public class LiveServerClientSnapshotIT {
 
@@ -76,31 +80,65 @@ public class LiveServerClientSnapshotIT {
     private static final int WIDTH = 1920;
     private static final int HEIGHT = 1080;
 
-    private static LoadedCharacter playerCharacter;
-    private static Map<String, DecodedTextureBuffer> decodedCharTextures;
-    private static FontMojiRenderer fontMoji;
-    private static LoadedZone loadedZone230;
-    private static Map<String, DecodedTextureBuffer> decodedZoneTextures;
+    private static final String PLAYER_NAME = "Adventurer";
+    private static final ActorAppearance PLAYER_APPEARANCE = ActorAppearance.forPlayer(1, 2, 1);
 
-    private static Matrix4f[] idlePose;
-    private static Matrix4f[] walkPose;
-    private static Matrix4f[] restPose;
+    private static final Pattern NPC_SQL_ROW_PATTERN = Pattern.compile(
+            "\\((\\d+),\\s*'((?:''|[^'])*)',\\s*([-\\d.]+),\\s*([-\\d.]+),\\s*([-\\d.]+),\\s*(\\d+),\\s*(\\d+),\\s*'([^']*)',\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(?:'([^']*)'|NULL),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(true|false)\\)"
+    );
+
+    private static FontMojiRenderer fontMoji;
+    private static ActorRenderCache actorRenderCache;
+    private static CachedActorRender playerRender;
+    private static Matrix4f[] playerWalkPose;
+
+    private static LoadedZone loadedZone230;
+    private static Map<String, DecodedTextureBuffer> decodedZone230Textures;
+    private static ZoneSimulationEngine serverEngine230;
+    private static TestCharacterRepo testCharRepo230;
+
+    private record DecodedTextureBuffer(int width, int height, byte[] rgba) {}
+
+    private record CachedActorRender(
+            LoadedCharacter character,
+            Map<String, DecodedTextureBuffer> textures,
+            Matrix4f[] idlePose,
+            float nameplateHeight
+    ) {}
 
     private record SceneActor(
             LoadedCharacter character,
             Map<String, DecodedTextureBuffer> textures,
             Matrix4f[] jointMatrices,
+            float nameplateHeight,
             float x, float y, float z, float yaw,
             String name, Color nameColor
     ) {}
 
-    private static ZoneSimulationEngine serverEngine;
-    private static List<Object> clientOutboundPackets;
-    private static ChannelHandlerContext clientCtx;
-    private static ClientState clientState;
-    private static TestCharacterRepo testCharRepo;
+    private static final class ActorRenderCache {
+        private final Map<CharacterAssetCache.AppearanceCacheKey, CachedActorRender> cache = new HashMap<>();
 
-    private record DecodedTextureBuffer(int width, int height, byte[] rgba) {}
+        CachedActorRender getOrLoad(ActorAppearance appearance) throws IOException {
+            CharacterAssetCache.AppearanceCacheKey key = CharacterAssetCache.AppearanceCacheKey.from(appearance);
+            CachedActorRender existing = cache.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            LoadedCharacter loaded = CharacterModelLoader.loadActor(FFXI_ROOT, appearance);
+            Map<String, DecodedTextureBuffer> textures = decodeCharacterTextures(loaded);
+
+            AuthenticLocomotionController idleCtrl = new AuthenticLocomotionController(
+                    loaded.skeleton(), loaded.slot0Animations(), loaded.slot1Animations()
+            );
+            idleCtrl.update(0.1f, MovementFlags.IDLE, 0.0f);
+            Matrix4f[] idlePose = idleCtrl.computePoseMatrices();
+
+            float nameplateHeight = computeNameplateHeight(loaded, idlePose);
+            CachedActorRender rendered = new CachedActorRender(loaded, textures, idlePose, nameplateHeight);
+            cache.put(key, rendered);
+            return rendered;
+        }
+    }
 
     static class TestCharacterRepo extends CharacterRepository {
         final Map<Long, CharacterRecord> records = new HashMap<>();
@@ -133,6 +171,42 @@ public class LiveServerClientSnapshotIT {
         }
     }
 
+    private record ClientSessionHarness(
+            ClientState clientState,
+            List<Object> outboundPackets,
+            ChannelHandlerContext ctx
+    ) {
+        static ClientSessionHarness create() {
+            ClientState state = new ClientState();
+            List<Object> packets = new CopyOnWriteArrayList<>();
+            EmbeddedChannel channel = new EmbeddedChannel();
+            ChannelHandlerContext ctx = (ChannelHandlerContext) Proxy.newProxyInstance(
+                    ChannelHandlerContext.class.getClassLoader(),
+                    new Class<?>[]{ChannelHandlerContext.class},
+                    (proxy, method, args) -> {
+                        if ("writeAndFlush".equals(method.getName())) {
+                            packets.add(args[0]);
+                            return null;
+                        }
+                        if ("channel".equals(method.getName())) {
+                            return channel;
+                        }
+                        return null;
+                    }
+            );
+            return new ClientSessionHarness(state, packets, ctx);
+        }
+
+        void drainDeltas() {
+            while (!outboundPackets.isEmpty()) {
+                Object packet = outboundPackets.remove(0);
+                if (packet instanceof ZoneStateDeltaMessage delta) {
+                    clientState.applyZoneStateDelta(delta);
+                }
+            }
+        }
+    }
+
     @BeforeAll
     static void initE2EEnvironment() throws Exception {
         Files.createDirectories(OUTPUT_DIR);
@@ -146,62 +220,366 @@ public class LiveServerClientSnapshotIT {
             }
         } catch (Exception ignored) {}
 
-        // 2. Load authentic player model (Hume Male)
-        playerCharacter = CharacterModelLoader.loadCharacter(FFXI_ROOT, RaceGenderConfig.HumeM);
-        assertNotNull(playerCharacter, "Hume Male character must be loaded");
-
-        decodedCharTextures = new HashMap<>();
-        for (Map.Entry<String, CharacterTextureLoader.TextureSource> entry : playerCharacter.textures().entrySet()) {
-            String norm = CharacterTextureLoader.normalizeName(entry.getKey());
-            CharacterTextureLoader.TextureSource src = entry.getValue();
-            try {
-                byte[] rgba = TextureDecoder.decode(src.rawData(), src.resource());
-                if (rgba != null && rgba.length > 0) {
-                    DecodedTextureBuffer dtb = new DecodedTextureBuffer(src.resource().width(), src.resource().height(), rgba);
-                    decodedCharTextures.putIfAbsent(norm, dtb);
-                    if (norm.contains(" ")) {
-                        String shortName = norm.substring(norm.lastIndexOf(' ') + 1);
-                        decodedCharTextures.putIfAbsent(shortName, dtb);
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        AuthenticLocomotionController idleCtrl = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
-        );
-        idleCtrl.update(0.1f, 0, 0.0f);
-        idlePose = idleCtrl.computePoseMatrices();
+        // 2. Initialize multi-model ActorRenderCache and load local player ("Adventurer", HumeM face 2)
+        actorRenderCache = new ActorRenderCache();
+        playerRender = actorRenderCache.getOrLoad(PLAYER_APPEARANCE);
+        assertNotNull(playerRender.character(), "Adventurer player model must be loaded");
 
         AuthenticLocomotionController walkCtrl = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
+                playerRender.character().skeleton(),
+                playerRender.character().slot0Animations(),
+                playerRender.character().slot1Animations()
         );
-        walkCtrl.update(0.20f, (int) MovementFlags.FORWARD, 2.5f);
-        walkPose = walkCtrl.computePoseMatrices();
+        walkCtrl.update(0.20f, MovementFlags.FORWARD, 2.5f);
+        playerWalkPose = walkCtrl.computePoseMatrices();
 
-        AuthenticLocomotionController restCtrl = new AuthenticLocomotionController(
-                playerCharacter.skeleton(), playerCharacter.slot0Animations(), playerCharacter.slot1Animations()
-        );
-        restCtrl.update(1.0f, 32, 0.0f);
-        restPose = restCtrl.computePoseMatrices();
-
-        // 3. Load authentic Southern San d'Oria zone geometry
+        // 3. Load authentic Southern San d'Oria (Zone 230) geometry
         loadedZone230 = ZoneModelLoader.loadZone(FFXI_ROOT, 230);
         assertNotNull(loadedZone230, "Zone 230 must be loaded");
-        decodedZoneTextures = decodeAllZoneTextures(loadedZone230);
+        decodedZone230Textures = decodeAllZoneTextures(loadedZone230);
 
-        // 4. Initialize Live Authoritative Server
+        // 4. Initialize Live Authoritative Zone 230 Server with full V2__npc_list.sql rows
+        List<NpcRecord> zone230Npcs = loadNpcRecordsFromMigrationSql(230);
+        long spawnable230 = zone230Npcs.stream().filter(NpcSpawnFilter::shouldSpawn).count();
+        assertThat(spawnable230).as("Zone 230 filtered spawnable NPC count").isEqualTo(194L);
+
+        testCharRepo230 = new TestCharacterRepo();
+        serverEngine230 = createAndStartZoneEngine(230, 9000, zone230Npcs, testCharRepo230);
+    }
+
+    @AfterAll
+    static void tearDownE2E() {
+        if (serverEngine230 != null) {
+            serverEngine230.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("E2E Integration Scenario 1: Spawn at Northern San d'Oria Archway, receive server delta, render live scene")
+    void testE2ESpawnAndRender() throws Exception {
+        long charId = 1001L;
+        long sessionId = 99001L;
+        ClientSessionHarness harness = ClientSessionHarness.create();
+
+        try {
+            // Adventurer spawns at (0.0, -1.999, 41.0) facing North (0 deg) toward Aubejart & Ephauge
+            testCharRepo230.records.put(charId, createAdventurerRecord(charId, 230, 0.0f, -1.999f, 41.0f, 0.0f));
+            serverEngine230.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719298L, 17719299L);
+            });
+
+            ClientState clientState = harness.clientState();
+            var aubejart = clientState.getRemoteEntities().get(17719298L);
+            var ephauge = clientState.getRemoteEntities().get(17719299L);
+
+            assertThat(aubejart.name()).isEqualTo("Aubejart");
+            assertThat(aubejart.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(aubejart.appearance().raceId()).isEqualTo(3);
+            assertThat(aubejart.appearance().faceId()).isEqualTo(8);
+            assertThat(aubejart.appearance().head()).isEqualTo(28);
+            assertThat(aubejart.appearance().body()).isEqualTo(28);
+
+            assertThat(ephauge.name()).isEqualTo("Ephauge");
+            assertThat(ephauge.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(ephauge.appearance().raceId()).isEqualTo(3);
+            assertThat(ephauge.appearance().faceId()).isEqualTo(0);
+            assertThat(ephauge.appearance().head()).isEqualTo(28);
+            assertThat(ephauge.appearance().body()).isEqualTo(28);
+
+            assertThat(clientState.getRemoteEntities().values())
+                    .extracting(ClientState.RemoteEntityState::name)
+                    .doesNotContain("Aldo");
+
+            PolarCamera camera = new PolarCamera();
+            camera.setTarget(0.0f, -1.999f, 41.0f);
+            camera.setTargetOffsetY(1.0f);
+            camera.setYaw(0.0f);
+            camera.setPitch(16.0f);
+            camera.setDistance(6.0f);
+
+            SceneActor localPlayer = new SceneActor(
+                    playerRender.character(), playerRender.textures(), playerRender.idlePose(),
+                    playerRender.nameplateHeight(),
+                    0.0f, -1.999f, 41.0f, 0.0f,
+                    PLAYER_NAME, new Color(140, 220, 255)
+            );
+            List<SceneActor> actors = buildStreamedSceneActors(
+                    localPlayer, clientState, camera.getTargetX(), camera.getTargetZ(), 35.0f,
+                    Set.of(17719298L, 17719299L)
+            );
+
+            BufferedImage snapshot = renderLiveE2EFrame(
+                    230, sessionId, loadedZone230, decodedZone230Textures, camera, actors,
+                    "World Spawn at Northern San d'Oria Archway | Authoritative Spatial Sync",
+                    "Client connected to authoritative 20 Hz ZoneSimulationEngine #230. Streamed Adventurer spawn and equipped gate sentries Aubejart & Ephauge.",
+                    clientState.getRemoteEntities().size()
+            );
+
+            File outFile = OUTPUT_DIR.resolve("e2e_live_01_south_sandoria_world_spawn.png").toFile();
+            ImageIO.write(snapshot, "PNG", outFile);
+            assertTrue(outFile.exists() && outFile.length() > 50000);
+            System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes, %d rendered actors)%n",
+                    outFile.getName(), outFile.length(), actors.size());
+        } finally {
+            serverEngine230.removeEntityBySession(sessionId);
+        }
+    }
+
+    @Test
+    @DisplayName("E2E Integration Scenario 2: Walk in Southern San d'Oria Market Square near Corua and Machielle")
+    void testE2EMovementAndRender() throws Exception {
+        long charId = 1002L;
+        long sessionId = 99002L;
+        ClientSessionHarness harness = ClientSessionHarness.create();
+
+        try {
+            // Adventurer spawns in Southern San d'Oria Market Square between Corua and Machielle
+            testCharRepo230.records.put(charId, createAdventurerRecord(charId, 230, -68.0f, 1.999f, -4.5f, 205.0f));
+            serverEngine230.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(serverEngine230.getEntity(charId)).isNotNull();
+            });
+
+            PlayerMovementRequest moveReq = new PlayerMovementRequest(
+                    -68.5f, 1.999f, -5.5f,
+                    -1.0f, 0.0f, -2.0f,
+                    205.0f, 0.0f,
+                    MovementFlags.FORWARD,
+                    100L
+            );
+            serverEngine230.enqueueMovement(harness.ctx(), sessionId, charId, moveReq);
+
+            await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                var ent = serverEngine230.getEntity(charId);
+                assertThat(ent).isNotNull();
+                assertThat(ent.getX()).isCloseTo(-68.5f, within(0.5f));
+                assertThat(ent.getZ()).isCloseTo(-5.5f, within(0.5f));
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719304L, 17719303L);
+            });
+
+            ClientState clientState = harness.clientState();
+            var corua = clientState.getRemoteEntities().get(17719304L);
+            var machielle = clientState.getRemoteEntities().get(17719303L);
+
+            assertThat(corua.name()).isEqualTo("Corua");
+            assertThat(corua.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(corua.appearance().modelId()).isEqualTo(142);
+
+            assertThat(machielle.name()).isEqualTo("Machielle");
+            assertThat(machielle.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(machielle.appearance().raceId()).isEqualTo(4);
+            assertThat(machielle.appearance().faceId()).isEqualTo(4);
+            assertThat(machielle.appearance().body()).isEqualTo(19);
+
+            var playerState = serverEngine230.getEntity(charId);
+            float px = playerState.getX();
+            float py = playerState.getY();
+            float pz = playerState.getZ();
+
+            // Frame Market Square from the open SW cobblestone courtyard looking NE so Machielle (left), Adventurer (center), and Corua (right) are all clearly visible
+            PolarCamera camera = new PolarCamera();
+            camera.setTarget(-69.5f, 1.999f, -5.0f);
+            camera.setTargetOffsetY(1.0f);
+            camera.setYaw(52.0f);
+            camera.setPitch(9.0f);
+            camera.setDistance(9.2f);
+
+            SceneActor localPlayer = new SceneActor(
+                    playerRender.character(), playerRender.textures(), playerWalkPose,
+                    playerRender.nameplateHeight(),
+                    px, py, pz, 205.0f,
+                    PLAYER_NAME, new Color(140, 220, 255)
+            );
+            List<SceneActor> actors = buildStreamedSceneActors(
+                    localPlayer, clientState, camera.getTargetX(), camera.getTargetZ(), 35.0f,
+                    Set.of(17719304L, 17719303L)
+            );
+
+            BufferedImage snapshot = renderLiveE2EFrame(
+                    230, sessionId, loadedZone230, decodedZone230Textures, camera, actors,
+                    "Southern San d'Oria Market Square | Multi-Model NPC Streaming",
+                    "Server-validated movement in Market Square with streamed standard NPC Corua (#142) and equipped ElvaanF Machielle.",
+                    clientState.getRemoteEntities().size()
+            );
+
+            File outFile = OUTPUT_DIR.resolve("e2e_live_02_south_sandoria_npc_plaza.png").toFile();
+            ImageIO.write(snapshot, "PNG", outFile);
+            assertTrue(outFile.exists() && outFile.length() > 50000);
+            System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes, %d rendered actors)%n",
+                    outFile.getName(), outFile.length(), actors.size());
+        } finally {
+            serverEngine230.removeEntityBySession(sessionId);
+        }
+    }
+
+    @Test
+    @DisplayName("E2E Integration Scenario 3: Rendezvous with canonical NPC Ceraule (ID 17719297) and nearby Claidie")
+    void testE2ECerauleRendezvousAndRender() throws Exception {
+        long charId = 1003L;
+        long sessionId = 99003L;
+        ClientSessionHarness harness = ClientSessionHarness.create();
+
+        try {
+            // Adventurer stands at (-84.5, 1.999, -32.8) facing SW (222 deg) toward Ceraule at (-86.077, 1.999, -34.793)
+            testCharRepo230.records.put(charId, createAdventurerRecord(charId, 230, -84.5f, 1.999f, -32.8f, 222.0f));
+            serverEngine230.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).containsKeys(17719297L, 17719370L);
+            });
+
+            ClientState clientState = harness.clientState();
+            var ceraule = clientState.getRemoteEntities().get(17719297L);
+            assertThat(ceraule.name()).isEqualTo("Ceraule");
+            assertThat(ceraule.appearance().lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(ceraule.appearance().raceId()).isEqualTo(3);
+            assertThat(ceraule.appearance().faceId()).isEqualTo(2);
+            assertThat(ceraule.appearance().head()).isEqualTo(12);
+            assertThat(ceraule.appearance().body()).isEqualTo(12);
+
+            var claidie = clientState.getRemoteEntities().get(17719370L);
+            assertThat(claidie.name()).isEqualTo("Claidie");
+            assertThat(claidie.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(claidie.appearance().modelId()).isEqualTo(66);
+
+            // Frame Adventurer (left), Ceraule (center, standing idle), and Claidie (right) cleanly side-by-side
+            PolarCamera camera = new PolarCamera();
+            camera.setTarget(-86.2f, 1.999f, -34.2f);
+            camera.setTargetOffsetY(1.0f);
+            camera.setYaw(185.0f);
+            camera.setPitch(15.0f);
+            camera.setDistance(5.8f);
+
+            SceneActor localPlayer = new SceneActor(
+                    playerRender.character(), playerRender.textures(), playerRender.idlePose(),
+                    playerRender.nameplateHeight(),
+                    -84.5f, 1.999f, -32.8f, 222.0f,
+                    PLAYER_NAME, new Color(140, 220, 255)
+            );
+            List<SceneActor> actors = buildStreamedSceneActors(
+                    localPlayer, clientState, camera.getTargetX(), camera.getTargetZ(), 35.0f,
+                    Set.of(17719297L, 17719370L)
+            );
+
+            BufferedImage snapshot = renderLiveE2EFrame(
+                    230, sessionId, loadedZone230, decodedZone230Textures, camera, actors,
+                    "Ceraule Rendezvous | Canonical Equipped & Standard NPCs",
+                    "Adventurer meeting Ceraule (#17719297, ElvaanM armor 12, standing idle) with Claidie (#66) streamed via Zone #230 AoI.",
+                    clientState.getRemoteEntities().size()
+            );
+
+            File outFile = OUTPUT_DIR.resolve("e2e_live_03_south_sandoria_ceraule_rendezvous.png").toFile();
+            ImageIO.write(snapshot, "PNG", outFile);
+            assertTrue(outFile.exists() && outFile.length() > 50000);
+            System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes, %d rendered actors)%n",
+                    outFile.getName(), outFile.length(), actors.size());
+        } finally {
+            serverEngine230.removeEntityBySession(sessionId);
+        }
+    }
+
+    @Test
+    @DisplayName("E2E Integration Scenario 4: Lower Jeuno (Zone 245) rendezvous with canonical standard NPC Aldo (model 78)")
+    void testE2ELowerJeunoAldoRendezvous() throws Exception {
+        List<NpcRecord> zone245Npcs = loadNpcRecordsFromMigrationSql(245);
+        long spawnable245 = zone245Npcs.stream().filter(NpcSpawnFilter::shouldSpawn).count();
+        assertThat(spawnable245).as("Zone 245 filtered spawnable NPC count").isEqualTo(148L);
+
+        LoadedZone loadedZone245 = ZoneModelLoader.loadZone(FFXI_ROOT, 245);
+        assertNotNull(loadedZone245, "Zone 245 (Lower Jeuno) must be loaded");
+        Map<String, DecodedTextureBuffer> decodedZone245Textures = decodeAllZoneTextures(loadedZone245);
+
+        TestCharacterRepo charRepo245 = new TestCharacterRepo();
+        ZoneSimulationEngine engine245 = createAndStartZoneEngine(245, 9001, zone245Npcs, charRepo245);
+        long charId = 1004L;
+        long sessionId = 99004L;
+        ClientSessionHarness harness = ClientSessionHarness.create();
+
+        try {
+            // Place Adventurer ~2.4m NW of Aldo (21.049, 3.899, -61.530) inside Aldo's Room facing SE (142 deg) toward Aldo
+            charRepo245.records.put(charId, createAdventurerRecord(charId, 245, 19.5f, 3.899f, -59.5f, 142.0f));
+            engine245.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).containsKey(17780743L);
+            });
+
+            ClientState clientState245 = harness.clientState();
+            var aldo = clientState245.getRemoteEntities().get(17780743L);
+            assertThat(aldo.name()).isEqualTo("Aldo");
+            assertThat(aldo.appearance().lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(aldo.appearance().modelId()).isEqualTo(78);
+
+            // Frame Adventurer and Aldo from inside Aldo's Room (NW interior looking SE across the wooden floor)
+            PolarCamera camera = new PolarCamera();
+            camera.setTarget(20.3f, 3.899f, -60.6f);
+            camera.setTargetOffsetY(1.0f);
+            camera.setYaw(125.0f);
+            camera.setPitch(15.0f);
+            camera.setDistance(3.9f);
+
+            SceneActor localPlayer = new SceneActor(
+                    playerRender.character(), playerRender.textures(), playerRender.idlePose(),
+                    playerRender.nameplateHeight(),
+                    19.5f, 3.899f, -59.5f, 142.0f,
+                    PLAYER_NAME, new Color(140, 220, 255)
+            );
+            List<SceneActor> actors = buildStreamedSceneActors(
+                    localPlayer, clientState245, camera.getTargetX(), camera.getTargetZ(), 35.0f,
+                    Set.of(17780743L)
+            );
+
+            BufferedImage snapshot = renderLiveE2EFrame(
+                    245, sessionId, loadedZone245, decodedZone245Textures, camera, actors,
+                    "Lower Jeuno Rendezvous | Canonical Standard NPC Aldo (#78)",
+                    "ZoneSimulationEngine #245 loaded 148 authentic Lower Jeuno NPCs. Adventurer facing Tenshodo leader Aldo (model #78).",
+                    clientState245.getRemoteEntities().size()
+            );
+
+            File outFile = OUTPUT_DIR.resolve("e2e_live_04_lower_jeuno_aldo.png").toFile();
+            ImageIO.write(snapshot, "PNG", outFile);
+            assertTrue(outFile.exists() && outFile.length() > 50000);
+            System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes, %d rendered actors)%n",
+                    outFile.getName(), outFile.length(), actors.size());
+        } finally {
+            engine245.removeEntityBySession(sessionId);
+            engine245.stop();
+        }
+    }
+
+    private static CharacterRecord createAdventurerRecord(
+            long charId, int zoneId, float x, float y, float z, float yaw
+    ) {
+        return new CharacterRecord(
+                1L, charId, 1, PLAYER_NAME, (short) 1, (short) 0, (short) 2, (short) 1,
+                (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
+                zoneId, x, y, z, yaw, 0.0f,
+                zoneId, x, y, z, Instant.now()
+        );
+    }
+
+    private static ZoneSimulationEngine createAndStartZoneEngine(
+            int zoneId,
+            int port,
+            List<NpcRecord> zoneNpcs,
+            TestCharacterRepo charRepo
+    ) {
         ZoneServerProperties props = new ZoneServerProperties();
         props.setHost("127.0.0.1");
-        props.setPort(9000);
-        props.setZoneId(230); // South San d'Oria
+        props.setPort(port);
+        props.setZoneId(zoneId);
         props.setCollisionEnabled(true);
         props.setMaxStepHeight(1.2f);
         props.setMaxJumpHeight(3.5f);
 
         SpatialGrid spatialGrid = new SpatialGrid();
-        testCharRepo = new TestCharacterRepo();
-
         ZoneLineJdbcRepository zoneLineRepo = (ZoneLineJdbcRepository) Proxy.newProxyInstance(
                 ZoneLineJdbcRepository.class.getClassLoader(),
                 new Class<?>[]{ZoneLineJdbcRepository.class},
@@ -213,277 +591,186 @@ public class LiveServerClientSnapshotIT {
         collisionService.init();
 
         NpcPatrolSimulation patrolSim = new NpcPatrolSimulation();
-
-        // Authentic LandSandBoat NPCs in South San d'Oria
         NpcJdbcRepository npcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
                 NpcJdbcRepository.class.getClassLoader(),
                 new Class<?>[]{NpcJdbcRepository.class},
                 (proxy, method, args) -> {
-                    if ("findByZoneId".equals(method.getName()) && Integer.valueOf(230).equals(args[0])) {
-                        return List.of(
-                                new NpcRecord(17719297L, "Ceraule", -86.077f, 1.999f, -34.793f, (short) 115, 230, "normal", 27, (short) 1, (short) 32, (short) 14, "equipped", (short) 3, (short) 2, 4108, 8204, 12300, 16396, 20492, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719298L, "Aubejart", 2.900f, -1.999f, 46.644f, (short) 64, 230, "normal", 27, (short) 1, (short) 32, (short) 8, "equipped", (short) 3, (short) 8, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719299L, "Ephauge", -2.900f, -1.999f, 46.644f, (short) 64, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719300L, "Cahaurme", 55.749f, -8.601f, -29.354f, (short) 192, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719301L, "Baunise", -55.749f, -8.601f, -29.252f, (short) 192, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719302L, "Coderiant", -111.444f, -2.000f, 34.020f, (short) 24, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719303L, "Machielle", -73.091f, 1.999f, -1.115f, (short) 80, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719304L, "Corua", -64.239f, 1.999f, -8.665f, (short) 41, 230, "normal", 27, (short) 0, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719305L, "Phamelise", 63.980f, 2.000f, -8.163f, (short) 47, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719306L, "Apairemant", 72.675f, 2.000f, -0.167f, (short) 31, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719307L, "Violitte", -74.532f, 1.999f, -55.324f, (short) 151, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true),
-                                new NpcRecord(17719308L, "Andecia", 169.621f, -0.949f, 44.974f, (short) 128, 230, "normal", 27, (short) 1, (short) 32, (short) 1, "equipped", (short) 3, (short) 0, 4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true)
-                        );
+                    if ("findByZoneId".equals(method.getName()) && Integer.valueOf(zoneId).equals(args[0])) {
+                        return zoneNpcs;
                     }
                     return List.of();
                 }
         );
 
-        serverEngine = new ZoneSimulationEngine(
-                props, spatialGrid, testCharRepo, zoneLineRepo, dispatcher, collisionService, patrolSim, npcRepo
+        ZoneSimulationEngine engine = new ZoneSimulationEngine(
+                props, spatialGrid, charRepo, zoneLineRepo, dispatcher, collisionService, patrolSim, npcRepo
         );
-        serverEngine.start();
+        engine.start();
+        return engine;
+    }
 
-        // 5. Initialize Live Client State & Network Context
-        clientState = new ClientState();
-        clientOutboundPackets = new CopyOnWriteArrayList<>();
-        EmbeddedChannel channel = new EmbeddedChannel();
-        clientCtx = (ChannelHandlerContext) Proxy.newProxyInstance(
-                ChannelHandlerContext.class.getClassLoader(),
-                new Class<?>[]{ChannelHandlerContext.class},
-                (proxy, method, args) -> {
-                    if ("writeAndFlush".equals(method.getName())) {
-                        clientOutboundPackets.add(args[0]);
-                        return null;
+    private static List<NpcRecord> loadNpcRecordsFromMigrationSql(int zoneId) throws IOException {
+        String sql = readMigrationSqlText();
+        List<NpcRecord> result = new ArrayList<>();
+        Matcher m = NPC_SQL_ROW_PATTERN.matcher(sql);
+        while (m.find()) {
+            int rowZoneId = Integer.parseInt(m.group(7));
+            if (rowZoneId != zoneId) {
+                continue;
+            }
+            long id = Long.parseLong(m.group(1));
+            String name = m.group(2).replace("''", "'");
+            float posX = Float.parseFloat(m.group(3));
+            float posY = Float.parseFloat(m.group(4));
+            float posZ = Float.parseFloat(m.group(5));
+            short posRot = (short) Integer.parseInt(m.group(6));
+            String status = m.group(8);
+            int entityFlags = Integer.parseInt(m.group(9));
+            short animationSub = (short) Integer.parseInt(m.group(10));
+            short namePrefix = (short) Integer.parseInt(m.group(11));
+            short moving = (short) Integer.parseInt(m.group(12));
+            String lookType = m.group(13);
+            short raceId = (short) Integer.parseInt(m.group(14));
+            short faceId = (short) Integer.parseInt(m.group(15));
+            int head = Integer.parseInt(m.group(16));
+            int body = Integer.parseInt(m.group(17));
+            int hands = Integer.parseInt(m.group(18));
+            int legs = Integer.parseInt(m.group(19));
+            int feet = Integer.parseInt(m.group(20));
+            int mainWeapon = Integer.parseInt(m.group(21));
+            int subShield = Integer.parseInt(m.group(22));
+            int ranged = Integer.parseInt(m.group(23));
+            int modelId = Integer.parseInt(m.group(24));
+            boolean widescan = Boolean.parseBoolean(m.group(25));
+
+            result.add(new NpcRecord(
+                    id, name, posX, posY, posZ, posRot, rowZoneId, status,
+                    entityFlags, animationSub, namePrefix, moving, lookType,
+                    raceId, faceId, head, body, hands, legs, feet,
+                    mainWeapon, subShield, ranged, modelId, widescan
+            ));
+        }
+        assertThat(result).as("Loaded SQL NPC records for zone " + zoneId).isNotEmpty();
+        return result;
+    }
+
+    private static String readMigrationSqlText() throws IOException {
+        try (InputStream in = LiveServerClientSnapshotIT.class.getClassLoader().getResourceAsStream("db/migration/V2__npc_list.sql")) {
+            if (in != null) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        List<Path> candidates = List.of(
+                Path.of("../platform-modulith/src/main/resources/db/migration/V2__npc_list.sql"),
+                Path.of("platform-modulith/src/main/resources/db/migration/V2__npc_list.sql")
+        );
+        for (Path candidate : candidates) {
+            if (Files.isRegularFile(candidate)) {
+                return Files.readString(candidate, StandardCharsets.UTF_8);
+            }
+        }
+        throw new IOException("Unable to locate db/migration/V2__npc_list.sql on classpath or relative paths");
+    }
+
+    private static List<SceneActor> buildStreamedSceneActors(
+            SceneActor localPlayer,
+            ClientState clientState,
+            float targetX,
+            float targetZ,
+            float maxDistMeters,
+            Set<Long> requiredEntityIds
+    ) throws IOException {
+        List<SceneActor> actors = new ArrayList<>();
+        actors.add(localPlayer);
+
+        List<ClientState.RemoteEntityState> nearby = new ArrayList<>();
+        for (ClientState.RemoteEntityState entity : clientState.getRemoteEntities().values()) {
+            double dist = Math.hypot(entity.x() - targetX, entity.z() - targetZ);
+            if (dist <= maxDistMeters) {
+                nearby.add(entity);
+            }
+        }
+        nearby.sort(Comparator.comparingDouble(e -> Math.hypot(e.x() - targetX, e.z() - targetZ)));
+
+        for (ClientState.RemoteEntityState entity : nearby) {
+            ActorAppearance appearance = entity.appearance();
+            if (appearance == null || appearance.lookType() == ActorLookType.NONE) {
+                continue;
+            }
+            try {
+                CachedActorRender cached = actorRenderCache.getOrLoad(appearance);
+                actors.add(new SceneActor(
+                        cached.character(),
+                        cached.textures(),
+                        cached.idlePose(),
+                        cached.nameplateHeight(),
+                        entity.x(),
+                        entity.y(),
+                        entity.z(),
+                        entity.yaw(),
+                        entity.name(),
+                        new Color(100, 240, 140)
+                ));
+            } catch (Exception e) {
+                if (requiredEntityIds.contains(entity.characterId())) {
+                    throw new IOException("Required featured NPC " + entity.name() + " (" + entity.characterId()
+                            + ", appearance=" + appearance + ") failed to load", e);
+                }
+                System.err.printf("[E2E-LIVE] Skipping ambient NPC %s (%d): %s%n",
+                        entity.name(), entity.characterId(), e.getMessage());
+            }
+        }
+        return actors;
+    }
+
+    private static Map<String, DecodedTextureBuffer> decodeCharacterTextures(LoadedCharacter character) {
+        Map<String, DecodedTextureBuffer> map = new HashMap<>();
+        for (Map.Entry<String, CharacterTextureLoader.TextureSource> entry : character.textures().entrySet()) {
+            String norm = CharacterTextureLoader.normalizeName(entry.getKey());
+            CharacterTextureLoader.TextureSource src = entry.getValue();
+            try {
+                byte[] rgba = TextureDecoder.decode(src.rawData(), src.resource());
+                if (rgba != null && rgba.length > 0) {
+                    DecodedTextureBuffer dtb = new DecodedTextureBuffer(src.resource().width(), src.resource().height(), rgba);
+                    map.putIfAbsent(norm, dtb);
+                    if (norm.contains(" ")) {
+                        String shortName = norm.substring(norm.lastIndexOf(' ') + 1);
+                        map.putIfAbsent(shortName, dtb);
                     }
-                    if ("channel".equals(method.getName())) {
-                        return channel;
-                    }
-                    return null;
                 }
-        );
-    }
-
-    @AfterAll
-    static void tearDownE2E() {
-        if (serverEngine != null) {
-            serverEngine.stop();
+            } catch (Exception ignored) {}
         }
+        return map;
     }
 
-    @Test
-    @DisplayName("E2E Integration Scenario 1: Spawn at West Ronfaure Gate, receive server delta, render live scene")
-    void testE2ESpawnAndRender() throws Exception {
-        long charId = 1001L;
-        long sessionId = 99001L;
-
-        // Player initial state at gate: (0.0, -1.999, 41.0) facing North (0° toward gate sentries at Z=46.644)
-        testCharRepo.records.put(charId, new CharacterRecord(
-                1L, charId, 1, "Aldo", (short) 1, (short) 0, (short) 1, (short) 1,
-                (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, 0.0f, -1.999f, 41.0f, 0.0f, 0.0f,
-                230, 0.0f, -1.999f, 41.0f, Instant.now()
-        ));
-
-        serverEngine.registerSessionEntity(sessionId, charId, clientCtx);
-
-        // Await server spatial delta broadcast to client
-        await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
-            boolean hasDelta = clientOutboundPackets.stream().anyMatch(p -> p instanceof ZoneStateDeltaMessage);
-            assertThat(hasDelta).isTrue();
-        });
-
-        // Ingest server deltas into ClientState
-        for (Object p : clientOutboundPackets) {
-            if (p instanceof ZoneStateDeltaMessage delta) {
-                for (EntitySpawnRecord spawn : delta.spawns()) {
-                    clientState.addOrUpdateRemoteEntity(spawn);
+    private static float computeNameplateHeight(LoadedCharacter character, Matrix4f[] jointMatrices) {
+        float minY = Float.POSITIVE_INFINITY;
+        Vector4f accum = new Vector4f();
+        Vector4f scratch = new Vector4f();
+        for (SkeletonMeshMesh mesh : character.meshes()) {
+            for (SkeletonMeshVertex vertex : mesh.resolvedVertices()) {
+                Vector3f pos = computeSkinnedPosition(vertex, jointMatrices, accum, scratch);
+                if (Float.isFinite(pos.y()) && pos.y() < minY) {
+                    minY = pos.y();
                 }
             }
         }
-
-        // Verify authentic LSB NPCs were streamed to client
-        assertThat(clientState.getRemoteEntities()).isNotEmpty();
-        assertThat(clientState.getRemoteEntities()).containsKey(17719298L); // Aubejart
-        assertThat(clientState.getRemoteEntities()).containsKey(17719299L); // Ephauge
-
-        var aubejartSpawn = clientState.getRemoteEntities().get(17719298L);
-        var ephaugeSpawn = clientState.getRemoteEntities().get(17719299L);
-
-        // Position camera behind player looking North (+Z) toward West Ronfaure Gate & sentries
-        PolarCamera camera = new PolarCamera();
-        camera.setTarget(0.0f, -1.999f, 41.0f);
-        camera.setTargetOffsetY(1.0f);
-        camera.setYaw(0.0f);
-        camera.setPitch(18.0f);
-        camera.setDistance(6.0f);
-
-        List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 0.0f, -1.999f, 41.0f, 0.0f, "Aldo", new Color(140, 220, 255)),
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, aubejartSpawn.x(), aubejartSpawn.y(), aubejartSpawn.z(), aubejartSpawn.yaw(), "Aubejart", new Color(100, 240, 140)),
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, ephaugeSpawn.x(), ephaugeSpawn.y(), ephaugeSpawn.z(), ephaugeSpawn.yaw(), "Ephauge", new Color(100, 240, 140))
-        );
-
-        BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, actors,
-                "e2e_live_01_south_sandoria_world_spawn",
-                "World Spawn at West Ronfaure Gate | Authoritative Spatial Sync",
-                "Client connected to authoritative 20 Hz ZoneSimulationEngine #230. Streamed player spawn and authentic LSB gate sentries into ClientState.",
-                clientState.getRemoteEntities().size()
-        );
-
-        File outFile = OUTPUT_DIR.resolve("e2e_live_01_south_sandoria_world_spawn.png").toFile();
-        ImageIO.write(snapshot, "PNG", outFile);
-        assertTrue(outFile.exists() && outFile.length() > 50000);
-        System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes)%n", outFile.getName(), outFile.length());
-    }
-
-    @Test
-    @DisplayName("E2E Integration Scenario 2: Walk south toward plaza, validate server movement response and stream")
-    void testE2EMovementAndRender() throws Exception {
-        long charId = 1001L;
-        long sessionId = 99001L;
-
-        // Player teleports/zones onto King's Square Avenue at (3.0, 2.0, -4.0)
-        serverEngine.removeEntityBySession(sessionId);
-        testCharRepo.records.put(charId, new CharacterRecord(
-                1L, charId, 1, "Aldo", (short) 1, (short) 0, (short) 1, (short) 1,
-                (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, 3.0f, 2.0f, -4.0f, 180.0f, 0.0f,
-                230, 3.0f, 2.0f, -4.0f, Instant.now()
-        ));
-        serverEngine.registerSessionEntity(sessionId, charId, clientCtx);
-
-        // Player moves south along King's Square Avenue toward Place de Saint d'Oraguille: (3.0, 2.0, -5.0)
-        PlayerMovementRequest moveReq = new PlayerMovementRequest(
-                3.0f, 2.0f, -5.0f,
-                0.0f, 0.0f, -2.5f,
-                180.0f, 0.0f,
-                MovementFlags.FORWARD,
-                100L
-        );
-        serverEngine.enqueueMovement(clientCtx, sessionId, charId, moveReq);
-
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
-            var ent = serverEngine.getEntity(charId);
-            assertThat(ent).isNotNull();
-            assertThat(ent.getZ()).isCloseTo(-5.0f, within(0.5f));
-        });
-
-        // Ingest server deltas into ClientState
-        for (Object p : clientOutboundPackets) {
-            if (p instanceof ZoneStateDeltaMessage delta) {
-                for (EntitySpawnRecord spawn : delta.spawns()) {
-                    clientState.addOrUpdateRemoteEntity(spawn);
-                }
-            }
-        }
-
-        float aldoY = serverEngine.getEntity(charId).getY();
-
-        PolarCamera camera = new PolarCamera();
-        camera.setTarget(3.0f, aldoY, -5.0f);
-        camera.setTargetOffsetY(1.0f);
-        camera.setYaw(155.0f);
-        camera.setPitch(18.0f);
-        camera.setDistance(5.5f);
-
-        List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, walkPose, 3.0f, aldoY, -5.0f, 180.0f, "Aldo", new Color(140, 220, 255))
-        );
-
-        BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, actors,
-                "e2e_live_02_south_sandoria_npc_plaza",
-                "King's Square Avenue Stride | Server-Validated Kinematics",
-                "Authoritative swept-movement validation across zone geometry. PolarCamera 3/4 shoulder view following player toward central plaza.",
-                clientState.getRemoteEntities().size()
-        );
-
-        File outFile = OUTPUT_DIR.resolve("e2e_live_02_south_sandoria_npc_plaza.png").toFile();
-        ImageIO.write(snapshot, "PNG", outFile);
-        assertTrue(outFile.exists() && outFile.length() > 50000);
-        System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes)%n", outFile.getName(), outFile.length());
-    }
-
-    @Test
-    @DisplayName("E2E Integration Scenario 3: Rendezvous with canonical NPC Ceraule (ID 17719297) seated in resting pose")
-    void testE2ECerauleRendezvousAndRender() throws Exception {
-        long charId = 1001L;
-        long sessionId = 99001L;
-
-        // Position player in front of Ceraule: (-84.0, 1.999, -32.5) facing toward Ceraule at (-86.077, 1.999, -34.793)
-        serverEngine.removeEntityBySession(sessionId);
-        testCharRepo.records.put(charId, new CharacterRecord(
-                1L, charId, 1, "Aldo", (short) 1, (short) 0, (short) 1, (short) 1,
-                (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, -84.0f, 1.999f, -32.5f, 135.0f, 0.0f,
-                230, -84.0f, 1.999f, -32.5f, Instant.now()
-        ));
-        serverEngine.registerSessionEntity(sessionId, charId, clientCtx);
-
-        PlayerMovementRequest moveReq = new PlayerMovementRequest(
-                -84.0f, 1.999f, -32.5f,
-                0.0f, 0.0f, 0.0f,
-                135.0f, 0.0f,
-                (byte) 0,
-                200L
-        );
-        serverEngine.enqueueMovement(clientCtx, sessionId, charId, moveReq);
-
-        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
-            var ent = serverEngine.getEntity(charId);
-            assertThat(ent).isNotNull();
-            assertThat(ent.getX()).isCloseTo(-84.0f, within(0.5f));
-        });
-
-        // Ingest server deltas into ClientState
-        for (Object p : clientOutboundPackets) {
-            if (p instanceof ZoneStateDeltaMessage delta) {
-                for (EntitySpawnRecord spawn : delta.spawns()) {
-                    clientState.addOrUpdateRemoteEntity(spawn);
-                }
-            }
-        }
-
-        // Verify Ceraule entity state in authoritative server engine
-        var cerauleState = serverEngine.getEntity(17719297L);
-        assertThat(cerauleState).isNotNull();
-        assertThat(cerauleState.getName()).isEqualTo("Ceraule");
-        assertThat(cerauleState.getAnimationSub()).isEqualTo(1); // Sitting / resting pose
-        assertThat(cerauleState.getYaw()).isEqualTo(((115 * 360.0f / 256.0f) + 90.0f) % 360.0f);
-
-        // Position camera to capture both Aldo and Ceraule side-by-side in 3/4 perspective
-        PolarCamera camera = new PolarCamera();
-        camera.setTarget(-85.0f, 1.999f, -33.6f);
-        camera.setTargetOffsetY(1.0f);
-        camera.setYaw(105.0f);
-        camera.setPitch(16.0f);
-        camera.setDistance(5.5f);
-
-        List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -84.0f, 1.999f, -32.5f, 222.0f, "Aldo", new Color(140, 220, 255)),
-                new SceneActor(playerCharacter, decodedCharTextures, restPose, cerauleState.getX(), cerauleState.getY(), cerauleState.getZ(), cerauleState.getYaw(), "Ceraule", new Color(100, 240, 140))
-        );
-
-        BufferedImage snapshot = renderLiveE2EFrame(
-                loadedZone230, decodedZoneTextures, camera, actors,
-                "e2e_live_03_south_sandoria_ceraule_rest",
-                "Ceraule Rendezvous | Canonical NPC Placement & Resting Pose",
-                "Player halting before LandSandBoat NPC Ceraule (#17719297). Verifying exact LSB coordinates (-86.1, 2.0, -34.8), yaw (251.7°), and animation_sub=1.",
-                clientState.getRemoteEntities().size()
-        );
-
-        File outFile = OUTPUT_DIR.resolve("e2e_live_03_south_sandoria_ceraule_rest.png").toFile();
-        ImageIO.write(snapshot, "PNG", outFile);
-        assertTrue(outFile.exists() && outFile.length() > 50000);
-        System.out.printf("[E2E-LIVE] Saved snapshot -> %s (%,d bytes)%n", outFile.getName(), outFile.length());
+        float extentAboveFeet = Float.isFinite(minY)
+                ? (character.feetLocalY() - minY)
+                : (character.feetOffsetY() * 2.0f);
+        return Math.max(1.4f, Math.min(4.2f, extentAboveFeet + 0.18f));
     }
 
     private static BufferedImage renderLiveE2EFrame(
-            LoadedZone zone, Map<String, DecodedTextureBuffer> decodedZoneTextures, PolarCamera camera,
+            int zoneId,
+            long sessionId,
+            LoadedZone zone,
+            Map<String, DecodedTextureBuffer> decodedZoneTextures,
+            PolarCamera camera,
             List<SceneActor> actors,
-            String snapshotId, String title, String subtitle, int activeNpcCount
+            String title,
+            String subtitle,
+            int activeNpcCount
     ) {
         BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
         float[] zBuffer = new float[WIDTH * HEIGHT];
@@ -519,7 +806,7 @@ public class LiveServerClientSnapshotIT {
         // 1. Zone geometry (Opaque pass)
         rasterizeZoneGeometry(zone, decodedZoneTextures, viewProj, pixels, zBuffer, false);
 
-        // 2. Dynamic Actors (Player and NPCs)
+        // 2. Dynamic Actors (Player and streamed NPCs)
         for (SceneActor actor : actors) {
             rasterizeDynamicActor(actor.character(), actor.textures(), actor.jointMatrices(),
                     actor.x(), actor.y(), actor.z(), actor.yaw(), viewProj, pixels, zBuffer);
@@ -530,29 +817,43 @@ public class LiveServerClientSnapshotIT {
 
         image.setRGB(0, 0, WIDTH, HEIGHT, pixels, 0, WIDTH);
 
-        // 4. Overhead Nameplates
+        // 4. Overhead Nameplates (depth-aware occlusion check + dynamic model height)
         Vector4f headClip = new Vector4f();
         for (SceneActor actor : actors) {
-            float headY = (actor.jointMatrices() == restPose) ? actor.y() - 1.25f : actor.y() - 1.95f;
+            float headY = actor.y() - actor.nameplateHeight();
             headClip.set(actor.x(), headY, actor.z(), 1.0f);
             viewProj.transform(headClip);
-            if (headClip.w > 0.1f) {
+            if (headClip.w > 0.1f && headClip.w < 40.0f) {
                 float sx = (headClip.x / headClip.w * 0.5f + 0.5f) * WIDTH;
                 float sy = (0.5f - headClip.y / headClip.w * 0.5f) * HEIGHT;
-                if (sx >= 20 && sx < WIDTH - 20 && sy >= 20 && sy < HEIGHT - 20) {
-                    drawActorNameplate(image, g2, sx, sy, actor.name(), actor.nameColor());
+                float ndcZ = headClip.z / headClip.w;
+                if (sx >= 20 && sx < WIDTH - 20 && sy >= 150 && sy < HEIGHT - 20) {
+                    int pxIdx = Math.max(0, Math.min(HEIGHT - 1, (int) sy)) * WIDTH + Math.max(0, Math.min(WIDTH - 1, (int) sx));
+                    if (ndcZ <= zBuffer[pxIdx] + 0.0002f) {
+                        drawActorNameplate(image, g2, sx, sy, actor.name(), actor.nameColor());
+                    }
                 }
             }
         }
 
         // 5. Stamped HUD Overlays
         SceneActor primaryActor = actors.isEmpty() ? null : actors.get(0);
+        String playerName = primaryActor != null ? primaryActor.name() : PLAYER_NAME;
         float px = primaryActor != null ? primaryActor.x() : 0.0f;
         float py = primaryActor != null ? primaryActor.y() : 0.0f;
         float pz = primaryActor != null ? primaryActor.z() : 0.0f;
         float pyaw = primaryActor != null ? primaryActor.yaw() : 0.0f;
 
-        renderLiveIntegrationHud(image, g2, camera, px, py, pz, pyaw, title, subtitle, activeNpcCount);
+        List<String> renderedNpcNames = new ArrayList<>();
+        for (int i = 1; i < actors.size() && renderedNpcNames.size() < 6; i++) {
+            renderedNpcNames.add(actors.get(i).name());
+        }
+        String npcSummary = renderedNpcNames.isEmpty() ? "none nearby" : String.join(", ", renderedNpcNames);
+
+        renderLiveIntegrationHud(
+                image, g2, camera, zoneId, sessionId, playerName,
+                px, py, pz, pyaw, title, subtitle, activeNpcCount, npcSummary
+        );
         g2.dispose();
 
         return image;
@@ -578,8 +879,9 @@ public class LiveServerClientSnapshotIT {
 
     private static void renderLiveIntegrationHud(
             BufferedImage dest, Graphics2D g, PolarCamera cam,
+            int zoneId, long sessionId, String playerName,
             float charX, float charY, float charZ, float charYaw,
-            String title, String subtitle, int activeNpcCount
+            String title, String subtitle, int activeNpcCount, String nearbyNpcSummary
     ) {
         // Top banner background
         g.setColor(new Color(10, 16, 26, 230));
@@ -592,10 +894,18 @@ public class LiveServerClientSnapshotIT {
         drawText(dest, title, 40, 32, new Color(255, 215, 80), 2);
         drawText(dest, subtitle, 40, 64, new Color(200, 220, 240), 1);
 
-        String tele1 = "SERVER: Authoritative 20 Hz ZoneSimulationEngine #230 | QUIC State: IN_ZONE | Session #99001 | Fory Protocol";
-        String tele2 = String.format("SPATIAL AoI: %d Authentic LSB NPCs Streamed to ClientState (Ceraule, Aubejart, Ephauge, Machielle, Cahaurme...)", activeNpcCount);
-        String tele3 = String.format("AVATAR: Aldo @ (%5.1f, %5.2f, %5.1f) | Facing=%5.1f° [%s] | Cam: Yaw=%5.1f° Pitch=%5.1f° Dist=%4.1fm",
-                charX, charY, charZ, charYaw, resolveCardinal(charYaw), cam.getYaw(), cam.getPitch(), cam.getDistance());
+        String tele1 = String.format(
+                "SERVER: Authoritative 20 Hz ZoneSimulationEngine #%d | QUIC State: IN_ZONE | Session #%d | Fory Protocol",
+                zoneId, sessionId
+        );
+        String tele2 = String.format(
+                "SPATIAL AoI: %d Authentic LSB NPCs Streamed to ClientState (Nearby: %s)",
+                activeNpcCount, nearbyNpcSummary
+        );
+        String tele3 = String.format(
+                "AVATAR: %s @ (%5.1f, %5.2f, %5.1f) | Facing=%5.1f° [%s] | Cam: Yaw=%5.1f° Pitch=%5.1f° Dist=%4.1fm",
+                playerName, charX, charY, charZ, charYaw, resolveCardinal(charYaw), cam.getYaw(), cam.getPitch(), cam.getDistance()
+        );
 
         drawText(dest, tele1, 40, 84, new Color(130, 210, 255), 1);
         drawText(dest, tele2, 40, 102, new Color(120, 240, 160), 1);
@@ -700,12 +1010,16 @@ public class LiveServerClientSnapshotIT {
             boolean mirrored = modelMatrix.determinant() < 0.0f;
 
             int numV = verts.size();
+            float[] clipX = new float[numV];
+            float[] clipY = new float[numV];
+            float[] clipZRaw = new float[numV];
+            float[] clipW = new float[numV];
             float[] sx = new float[numV];
             float[] sy = new float[numV];
-            float[] clipW = new float[numV];
             float[] clipZ = new float[numV];
             boolean[] valid = new boolean[numV];
 
+            final float nearW = 0.2f;
             for (int i = 0; i < numV; i++) {
                 ZoneMeshVertex v = verts.get(i);
                 Vector4f p = new Vector4f(
@@ -717,12 +1031,15 @@ public class LiveServerClientSnapshotIT {
                 modelMatrix.transform(p);
                 viewProj.transform(p);
 
+                clipX[i] = p.x;
+                clipY[i] = p.y;
+                clipZRaw[i] = p.z;
                 clipW[i] = p.w;
-                clipZ[i] = p.z / p.w;
 
-                if (p.w > 0.1f) {
+                if (p.w > nearW) {
                     sx[i] = (p.x / p.w * 0.5f + 0.5f) * WIDTH;
                     sy[i] = (0.5f - p.y / p.w * 0.5f) * HEIGHT;
+                    clipZ[i] = p.z / p.w;
                     valid[i] = true;
                 } else {
                     valid[i] = false;
@@ -734,37 +1051,114 @@ public class LiveServerClientSnapshotIT {
                 int i1 = triangles.get(t + 1);
                 int i2 = triangles.get(t + 2);
 
-                if (!valid[i0] || !valid[i1] || !valid[i2]) continue;
+                if (valid[i0] && valid[i1] && valid[i2]) {
+                    float x0 = sx[i0], y0 = sy[i0], w0 = clipW[i0], z0 = clipZ[i0];
+                    float x1 = sx[i1], y1 = sy[i1], w1 = clipW[i1], z1 = clipZ[i1];
+                    float x2 = sx[i2], y2 = sy[i2], w2 = clipW[i2], z2 = clipZ[i2];
 
-                float x0 = sx[i0], y0 = sy[i0], w0 = clipW[i0], z0 = clipZ[i0];
-                float x1 = sx[i1], y1 = sy[i1], w1 = clipW[i1], z1 = clipZ[i1];
-                float x2 = sx[i2], y2 = sy[i2], w2 = clipW[i2], z2 = clipZ[i2];
+                    float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+                    if (!invertCull) {
+                        if (!mirrored && cross >= 0.0f) continue;
+                        if (mirrored && cross <= 0.0f) continue;
+                    }
 
-                float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-                if (!invertCull) {
-                    if (!mirrored && cross >= 0.0f) continue;
-                    if (mirrored && cross <= 0.0f) continue;
+                    float minXF = Math.min(x0, Math.min(x1, x2));
+                    float maxXF = Math.max(x0, Math.max(x1, x2));
+                    float minYF = Math.min(y0, Math.min(y1, y2));
+                    float maxYF = Math.max(y0, Math.max(y1, y2));
+
+                    if (maxXF < 0f || minXF >= WIDTH || maxYF < 0f || minYF >= HEIGHT) continue;
+
+                    ZoneMeshVertex v0 = verts.get(i0);
+                    ZoneMeshVertex v1 = verts.get(i1);
+                    ZoneMeshVertex v2 = verts.get(i2);
+
+                    rasterizeZoneTriangle(
+                            pixels, zBuffer, WIDTH, HEIGHT,
+                            x0, y0, z0, w0, v0.u(), v0.v(), v0.colorR(), v0.colorG(), v0.colorB(), v0.colorA(),
+                            x1, y1, z1, w1, v1.u(), v1.v(), v1.colorR(), v1.colorG(), v1.colorB(), v1.colorA(),
+                            x2, y2, z2, w2, v2.u(), v2.v(), v2.colorR(), v2.colorG(), v2.colorB(), v2.colorA(),
+                            tex, discardThresh, blendPass
+                    );
+                } else if (valid[i0] || valid[i1] || valid[i2]) {
+                    rasterizeNearClippedZoneTriangle(
+                            verts.get(i0), clipX[i0], clipY[i0], clipZRaw[i0], clipW[i0],
+                            verts.get(i1), clipX[i1], clipY[i1], clipZRaw[i1], clipW[i1],
+                            verts.get(i2), clipX[i2], clipY[i2], clipZRaw[i2], clipW[i2],
+                            nearW, invertCull, mirrored,
+                            pixels, zBuffer, tex, discardThresh, blendPass
+                    );
                 }
-
-                float minXF = Math.min(x0, Math.min(x1, x2));
-                float maxXF = Math.max(x0, Math.max(x1, x2));
-                float minYF = Math.min(y0, Math.min(y1, y2));
-                float maxYF = Math.max(y0, Math.max(y1, y2));
-
-                if (maxXF < 0f || minXF >= WIDTH || maxYF < 0f || minYF >= HEIGHT) continue;
-
-                ZoneMeshVertex v0 = verts.get(i0);
-                ZoneMeshVertex v1 = verts.get(i1);
-                ZoneMeshVertex v2 = verts.get(i2);
-
-                rasterizeZoneTriangle(
-                        pixels, zBuffer, WIDTH, HEIGHT,
-                        x0, y0, z0, w0, v0.u(), v0.v(), v0.colorR(), v0.colorG(), v0.colorB(), v0.colorA(),
-                        x1, y1, z1, w1, v1.u(), v1.v(), v1.colorR(), v1.colorG(), v1.colorB(), v1.colorA(),
-                        x2, y2, z2, w2, v2.u(), v2.v(), v2.colorR(), v2.colorG(), v2.colorB(), v2.colorA(),
-                        tex, discardThresh, blendPass
-                );
             }
+        }
+    }
+
+    private static void rasterizeNearClippedZoneTriangle(
+            ZoneMeshVertex v0, float x0, float y0, float z0, float w0,
+            ZoneMeshVertex v1, float x1, float y1, float z1, float w1,
+            ZoneMeshVertex v2, float x2, float y2, float z2, float w2,
+            float nearW, boolean invertCull, boolean mirrored,
+            int[] pixels, float[] zBuffer, DecodedTextureBuffer tex, float discardThresh, boolean blendPass
+    ) {
+        float[][] in = {
+                {x0, y0, z0, w0, v0.u(), v0.v(), v0.colorR(), v0.colorG(), v0.colorB(), v0.colorA()},
+                {x1, y1, z1, w1, v1.u(), v1.v(), v1.colorR(), v1.colorG(), v1.colorB(), v1.colorA()},
+                {x2, y2, z2, w2, v2.u(), v2.v(), v2.colorR(), v2.colorG(), v2.colorB(), v2.colorA()}
+        };
+        float[][] out = new float[4][10];
+        int outCount = 0;
+
+        for (int i = 0; i < 3; i++) {
+            float[] curr = in[i];
+            float[] next = in[(i + 1) % 3];
+            boolean currIn = curr[3] >= nearW;
+            boolean nextIn = next[3] >= nearW;
+
+            if (currIn) {
+                System.arraycopy(curr, 0, out[outCount++], 0, 10);
+            }
+            if (currIn != nextIn) {
+                float t = (nearW - curr[3]) / (next[3] - curr[3]);
+                for (int k = 0; k < 10; k++) {
+                    out[outCount][k] = curr[k] + t * (next[k] - curr[k]);
+                }
+                outCount++;
+            }
+        }
+
+        if (outCount < 3) return;
+
+        for (int i = 1; i + 1 < outCount; i++) {
+            float[] a = out[0];
+            float[] b = out[i];
+            float[] c = out[i + 1];
+
+            float sax = (a[0] / a[3] * 0.5f + 0.5f) * WIDTH;
+            float say = (0.5f - a[1] / a[3] * 0.5f) * HEIGHT;
+            float sbx = (b[0] / b[3] * 0.5f + 0.5f) * WIDTH;
+            float sby = (0.5f - b[1] / b[3] * 0.5f) * HEIGHT;
+            float scx = (c[0] / c[3] * 0.5f + 0.5f) * WIDTH;
+            float scy = (0.5f - c[1] / c[3] * 0.5f) * HEIGHT;
+
+            float cross = (sbx - sax) * (scy - say) - (sby - say) * (scx - sax);
+            if (!invertCull) {
+                if (!mirrored && cross >= 0.0f) continue;
+                if (mirrored && cross <= 0.0f) continue;
+            }
+
+            float minXF = Math.min(sax, Math.min(sbx, scx));
+            float maxXF = Math.max(sax, Math.max(sbx, scx));
+            float minYF = Math.min(say, Math.min(sby, scy));
+            float maxYF = Math.max(say, Math.max(sby, scy));
+            if (maxXF < 0f || minXF >= WIDTH || maxYF < 0f || minYF >= HEIGHT) continue;
+
+            rasterizeZoneTriangle(
+                    pixels, zBuffer, WIDTH, HEIGHT,
+                    sax, say, a[2] / a[3], a[3], a[4], a[5], (int) a[6], (int) a[7], (int) a[8], (int) a[9],
+                    sbx, sby, b[2] / b[3], b[3], b[4], b[5], (int) b[6], (int) b[7], (int) b[8], (int) b[9],
+                    scx, scy, c[2] / c[3], c[3], c[4], c[5], (int) c[6], (int) c[7], (int) c[8], (int) c[9],
+                    tex, discardThresh, blendPass
+            );
         }
     }
 

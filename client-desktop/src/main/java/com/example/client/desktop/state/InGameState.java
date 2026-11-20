@@ -25,7 +25,6 @@ import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
 import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementResponse;
-import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.AuthenticCharacterInstance;
 import com.ffxi.viewer.environment.WeatherPreset;
 import imgui.ImGui;
@@ -130,7 +129,10 @@ public class InGameState implements ApplicationState {
         worldScene.init();
         try {
             Path ffxiRoot = FfxiPathConfig.resolveFfxiInstallDirectory();
-            AuthenticCharacterInstance localVisual = worldScene.createCharacterInstance(ffxiRoot, RaceGenderConfig.HumeM);
+            AuthenticCharacterInstance localVisual = worldScene.createCharacterInstance(
+                    ffxiRoot,
+                    clientState.getSelectedCharacterAppearance()
+            );
             SceneActor localActor = new SceneActor(characterId, characterName, SceneActor.ActorType.PLAYER);
             localActor.setVisualModel(localVisual);
             worldScene.setLocalPlayer(localActor);

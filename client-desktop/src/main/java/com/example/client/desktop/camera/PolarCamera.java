@@ -174,25 +174,26 @@ public class PolarCamera implements Camera {
         double yawRad = Math.toRadians(yaw);
         double pitchRad = Math.toRadians(pitch);
 
-        // Horizontal forward vector (FFXI: 0 deg = North/-Z, 90 deg = East/+X)
+        // Horizontal forward vector (Native FFXI: 0 deg = North/+Z, 90 deg = East/+X)
         forwardX = (float) Math.sin(yawRad);
-        forwardZ = (float) -Math.cos(yawRad);
+        forwardZ = (float) Math.cos(yawRad);
 
-        // Horizontal right vector (perpendicular, 90 deg clockwise in XZ plane)
+        // Horizontal right vector (forward x up, where up = (0, -1, 0))
         rightX = (float) Math.cos(yawRad);
-        rightZ = (float) Math.sin(yawRad);
+        rightZ = (float) -Math.sin(yawRad);
 
-        // Eye position in spherical coordinates relative to target
+        // Eye position in spherical coordinates relative to target (-Y = Up)
         float horizDist = distance * (float) Math.cos(pitchRad);
         float vertDist = distance * (float) Math.sin(pitchRad);
+        float focusY = targetY - targetOffsetY;
 
         eyeX = targetX - forwardX * horizDist;
-        eyeY = targetY + targetOffsetY + vertDist;
+        eyeY = focusY - vertDist;
         eyeZ = targetZ - forwardZ * horizDist;
 
         // Normalized 3D view vector (eye looking toward target)
         viewX = forwardX * (float) Math.cos(pitchRad);
-        viewY = -(float) Math.sin(pitchRad);
+        viewY = (float) Math.sin(pitchRad);
         viewZ = forwardZ * (float) Math.cos(pitchRad);
     }
 

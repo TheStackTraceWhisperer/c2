@@ -21,7 +21,7 @@ class WorldRadarPanelTest {
     }
 
     @Test
-    @DisplayName("Cardinal offsets project consistently with North = -Z (screen -Y), East = +X (screen +X), South = +Z (screen +Y), West = -X (screen -X)")
+    @DisplayName("Cardinal offsets project consistently with North = +Z (screen -Y), East = +X (screen +X), South = -Z (screen +Y), West = -X (screen -X)")
     void testWorldToScreenCardinalDirections() {
         float centerX = 200.0f;
         float centerY = 200.0f;
@@ -29,8 +29,8 @@ class WorldRadarPanelTest {
         float localZ = 0.0f;
         float pixelsPerMeter = 2.0f;
 
-        // North (-Z = -10m) -> screen Y should decrease by 20px (up on screen)
-        float[] north = WorldRadarPanel.worldToScreen(0.0f, -10.0f, localX, localZ, centerX, centerY, pixelsPerMeter);
+        // North (+Z = +10m) -> screen Y should decrease by 20px (up on screen)
+        float[] north = WorldRadarPanel.worldToScreen(0.0f, 10.0f, localX, localZ, centerX, centerY, pixelsPerMeter);
         assertEquals(200.0f, north[0], 0.001f);
         assertEquals(180.0f, north[1], 0.001f);
 
@@ -39,8 +39,8 @@ class WorldRadarPanelTest {
         assertEquals(220.0f, east[0], 0.001f);
         assertEquals(200.0f, east[1], 0.001f);
 
-        // South (+Z = +10m) -> screen Y should increase by 20px (down on screen)
-        float[] south = WorldRadarPanel.worldToScreen(0.0f, 10.0f, localX, localZ, centerX, centerY, pixelsPerMeter);
+        // South (-Z = -10m) -> screen Y should increase by 20px (down on screen)
+        float[] south = WorldRadarPanel.worldToScreen(0.0f, -10.0f, localX, localZ, centerX, centerY, pixelsPerMeter);
         assertEquals(200.0f, south[0], 0.001f);
         assertEquals(220.0f, south[1], 0.001f);
 

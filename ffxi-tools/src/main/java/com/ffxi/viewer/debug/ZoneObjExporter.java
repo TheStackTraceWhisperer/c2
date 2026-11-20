@@ -49,8 +49,8 @@ public final class ZoneObjExporter {
                 List<ZoneMeshVertex> vertices = chunk.vertices();
                 
                 for (ZoneMeshVertex vertex : vertices) {
-                    float px = ZoneMeshMath.sanitizeFinite(-vertex.px());
-                    float py = ZoneMeshMath.sanitizeFinite(-vertex.py());
+                    float px = ZoneMeshMath.sanitizeFinite(vertex.px());
+                    float py = ZoneMeshMath.sanitizeFinite(vertex.py());
                     float pz = ZoneMeshMath.sanitizeFinite(vertex.pz());
                     
                     Vector4f pos = new Vector4f(px, py, pz, 1.0f);
@@ -66,8 +66,8 @@ public final class ZoneObjExporter {
                 }
 
                 for (ZoneMeshVertex vertex : vertices) {
-                    float nx = ZoneMeshMath.sanitizeFinite(-vertex.nx());
-                    float ny = ZoneMeshMath.sanitizeFinite(-vertex.ny());
+                    float nx = ZoneMeshMath.sanitizeFinite(vertex.nx());
+                    float ny = ZoneMeshMath.sanitizeFinite(vertex.ny());
                     float nz = ZoneMeshMath.sanitizeFinite(vertex.nz());
                     
                     Vector3f normal = new Vector3f(nx, ny, nz);

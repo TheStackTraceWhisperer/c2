@@ -50,6 +50,6 @@ public record NpcRecord(
     boolean widescan
 ) {
   public float yawDegrees() {
-    return (posRot & 0xFF) * 360.0f / 256.0f;
+    return (((posRot & 0xFF) * 360.0f / 256.0f) + 90.0f) % 360.0f;
   }
 }

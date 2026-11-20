@@ -597,9 +597,9 @@ public final class CharacterViewer {
                     if (len > 1e-5f) {
                         float speed = CHAR_MOVE_SPEED * dt;
                         charTx.set(charTx.get() + moveX / len * speed);
-                        charTz.set(charTz.get() - moveZ / len * speed);
+                        charTz.set(charTz.get() + moveZ / len * speed);
                         targetOffsetX = charTx.get();
-                        targetOffsetZ = -charTz.get();
+                        targetOffsetZ = charTz.get();
                         snapCharacterYToTerrain(currentLoadedZone);
                     }
                 }
@@ -767,11 +767,9 @@ public final class CharacterViewer {
 
                 ImGui.end();
 
-                // 3. Render Game scene with dynamic frameModelMatrix
+                // 3. Render Game scene with dynamic frameModelMatrix (native FFXI -Y = Up)
                 Matrix4f frameModelMatrix = new Matrix4f()
-                        .scale(1f, -1f, -1f)
-                        .translate(character.modelOffset())
-                        .translate(charTx.get(), charTy.get(), charTz.get())
+                        .translate(charTx.get(), charTy.get() - character.feetLocalY(), charTz.get())
                         .rotateXYZ(
                                 (float) Math.toRadians(charRx.get()),
                                 (float) Math.toRadians(charRy.get()),
@@ -1002,7 +1000,7 @@ public final class CharacterViewer {
         }
 
         float[] spawnPos = null;
-        float y0 = collision.findFloorY(0.0f, 0.0f, 2000.0f);
+        float y0 = collision.findFloorY(0.0f, 0.0f, -2000.0f);
         if (Float.isFinite(y0)) {
             spawnPos = new float[]{0.0f, y0, 0.0f};
         } else {
@@ -1019,10 +1017,10 @@ public final class CharacterViewer {
         float worldZ = spawnPos[2];
 
         charTx.set(worldX);
-        charTz.set(-worldZ);
-        charTy.set(-character.feetOffsetY() - floorWorldY);
+        charTz.set(worldZ);
+        charTy.set(floorWorldY);
 
-        float charCenterY = character.feetOffsetY() + floorWorldY;
+        float charCenterY = floorWorldY - character.feetOffsetY();
         targetOffsetX = worldX;
         targetOffsetY = charCenterY;
         targetOffsetZ = worldZ;
@@ -1036,14 +1034,14 @@ public final class CharacterViewer {
             return;
         }
         float worldX = charTx.get();
-        float worldZ = -charTz.get();
-        float currentWorldY = -charTy.get();
-        float y = zone.collisionSystem().findFloorY(worldX, worldZ, currentWorldY + 2.0f);
+        float worldZ = charTz.get();
+        float currentWorldY = charTy.get();
+        float y = zone.collisionSystem().findFloorY(worldX, worldZ, currentWorldY - 2.0f);
         if (!Float.isFinite(y)) {
             return;
         }
-        charTy.set(-character.feetOffsetY() - y);
-        targetOffsetY = character.feetOffsetY() + y;
+        charTy.set(y);
+        targetOffsetY = y - character.feetOffsetY();
     }
 
     private static int findZoneOptionIndexById(List<ZoneModelLoader.ZoneSelectionOption> options, int zoneId) {
@@ -1072,7 +1070,7 @@ public final class CharacterViewer {
                 (float) (orbitDistance * Math.sin(orbitPitch)) + targetOffsetY,
                 (float) (orbitDistance * Math.cos(orbitPitch) * Math.cos(orbitYaw)) + targetOffsetZ
         );
-        return new Matrix4f().lookAt(eye, target, new Vector3f(0.0f, 1.0f, 0.0f));
+        return new Matrix4f().lookAt(eye, target, new Vector3f(0.0f, -1.0f, 0.0f));
     }
 
     private static float clamp(float value, float min, float max) {

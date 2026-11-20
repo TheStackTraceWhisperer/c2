@@ -54,7 +54,7 @@ class ZoneCollisionServiceEdgeCaseTest {
     ZoneCollisionService.MovementValidationResult res = collisionService.validateAndClamp(
       230,
       1.95f, 0.0f, 0.0f,
-      1.95f, 1.5f, 0.0f,
+      1.95f, -1.5f, 0.0f,
       MovementFlags.JUMP
     );
 
@@ -62,7 +62,7 @@ class ZoneCollisionServiceEdgeCaseTest {
     assertThat(Float.isFinite(res.y())).isTrue();
     assertThat(Float.isFinite(res.z())).isTrue();
     assertThat(res.x()).isEqualTo(1.95f);
-    assertThat(res.y()).isCloseTo(1.5f, offset(0.001f));
+    assertThat(res.y()).isCloseTo(-1.5f, offset(0.001f));
     assertThat(res.z()).isEqualTo(0.0f);
     assertThat(res.reconciled()).isFalse();
   }
@@ -70,51 +70,51 @@ class ZoneCollisionServiceEdgeCaseTest {
   @Test
   @DisplayName("Airborne jump/falling flags preserve height within maxJump while still clamping floor penetration and ceiling")
   void testJumpMotionNotSnappedDownToFloor() {
-    // 1. Upward jump motion within maxJump (0.8m <= 3.5m) must NOT snap down to floorY (0.0f)
+    // 1. Upward jump motion (-Y=Up) within maxJump (0.8m <= 3.5m) must NOT snap down to floorY (0.0f)
     ZoneCollisionService.MovementValidationResult jumpRes = collisionService.validateAndClamp(
       230,
       0.0f, 0.0f, 0.0f,
-      0.0f, 0.8f, 0.0f,
+      0.0f, -0.8f, 0.0f,
       MovementFlags.JUMP
     );
     assertThat(jumpRes.reconciled()).isFalse();
-    assertThat(jumpRes.y()).isCloseTo(0.8f, offset(0.001f));
+    assertThat(jumpRes.y()).isCloseTo(-0.8f, offset(0.001f));
 
     // 2. Falling motion above floor within maxJump also stays airborne until landing
     ZoneCollisionService.MovementValidationResult fallRes = collisionService.validateAndClamp(
       230,
-      0.0f, 1.4f, 0.0f,
-      0.0f, 0.9f, 0.0f,
+      0.0f, -1.4f, 0.0f,
+      0.0f, -0.9f, 0.0f,
       MovementFlags.FALLING
     );
     assertThat(fallRes.reconciled()).isFalse();
-    assertThat(fallRes.y()).isCloseTo(0.9f, offset(0.001f));
+    assertThat(fallRes.y()).isCloseTo(-0.9f, offset(0.001f));
 
-    // 3. Ground movement (no jump/falling flag) with deltaY <= maxStep still clamps to floorY
+    // 3. Ground movement (no jump/falling flag) with heightAboveFloor <= maxStep still clamps to floorY
     ZoneCollisionService.MovementValidationResult groundRes = collisionService.validateAndClamp(
       230,
       0.0f, 0.0f, 0.0f,
-      0.5f, 0.2f, 0.0f
+      0.5f, -0.2f, 0.0f
     );
     assertThat(groundRes.reconciled()).isFalse();
     assertThat(groundRes.y()).isCloseTo(0.0f, offset(0.001f));
 
-    // 4. Jumping above maxJump is still clamped to floorY + maxJump
+    // 4. Jumping above maxJump is still clamped to floorY - maxJump
     ZoneCollisionService.MovementValidationResult overJumpRes = collisionService.validateAndClamp(
       230,
       0.0f, 0.0f, 0.0f,
-      0.0f, 5.0f, 0.0f,
+      0.0f, -5.0f, 0.0f,
       MovementFlags.JUMP
     );
     assertThat(overJumpRes.reconciled()).isTrue();
     assertThat(overJumpRes.reason()).isEqualTo("EXCEEDED_MAX_JUMP_HEIGHT");
-    assertThat(overJumpRes.y()).isCloseTo(3.5f, offset(0.001f));
+    assertThat(overJumpRes.y()).isCloseTo(-3.5f, offset(0.001f));
 
-    // 5. Falling below floor still snaps up to floorY
+    // 5. Falling below floor (+Y=Down) still snaps up to floorY
     ZoneCollisionService.MovementValidationResult underFloorRes = collisionService.validateAndClamp(
       230,
-      0.0f, 0.5f, 0.0f,
-      0.0f, -1.0f, 0.0f,
+      0.0f, -0.5f, 0.0f,
+      0.0f, 1.0f, 0.0f,
       MovementFlags.FALLING
     );
     assertThat(underFloorRes.reconciled()).isTrue();
@@ -148,8 +148,8 @@ class ZoneCollisionServiceEdgeCaseTest {
           var tris = sharedCollisionObject.worldSpaceTriangles();
           var box = sharedCollisionObject.worldSpaceBoundingBox();
           assertThat(tris).hasSize(4);
-          assertThat(box.min().y()).isEqualTo(-2.0f);
-          assertThat(box.max().y()).isEqualTo(10.0f);
+          assertThat(box.min().y()).isEqualTo(-10.0f);
+          assertThat(box.max().y()).isEqualTo(2.0f);
           return tris.size();
         });
       }
@@ -168,7 +168,7 @@ class ZoneCollisionServiceEdgeCaseTest {
         new Vector3f(-50f, 0f, -50f),
         new Vector3f(50f, 0f, -50f),
         new Vector3f(50f, 0f, 50f),
-        new Vector3f(0f, 1f, 0f),
+        Vector3f.UP,
         new TriFlags(0),
         TerrainType.STONE
       ),
@@ -176,32 +176,32 @@ class ZoneCollisionServiceEdgeCaseTest {
         new Vector3f(-50f, 0f, -50f),
         new Vector3f(50f, 0f, 50f),
         new Vector3f(-50f, 0f, 50f),
-        new Vector3f(0f, 1f, 0f),
+        Vector3f.UP,
         new TriFlags(0),
         TerrainType.STONE
       ),
       new CollisionTriangle(
-        new Vector3f(2.0f, -2f, -50f),
-        new Vector3f(2.0f, 10f, -50f),
-        new Vector3f(2.0f, 10f, 50f),
+        new Vector3f(2.0f, -10f, -50f),
+        new Vector3f(2.0f, 2f, -50f),
+        new Vector3f(2.0f, 2f, 50f),
         new Vector3f(-1f, 0f, 0f),
         new TriFlags(0x40),
         TerrainType.STONE
       ),
       new CollisionTriangle(
-        new Vector3f(2.0f, -2f, -50f),
-        new Vector3f(2.0f, 10f, 50f),
-        new Vector3f(2.0f, -2f, 50f),
+        new Vector3f(2.0f, -10f, -50f),
+        new Vector3f(2.0f, 2f, 50f),
+        new Vector3f(2.0f, -10f, 50f),
         new Vector3f(-1f, 0f, 0f),
         new TriFlags(0x40),
         TerrainType.STONE
       )
     );
 
-    BoundingBox box = new BoundingBox(new Vector3f(-50f, -2f, -50f), new Vector3f(50f, 10f, 50f));
+    BoundingBox box = new BoundingBox(new Vector3f(-50f, -10f, -50f), new Vector3f(50f, 2f, 50f));
     CollisionMesh mesh = new CollisionMesh(1, triangles, box);
-    Matrix4f flipXY = Matrix4f.scaling(-1f, -1f, 1f);
-    CollisionTransform transform = new CollisionTransform(1, flipXY, flipXY, 0, 0, null);
+    Matrix4f identity = new Matrix4f();
+    CollisionTransform transform = new CollisionTransform(1, identity, identity, 0, 0, null);
     CollisionObject obj = new CollisionObject(1, mesh, transform);
     CollisionObjectGroup group = new CollisionObjectGroup(1, List.of(obj));
     CollisionObjectGroup[][] grid = new CollisionObjectGroup[][]{{group}};

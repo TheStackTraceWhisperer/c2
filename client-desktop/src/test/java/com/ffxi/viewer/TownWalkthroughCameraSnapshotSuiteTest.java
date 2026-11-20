@@ -190,7 +190,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "walkthrough_231_05_blend_walk_to_idle_50",
                         "Arriving at Plaza | 50% WALK to IDLE Deceleration",
                         "Player halts movement upon entering Victory Square. Controller dynamically cross-fades 50% from active stride back to rest.",
-                        -5.0f, 32.0f, 0.0f,
+                        5.0f, 32.0f, 0.0f,
                         0, 0.0f, 0.075f,                    // 50% decelerate cross-fade
                         20.0f, 26.0f, 6.8f
                 ),
@@ -198,49 +198,49 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "walkthrough_231_06_victory_square_pause",
                         "Victory Square Plaza | Settled IDLE Overview",
                         "Adventurer fully settled in authentic IDLE posture. Camera elevates to 30° pitch for a majestic plaza overview.",
-                        -5.0f, 36.0f, 0.0f,
+                        5.0f, 36.0f, 0.0f,
                         0, 0.0f, 0.15f,                     // fully settled in idle
                         20.0f, 30.0f, 7.5f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_07_turn_idle_to_run_50",
                         "Turning Toward Cathedral | 50% IDLE to RUN Sprint Blend",
-                        "Player turns heading toward western promenade (facing 300°) and sprints forward. Joints blend 50% into athletic sprint.",
-                        -35.0f, 55.0f, 300.0f,
+                        "Player turns heading toward northeastern promenade (facing 45°) and sprints forward. Joints blend 50% into athletic sprint.",
+                        35.0f, 52.0f, 45.0f,
                         MovementFlags.FORWARD, 5.0f, 0.075f, // 50% blend to run
-                        300.0f, 20.0f, 5.5f
+                        45.0f, 20.0f, 5.5f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_08_run_cathedral_promenade",
                         "Cathedral Promenade Sprint | Full Athletic RUN",
                         "Adventurer at full sprint along royal promenade. High-speed skeletal animation evaluated with authentic dual-bone weights.",
-                        -70.0f, 70.0f, 295.0f,
+                        70.0f, 70.0f, 45.0f,
                         MovementFlags.FORWARD, 5.0f, 0.20f,
-                        295.0f, 18.0f, 5.2f
+                        45.0f, 18.0f, 5.2f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_09_run_to_walk_50",
                         "Cathedral Approach Close-Up | 50% RUN to WALK Transition",
                         "Close third-person action zoom (3.8m) capturing dynamic 50% deceleration blend from sprint into walking gait.",
-                        -95.0f, 85.0f, 290.0f,
+                        86.0f, 80.0f, 45.0f,
                         MovementFlags.FORWARD, 2.5f, 0.075f, // blend run -> walk
-                        290.0f, 16.0f, 3.8f
+                        45.0f, 16.0f, 3.8f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_10_cathedral_steps_hero",
                         "Cathedral Grand Steps | Low Hero Angle",
                         "Player halted in IDLE at the base of the Cathedral grand steps. Low pitch (8°) looks upward past adventurer to the soaring spires.",
-                        -115.0f, 95.0f, 285.0f,
+                        93.0f, 87.0f, 45.0f,
                         0, 0.0f, 0.20f,                     // settle in idle
-                        285.0f, 8.0f, 5.0f
+                        45.0f, 8.0f, 5.0f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_11_cathedral_court_tactical",
                         "Grand Cathedral Court | Tactical Overhead View",
-                        "High overhead tactical perspective (55° pitch, 14m distance) validating 3D environment contact and complete scene depth.",
-                        -115.0f, 95.0f, 285.0f,
+                        "High overhead tactical perspective (50° pitch, 14m distance) validating 3D environment contact and complete scene depth.",
+                        93.0f, 87.0f, 45.0f,
                         0, 0.0f, 0.10f,
-                        135.0f, 55.0f, 14.0f
+                        45.0f, 50.0f, 14.0f
                 )
         );
 
@@ -286,7 +286,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "walkthrough_230_04_fountain_square_approach",
                         "Approaching Auction House Plaza | 3/4 Shoulder View",
                         "Player strides toward Place de Saint d'Oraguille and the central Auction House in full WALK locomotion.",
-                        -3.0f, -5.0f, 180.0f,
+                        3.0f, -5.0f, 180.0f,
                         MovementFlags.FORWARD, 2.5f, 0.20f,
                         215.0f, 18.0f, 6.0f
                 ),
@@ -294,7 +294,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "walkthrough_230_05_blend_walk_to_idle_50",
                         "Halting Before Auction House | 50% WALK to IDLE Deceleration",
                         "Player decelerates along the plaza thoroughfare as the Auction House entrance approaches. Locomotion cross-fades 50% back into resting stance.",
-                        -5.0f, -15.0f, 180.0f,
+                        5.0f, -15.0f, 180.0f,
                         0, 0.0f, 0.075f,
                         180.0f, 16.0f, 5.6f
                 ),
@@ -302,7 +302,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "walkthrough_230_06_grand_fountain_pause",
                         "Southern San d'Oria Auction House | Frontal Resting View",
                         "Player fully halted in authentic IDLE posture before the grand Auction House entrance, viewing the stone masonry and central plaza.",
-                        -5.0f, -20.0f, 180.0f,
+                        5.0f, -20.0f, 180.0f,
                         0, 0.0f, 0.15f,
                         0.0f, 14.0f, 5.5f
                 )
@@ -325,23 +325,28 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
 
         int stepNum = 1;
         int totalSteps = steps.size();
+        float prevFloorY = 0.0f;
 
         for (WalkthroughStep step : steps) {
             // 1. Advance authentic locomotion controller time and input flags
             locomotion.update(step.updateDt, step.movementFlags, step.horizontalSpeed);
 
-            // 2. Query authentic floor elevation from zone collision mesh
-            float floorY = 0.0f;
+            // 2. Query authentic floor elevation from zone collision mesh (-Y = Up)
+            float floorY = prevFloorY;
             if (zone.collisionSystem() != null) {
-                // Raycast downwards from realistic pedestrian height (+2.0m) rather than +200m sky,
-                // preventing false hits on overhead signs, awnings, or arches
-                float hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, 2.0f);
+                // Raycast downwards (+Y) from realistic pedestrian height (-4.0m above current floor)
+                // rather than -200m sky, preventing false hits on overhead signs, awnings, or arches
+                float castStartY = Math.min(-3.0f, prevFloorY - 4.0f);
+                float hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, castStartY);
+                if (!Float.isFinite(hit)) {
+                    hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, -20.0f);
+                }
                 if (Float.isFinite(hit)) {
                     floorY = hit;
                 } else {
                     float[] offsets = {-1.0f, 1.0f, -2.0f, 2.0f};
                     for (float ox : offsets) {
-                        float h = zone.collisionSystem().findFloorY(step.worldX + ox, step.worldZ, 2.0f);
+                        float h = zone.collisionSystem().findFloorY(step.worldX + ox, step.worldZ, -20.0f);
                         if (Float.isFinite(h)) {
                             floorY = h;
                             break;
@@ -349,6 +354,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                     }
                 }
             }
+            prevFloorY = floorY;
 
             // 3. Drive the actual player controller PolarCamera system
             camera.setTarget(step.worldX, floorY, step.worldZ);
@@ -414,8 +420,8 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
 
         Matrix4f view = new Matrix4f().lookAt(
                 new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()),
-                new Vector3f(camera.getTargetX(), camera.getTargetY() + camera.getTargetOffsetY(), camera.getTargetZ()),
-                new Vector3f(0.0f, 1.0f, 0.0f)
+                new Vector3f(camera.getTargetX(), camera.getTargetY() - camera.getTargetOffsetY(), camera.getTargetZ()),
+                new Vector3f(0.0f, -1.0f, 0.0f)
         );
 
         Matrix4f viewProj = new Matrix4f(proj).mul(view);
@@ -451,9 +457,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
 
         // Matches AuthenticCharacterInstance charModelMat exactly
         Matrix4f charModelMat = new Matrix4f()
-                .scale(1f, -1f, -1f)
-                .translate(playerCharacter.modelOffset())
-                .translate(charX, -playerCharacter.feetOffsetY() - charY, -charZ)
+                .translate(charX, charY - playerCharacter.feetLocalY(), charZ)
                 .rotateY((float) Math.toRadians(charYaw - 90.0f));
 
         Vector4f scratch = new Vector4f();
@@ -696,8 +700,8 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
             for (int i = 0; i < numV; i++) {
                 ZoneMeshVertex v = verts.get(i);
                 Vector4f p = new Vector4f(
-                        ZoneMeshMath.sanitizeFinite(-v.px()),
-                        ZoneMeshMath.sanitizeFinite(-v.py()),
+                        ZoneMeshMath.sanitizeFinite(v.px()),
+                        ZoneMeshMath.sanitizeFinite(v.py()),
                         ZoneMeshMath.sanitizeFinite(v.pz()),
                         1.0f
                 );

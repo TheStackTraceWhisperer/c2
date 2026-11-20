@@ -77,7 +77,7 @@ public final class CollisionMap {
     }
 
     public int[] positionToBlock(Vector3f position) {
-        return positionToBlock(-position.x(), position.z());
+        return positionToBlock(position.x(), position.z());
     }
 
     public int[] positionToBlock(float ffxiX, float ffxiZ) {
@@ -143,11 +143,11 @@ public final class CollisionMap {
     }
 
     /**
-     * Casts a downward ray at (position.x, position.y + rayHeightOffset, position.z) to find
-     * the floor height beneath the position.
+     * Casts a downward ray (+Y) at (position.x, position.y - rayHeightOffset, position.z) to find
+     * the floor height beneath the position in native FFXI coordinates (-Y = Up, +Y = Down).
      *
      * @param position query location
-     * @param rayHeightOffset extra height added to query position to start raycast above ground (e.g. 2.0f)
+     * @param rayHeightOffset extra height subtracted from query Y to start raycast above ground (e.g. 2.0f)
      * @param maxDistance maximum downward ray distance
      * @param ignoreWalls whether to ignore vertical/wall triangles
      * @return nearest floor RayHit if found
@@ -158,7 +158,7 @@ public final class CollisionMap {
             float maxDistance,
             boolean ignoreWalls
     ) {
-        Vector3f rayOrigin = new Vector3f(position.x(), position.y() + rayHeightOffset, position.z());
+        Vector3f rayOrigin = new Vector3f(position.x(), position.y() - rayHeightOffset, position.z());
         Ray ray = Ray.downwards(rayOrigin);
 
         List<CollisionObjectGroup> groups = getNearbyGroups(position, 1);
@@ -171,7 +171,7 @@ public final class CollisionMap {
         for (CollisionObjectGroup group : groups) {
             for (CollisionObject obj : group.collisionObjects()) {
                 for (CollisionTriangle tri : obj.worldSpaceTriangles()) {
-                    if (ignoreWalls && (tri.flags().isHitWall() || tri.normal().y() < 0.3f)) {
+                    if (ignoreWalls && (tri.flags().isHitWall() || tri.normal().y() > -0.3f)) {
                         continue;
                     }
                     Optional<RayHit> hit = RayTriangleCollider.intersect(

@@ -186,9 +186,9 @@ public class ZoneWorldSimulationE2ETest {
         ChannelHandlerContext ctx = createProxyContext(channel, outboundPackets);
 
         long playerId = 9002L;
-        // Known ground coordinates in South San d'Oria near (-50, -2.0, -30)
-        float startX = -50.0f;
-        float startY = -2.0f;
+        // Known ground coordinates in South San d'Oria near (50, 2.0, -30) in native FFXI space
+        float startX = 50.0f;
+        float startY = 2.0f;
         float startZ = -30.0f;
 
         charRepo.records.put(playerId, new CharacterRecord(
@@ -202,8 +202,8 @@ public class ZoneWorldSimulationE2ETest {
 
         // 1. Valid forward movement on the ground
         PlayerMovementRequest validMove = new PlayerMovementRequest(
-                -49.5f, -1.8f, -30.0f,
-                1.0f, 0.0f, 0.0f,
+                49.5f, 1.8f, -30.0f,
+                -1.0f, 0.0f, 0.0f,
                 0.0f, 0.0f,
                 (byte) 0,
                 1L
@@ -220,12 +220,12 @@ public class ZoneWorldSimulationE2ETest {
                 .map(p -> (PlayerMovementResponse) p)
                 .findFirst().orElseThrow();
         assertThat(resp1.reconciled()).isFalse();
-        assertThat(resp1.y()).isCloseTo(-2.0f, org.assertj.core.data.Offset.offset(0.2f));
+        assertThat(resp1.y()).isCloseTo(2.0f, org.assertj.core.data.Offset.offset(0.2f));
 
-        // 2. Invalid floor penetration movement (trying to fall through cobblestone at y = -10)
+        // 2. Invalid floor penetration movement (trying to fall through cobblestone at y = +10 in +Y=Down)
         outboundPackets.clear();
         PlayerMovementRequest floorPenetration = new PlayerMovementRequest(
-                -49.5f, -10.0f, -30.0f,
+                49.5f, 10.0f, -30.0f,
                 0.0f, 0.0f, 0.0f,
                 0.0f, 0.0f,
                 (byte) 0,
@@ -243,7 +243,7 @@ public class ZoneWorldSimulationE2ETest {
                 .map(p -> (PlayerMovementResponse) p)
                 .findFirst().orElseThrow();
         assertThat(resp2.reconciled()).isTrue();
-        assertThat(resp2.y()).isCloseTo(-2.0f, org.assertj.core.data.Offset.offset(0.2f)); // Clamped back to ground level
+        assertThat(resp2.y()).isCloseTo(2.0f, org.assertj.core.data.Offset.offset(0.2f)); // Clamped back to ground level
 
         channel.close();
     }
@@ -256,8 +256,8 @@ public class ZoneWorldSimulationE2ETest {
         ChannelHandlerContext ctx = createProxyContext(channel, outboundPackets);
 
         long playerId = 9003L;
-        float startX = -50.0f;
-        float startY = -2.0f;
+        float startX = 50.0f;
+        float startY = 2.0f;
         float startZ = -30.0f;
 
         charRepo.records.put(playerId, new CharacterRecord(
@@ -269,9 +269,9 @@ public class ZoneWorldSimulationE2ETest {
 
         engine.registerSessionEntity(55557L, playerId, ctx);
 
-        // Player attempts to fly 40m into the sky
+        // Player attempts to fly 42m into the sky (-Y=Up -> y = -40.0f)
         PlayerMovementRequest flyMove = new PlayerMovementRequest(
-                -50.0f, 40.0f, -30.0f,
+                50.0f, -40.0f, -30.0f,
                 0.0f, 0.0f, 0.0f,
                 0.0f, 0.0f,
                 (byte) 0,
@@ -290,8 +290,8 @@ public class ZoneWorldSimulationE2ETest {
                 .findFirst().orElseThrow();
 
         assertThat(resp.reconciled()).isTrue();
-        // Teleport/fly hack exceeding MAX_DISTANCE_PER_TICK is authoritatively reconciled to ground position (-2.0f)
-        assertThat(resp.y()).isCloseTo(-2.0f, org.assertj.core.data.Offset.offset(0.2f));
+        // Teleport/fly hack exceeding MAX_DISTANCE_PER_TICK is authoritatively reconciled to ground position (2.0f)
+        assertThat(resp.y()).isCloseTo(2.0f, org.assertj.core.data.Offset.offset(0.2f));
 
         channel.close();
     }

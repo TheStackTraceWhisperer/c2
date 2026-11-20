@@ -99,7 +99,7 @@ public final class AuthenticSkyDome implements AutoCloseable {
         for (int i = 0; i < 8; i++) {
             float phi = (float) (0.5 * Math.PI * slices.get(i).elevation());
             float layerRadius = radius * (float) Math.cos(phi);
-            float layerY = radius * (float) Math.sin(phi);
+            float layerY = -radius * (float) Math.sin(phi);
 
             List<Vector3f> layer = new ArrayList<>(spokeCount);
             for (int j = 0; j < spokeCount; j++) {

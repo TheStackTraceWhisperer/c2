@@ -83,7 +83,7 @@ public final class InGameHudOverlay {
             long now
     ) {
         float[] playerScreen = MatrixMath.projectToScreen(
-                clientState.getX(), clientState.getY() + 2.0f, clientState.getZ(),
+                clientState.getX(), clientState.getY() - 2.0f, clientState.getZ(),
                 proj, view, fbWidth, fbHeight
         );
         if (playerScreen != null) {
@@ -99,7 +99,7 @@ public final class InGameHudOverlay {
             }
 
             float[] screen = MatrixMath.projectToScreen(
-                    interp.x(), interp.y() + 1.9f, interp.z(),
+                    interp.x(), interp.y() - 1.9f, interp.z(),
                     proj, view, fbWidth, fbHeight
             );
             if (screen != null) {

@@ -299,7 +299,7 @@ public class InGameMapPanel implements AutoCloseable {
             drawList.addCircleFilled(px, py, 3.5f, playerColor);
             drawList.addCircle(px, py, 3.5f, ImColor.rgba(255, 255, 255, 255), 10, 1.2f);
 
-            // Facing arrow: FFXI yaw 0 = North (-Z = screen -Y), 90 = East (+X = screen +X)
+            // Facing arrow: FFXI yaw 0 = North (+Z = screen -Y), 90 = East (+X = screen +X)
             float angleRad = (float) Math.toRadians(playerYaw);
             float arrowLen = 14.0f;
             float tipX = px + (float) Math.sin(angleRad) * arrowLen;
@@ -324,7 +324,7 @@ public class InGameMapPanel implements AutoCloseable {
         // 7. Footer Telemetry
         float scaleMeters = span / 16.0f;
         ImGui.textColored(0.85f, 0.85f, 0.85f, 1.0f,
-                String.format("Span: %.0fm (%.1fm/cell) | Offsets: X=%.0f, Y=%.0f | Active Markers: %d | Retail Engine: N=-Z, E=+X",
+                String.format("Span: %.0fm (%.1fm/cell) | Offsets: X=%.0f, Y=%.0f | Active Markers: %d | Retail Engine: N=+Z, E=+X, Up=-Y",
                         span, scaleMeters, xOff, yOff, markers.size()));
 
         ImGui.end();

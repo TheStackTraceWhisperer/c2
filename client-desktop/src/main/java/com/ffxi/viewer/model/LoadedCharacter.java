@@ -21,4 +21,10 @@ public record LoadedCharacter(
         Vector3f modelOffset,
         Map<ItemModelSlot, Integer> loadedModelIds
 ) {
+    /**
+     * Returns the Y coordinate of the character's feet in FFXI skeleton space (max.y = center.y + feetOffsetY).
+     */
+    public float feetLocalY() {
+        return feetOffsetY - (modelOffset != null ? modelOffset.y() : 0.0f);
+    }
 }

@@ -46,7 +46,7 @@ class ZoneDefParserTest {
         boolean foundGround = false;
         for (float x = -100f; x <= 100f && !foundGround; x += 20f) {
             for (float z = -100f; z <= 100f; z += 20f) {
-                Optional<RayHit> hit = map.raycastFloor(new Vector3f(x, 100f, z), 50.0f, 500.0f, true);
+                Optional<RayHit> hit = map.raycastFloor(new Vector3f(x, -100f, z), 50.0f, 500.0f, true);
                 if (hit.isPresent()) {
                     foundGround = true;
                     break;
@@ -54,6 +54,22 @@ class ZoneDefParserTest {
             }
         }
         assertTrue(foundGround, "Raycast should find ground surface in South San d'Oria");
+
+        // Verify exact native LSB NPC coordinates in Southern San d'Oria (ROM/1/31.DAT) hit floor within 0.05m
+        record LsbNpcSample(String name, float x, float y, float z) {}
+        List<LsbNpcSample> samples = List.of(
+                new LsbNpcSample("Aubejart", 2.900f, -1.999f, 46.644f),
+                new LsbNpcSample("Ceraule", -86.077f, 1.999f, -34.793f),
+                new LsbNpcSample("Cahaurme", 55.749f, -8.601f, -29.354f),
+                new LsbNpcSample("Lotte", 96.773f, 0.0f, 116.967f),
+                new LsbNpcSample("Leuveret", -136.322f, -8.800f, 21.958f)
+        );
+        for (LsbNpcSample npc : samples) {
+            Optional<RayHit> hit = map.raycastFloor(new Vector3f(npc.x(), npc.y(), npc.z()), 2.0f, 10.0f, true);
+            assertTrue(hit.isPresent(), "Expected floor raycast hit for native LSB NPC " + npc.name());
+            assertEquals(npc.y(), hit.get().point().y(), 0.05f,
+                    "Floor Y for " + npc.name() + " should match native LSB pos_y within 0.05m");
+        }
     }
 
     @Test

@@ -277,12 +277,12 @@ public class LiveServerClientSnapshotIT {
         long charId = 1001L;
         long sessionId = 99001L;
 
-        // Player initial state at gate: (0.0, 2.0, 42.0) facing South (180°)
+        // Player initial state at gate: (0.0, -1.999, 41.0) facing North (0° toward gate sentries at Z=46.644)
         testCharRepo.records.put(charId, new CharacterRecord(
                 1L, charId, 1, "Aldo", (short) 1, (short) 0, (short) 1, (short) 1,
                 (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, 0.0f, 2.0f, 42.0f, 180.0f, 0.0f,
-                230, 0.0f, 2.0f, 42.0f, Instant.now()
+                230, 0.0f, -1.999f, 41.0f, 0.0f, 0.0f,
+                230, 0.0f, -1.999f, 41.0f, Instant.now()
         ));
 
         serverEngine.registerSessionEntity(sessionId, charId, clientCtx);
@@ -307,18 +307,21 @@ public class LiveServerClientSnapshotIT {
         assertThat(clientState.getRemoteEntities()).containsKey(17719298L); // Aubejart
         assertThat(clientState.getRemoteEntities()).containsKey(17719299L); // Ephauge
 
-        // Position camera behind player facing gate
+        var aubejartSpawn = clientState.getRemoteEntities().get(17719298L);
+        var ephaugeSpawn = clientState.getRemoteEntities().get(17719299L);
+
+        // Position camera behind player looking North (+Z) toward West Ronfaure Gate & sentries
         PolarCamera camera = new PolarCamera();
-        camera.setTarget(0.0f, 2.0f, 42.0f);
+        camera.setTarget(0.0f, -1.999f, 41.0f);
         camera.setTargetOffsetY(1.0f);
-        camera.setYaw(180.0f);
-        camera.setPitch(22.0f);
+        camera.setYaw(0.0f);
+        camera.setPitch(18.0f);
         camera.setDistance(6.0f);
 
         List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 0.0f, 2.0f, 42.0f, 180.0f, "Aldo", new Color(140, 220, 255)),
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 2.900f, 2.0f, 46.644f, 90.0f, "Aubejart", new Color(100, 240, 140)),
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -2.900f, 2.0f, 46.644f, 270.0f, "Ephauge", new Color(100, 240, 140))
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, 0.0f, -1.999f, 41.0f, 0.0f, "Aldo", new Color(140, 220, 255)),
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, aubejartSpawn.x(), aubejartSpawn.y(), aubejartSpawn.z(), aubejartSpawn.yaw(), "Aubejart", new Color(100, 240, 140)),
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, ephaugeSpawn.x(), ephaugeSpawn.y(), ephaugeSpawn.z(), ephaugeSpawn.yaw(), "Ephauge", new Color(100, 240, 140))
         );
 
         BufferedImage snapshot = renderLiveE2EFrame(
@@ -341,19 +344,19 @@ public class LiveServerClientSnapshotIT {
         long charId = 1001L;
         long sessionId = 99001L;
 
-        // Player teleports/zones onto King's Square Avenue at (-3.0, -2.0, -4.0)
+        // Player teleports/zones onto King's Square Avenue at (3.0, 2.0, -4.0)
         serverEngine.removeEntityBySession(sessionId);
         testCharRepo.records.put(charId, new CharacterRecord(
                 1L, charId, 1, "Aldo", (short) 1, (short) 0, (short) 1, (short) 1,
                 (short) 1, (short) 1, (short) 1, (short) 1, (short) 0, (short) 0,
-                230, -3.0f, -2.0f, -4.0f, 180.0f, 0.0f,
-                230, -3.0f, -2.0f, -4.0f, Instant.now()
+                230, 3.0f, 2.0f, -4.0f, 180.0f, 0.0f,
+                230, 3.0f, 2.0f, -4.0f, Instant.now()
         ));
         serverEngine.registerSessionEntity(sessionId, charId, clientCtx);
 
-        // Player moves south along King's Square Avenue toward Place de Saint d'Oraguille: (-3.0, -2.0, -5.0)
+        // Player moves south along King's Square Avenue toward Place de Saint d'Oraguille: (3.0, 2.0, -5.0)
         PlayerMovementRequest moveReq = new PlayerMovementRequest(
-                -3.0f, -2.0f, -5.0f,
+                3.0f, 2.0f, -5.0f,
                 0.0f, 0.0f, -2.5f,
                 180.0f, 0.0f,
                 MovementFlags.FORWARD,
@@ -376,15 +379,17 @@ public class LiveServerClientSnapshotIT {
             }
         }
 
+        float aldoY = serverEngine.getEntity(charId).getY();
+
         PolarCamera camera = new PolarCamera();
-        camera.setTarget(-3.0f, -2.0f, -5.0f);
+        camera.setTarget(3.0f, aldoY, -5.0f);
         camera.setTargetOffsetY(1.0f);
-        camera.setYaw(215.0f);
+        camera.setYaw(155.0f);
         camera.setPitch(18.0f);
-        camera.setDistance(6.0f);
+        camera.setDistance(5.5f);
 
         List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, walkPose, -3.0f, -2.0f, -5.0f, 180.0f, "Aldo", new Color(140, 220, 255))
+                new SceneActor(playerCharacter, decodedCharTextures, walkPose, 3.0f, aldoY, -5.0f, 180.0f, "Aldo", new Color(140, 220, 255))
         );
 
         BufferedImage snapshot = renderLiveE2EFrame(
@@ -446,26 +451,26 @@ public class LiveServerClientSnapshotIT {
         assertThat(cerauleState).isNotNull();
         assertThat(cerauleState.getName()).isEqualTo("Ceraule");
         assertThat(cerauleState.getAnimationSub()).isEqualTo(1); // Sitting / resting pose
-        assertThat(cerauleState.getYaw()).isEqualTo(115 * 360.0f / 256.0f);
+        assertThat(cerauleState.getYaw()).isEqualTo(((115 * 360.0f / 256.0f) + 90.0f) % 360.0f);
 
         // Position camera to capture both Aldo and Ceraule side-by-side in 3/4 perspective
         PolarCamera camera = new PolarCamera();
         camera.setTarget(-85.0f, 1.999f, -33.6f);
         camera.setTargetOffsetY(1.0f);
-        camera.setYaw(80.0f);
+        camera.setYaw(105.0f);
         camera.setPitch(16.0f);
         camera.setDistance(5.5f);
 
         List<SceneActor> actors = List.of(
-                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -84.0f, 1.999f, -32.5f, 318.0f, "Aldo", new Color(140, 220, 255)),
-                new SceneActor(playerCharacter, decodedCharTextures, restPose, -86.077f, 1.999f, -34.793f, 161.7f, "Ceraule", new Color(100, 240, 140))
+                new SceneActor(playerCharacter, decodedCharTextures, idlePose, -84.0f, 1.999f, -32.5f, 222.0f, "Aldo", new Color(140, 220, 255)),
+                new SceneActor(playerCharacter, decodedCharTextures, restPose, cerauleState.getX(), cerauleState.getY(), cerauleState.getZ(), cerauleState.getYaw(), "Ceraule", new Color(100, 240, 140))
         );
 
         BufferedImage snapshot = renderLiveE2EFrame(
                 loadedZone230, decodedZoneTextures, camera, actors,
                 "e2e_live_03_south_sandoria_ceraule_rest",
                 "Ceraule Rendezvous | Canonical NPC Placement & Resting Pose",
-                "Player halting before LandSandBoat NPC Ceraule (#17719297). Verifying exact LSB coordinates (-86.1, 2.0, -34.8), yaw (161.7°), and animation_sub=1.",
+                "Player halting before LandSandBoat NPC Ceraule (#17719297). Verifying exact LSB coordinates (-86.1, 2.0, -34.8), yaw (251.7°), and animation_sub=1.",
                 clientState.getRemoteEntities().size()
         );
 
@@ -503,8 +508,8 @@ public class LiveServerClientSnapshotIT {
         Matrix4f proj = new Matrix4f().perspective((float) Math.toRadians(48.0f), (float) WIDTH / HEIGHT, 0.2f, 2000.0f);
         Matrix4f view = new Matrix4f().lookAt(
                 new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()),
-                new Vector3f(camera.getTargetX(), camera.getTargetY() + camera.getTargetOffsetY(), camera.getTargetZ()),
-                new Vector3f(0.0f, 1.0f, 0.0f)
+                new Vector3f(camera.getTargetX(), camera.getTargetY() - camera.getTargetOffsetY(), camera.getTargetZ()),
+                new Vector3f(0.0f, -1.0f, 0.0f)
         );
         Matrix4f viewProj = new Matrix4f(proj).mul(view);
 
@@ -528,7 +533,7 @@ public class LiveServerClientSnapshotIT {
         // 4. Overhead Nameplates
         Vector4f headClip = new Vector4f();
         for (SceneActor actor : actors) {
-            float headY = (actor.jointMatrices() == restPose) ? actor.y() + 1.25f : actor.y() + 1.95f;
+            float headY = (actor.jointMatrices() == restPose) ? actor.y() - 1.25f : actor.y() - 1.95f;
             headClip.set(actor.x(), headY, actor.z(), 1.0f);
             viewProj.transform(headClip);
             if (headClip.w > 0.1f) {
@@ -704,8 +709,8 @@ public class LiveServerClientSnapshotIT {
             for (int i = 0; i < numV; i++) {
                 ZoneMeshVertex v = verts.get(i);
                 Vector4f p = new Vector4f(
-                        ZoneMeshMath.sanitizeFinite(-v.px()),
-                        ZoneMeshMath.sanitizeFinite(-v.py()),
+                        ZoneMeshMath.sanitizeFinite(v.px()),
+                        ZoneMeshMath.sanitizeFinite(v.py()),
                         ZoneMeshMath.sanitizeFinite(v.pz()),
                         1.0f
                 );
@@ -891,9 +896,7 @@ public class LiveServerClientSnapshotIT {
         if (character == null || character.meshes().isEmpty()) return;
 
         Matrix4f charModelMat = new Matrix4f()
-                .scale(1f, -1f, -1f)
-                .translate(character.modelOffset())
-                .translate(charX, -character.feetOffsetY() - charY, -charZ)
+                .translate(charX, charY - character.feetLocalY(), charZ)
                 .rotateY((float) Math.toRadians(charYaw - 90.0f));
 
         Vector4f scratch = new Vector4f();

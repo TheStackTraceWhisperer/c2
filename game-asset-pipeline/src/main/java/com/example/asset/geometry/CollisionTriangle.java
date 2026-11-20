@@ -30,20 +30,13 @@ public record CollisionTriangle(
     }
 
     public CollisionTriangle transform(Matrix4f toWorldSpace, Matrix3f invTransposeTransform) {
-        Vector3f rt0 = toWorldSpace.transform(v0);
-        Vector3f rt1 = toWorldSpace.transform(v1);
-        Vector3f rt2 = toWorldSpace.transform(v2);
+        Vector3f w0 = toWorldSpace.transform(v0);
+        Vector3f w1 = toWorldSpace.transform(v1);
+        Vector3f w2 = toWorldSpace.transform(v2);
 
-        // FFXI -> glTF / World coordinate conversion: negate X and Y
-        // Maps FFXI visual-up (-Y) to standard Y-up and preserves handedness
-        Vector3f w0 = new Vector3f(-rt0.x(), -rt0.y(), rt0.z());
-        Vector3f w1 = new Vector3f(-rt1.x(), -rt1.y(), rt1.z());
-        Vector3f w2 = new Vector3f(-rt2.x(), -rt2.y(), rt2.z());
+        Vector3f wNormal = invTransposeTransform.transform(normal).normalize();
 
-        Vector3f rNormal = invTransposeTransform.transform(normal).normalize();
-        Vector3f wNormal = new Vector3f(-rNormal.x(), -rNormal.y(), rNormal.z()).normalize();
-
-        // Convert CW winding to CCW winding
+        // Ensure winding consistency with wNormal
         Vector3f crossNormal = w1.sub(w0).cross(w2.sub(w0)).normalize();
         float windingCheck = crossNormal.dot(wNormal);
 

@@ -21,24 +21,22 @@ public final class ZoneCollisionSystem {
     }
 
     /**
-     * Finds the highest floor Y in our world space at (worldX, worldZ)
-     * by casting a ray downward from (worldX, startY, worldZ).
+     * Finds the highest floor Y in native FFXI world space (-Y = Up, +Y = Down) at (worldX, worldZ)
+     * by casting a ray downward (+Y) from (worldX, startY, worldZ).
      */
     public float findFloorY(float worldX, float worldZ, float startY) {
         if (collisionMap == null || !Float.isFinite(worldX) || !Float.isFinite(worldZ) || !Float.isFinite(startY)) {
             return Float.NaN;
         }
 
-        float ffxiX = -worldX;
-        float ffxiZ = worldZ;
-        List<ZoneCollisionObjectGroup> groups = collisionMap.getGroups(ffxiX, ffxiZ);
+        List<ZoneCollisionObjectGroup> groups = collisionMap.getGroups(worldX, worldZ);
 
-        float bestFloorY = Float.NEGATIVE_INFINITY;
+        float bestFloorY = Float.POSITIVE_INFINITY;
         boolean found = false;
         for (ZoneCollisionObjectGroup group : groups) {
             for (ZoneCollisionObject object : group.objects()) {
                 float hit = raycastDownward(object, worldX, startY, worldZ);
-                if (Float.isFinite(hit) && hit <= startY && hit > bestFloorY) {
+                if (Float.isFinite(hit) && hit >= startY && hit < bestFloorY) {
                     bestFloorY = hit;
                     found = true;
                 }
@@ -48,7 +46,7 @@ public final class ZoneCollisionSystem {
     }
 
     public float findSpawnFloorY() {
-        float y = findFloorY(0.0f, 0.0f, 2000.0f);
+        float y = findFloorY(0.0f, 0.0f, -2000.0f);
         if (Float.isFinite(y)) {
             return y;
         }
@@ -56,7 +54,7 @@ public final class ZoneCollisionSystem {
         float[] offsets = {-50.0f, 50.0f, -100.0f, 100.0f, -200.0f, 200.0f};
         for (float ox : offsets) {
             for (float oz : offsets) {
-                y = findFloorY(ox, oz, 2000.0f);
+                y = findFloorY(ox, oz, -2000.0f);
                 if (Float.isFinite(y)) {
                     return y;
                 }
@@ -85,9 +83,9 @@ public final class ZoneCollisionSystem {
                         continue;
                     }
                     tested++;
-                    float worldX = -ffxiXZ[0];
+                    float worldX = ffxiXZ[0];
                     float worldZ = ffxiXZ[1];
-                    float worldY = findFloorY(worldX, worldZ, 2000.0f);
+                    float worldY = findFloorY(worldX, worldZ, -2000.0f);
                     if (Float.isFinite(worldY)) {
                         return new float[]{worldX, worldY, worldZ};
                     }
@@ -166,11 +164,11 @@ public final class ZoneCollisionSystem {
             float ny = e0z * e1x - e0x * e1z;
             float nz = e0x * e1y - e0y * e1x;
             float normalLength = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-            if (normalLength < RAY_EPSILON || ny / normalLength < FLOOR_NORMAL_Y_MIN) {
+            if (normalLength < RAY_EPSILON || ny / normalLength > -FLOOR_NORMAL_Y_MIN) {
                 continue;
             }
 
-            float denom = -ny;
+            float denom = ny;
             if (Math.abs(denom) < RAY_EPSILON) {
                 continue;
             }
@@ -188,14 +186,14 @@ public final class ZoneCollisionSystem {
             hit = true;
         }
 
-        return hit ? startY - bestT : Float.NaN;
+        return hit ? startY + bestT : Float.NaN;
     }
 
     private static float[] transformVertex(float[] matrix, float lx, float ly, float lz) {
         float fx = matrix[0] * lx + matrix[4] * ly + matrix[8] * lz + matrix[12];
         float fy = matrix[1] * lx + matrix[5] * ly + matrix[9] * lz + matrix[13];
         float fz = matrix[2] * lx + matrix[6] * ly + matrix[10] * lz + matrix[14];
-        return new float[]{-fx, -fy, fz};
+        return new float[]{fx, fy, fz};
     }
 
     private static boolean pointInTriangle(float px, float pz,

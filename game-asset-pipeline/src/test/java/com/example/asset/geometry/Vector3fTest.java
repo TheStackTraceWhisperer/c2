@@ -41,6 +41,14 @@ class Vector3fTest {
         assertEquals(0.0f, z.x(), EPSILON);
         assertEquals(0.0f, z.y(), EPSILON);
         assertEquals(1.0f, z.z(), EPSILON);
+
+        // Native FFXI coordinate system: UP = (0, -1, 0), DOWN = (0, +1, 0)
+        assertEquals(new Vector3f(0.0f, -1.0f, 0.0f), Vector3f.UP);
+        assertEquals(new Vector3f(0.0f, 1.0f, 0.0f), Vector3f.DOWN);
+        Vector3f right = Vector3f.Z.cross(Vector3f.UP);
+        assertEquals(1.0f, right.x(), EPSILON);
+        assertEquals(0.0f, right.y(), EPSILON);
+        assertEquals(0.0f, right.z(), EPSILON);
     }
 
     @Test

@@ -32,6 +32,35 @@ public enum RaceGenderConfig {
         this.equipmentTableIndex = equipmentTableIndex;
     }
 
+    public boolean isPlayableRace() {
+        return index >= 1 && index <= 8;
+    }
+
+    public boolean isNpcRace() {
+        return index >= 29;
+    }
+
+    public boolean isChocobo() {
+        return index >= 32 && index <= 36;
+    }
+
+    public static RaceGenderConfig fromRaceId(int raceId) {
+        if (raceId == 0) {
+            return HumeM;
+        }
+        for (RaceGenderConfig config : values()) {
+            if (config.index == raceId) {
+                return config;
+            }
+        }
+        return null;
+    }
+
+    public static RaceGenderConfig fromRaceIdOrDefault(int raceId, RaceGenderConfig fallback) {
+        RaceGenderConfig resolved = fromRaceId(raceId);
+        return resolved != null ? resolved : fallback;
+    }
+
     public static RaceGenderConfig fromName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Race/gender name must not be blank");

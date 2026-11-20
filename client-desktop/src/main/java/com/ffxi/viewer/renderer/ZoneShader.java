@@ -48,7 +48,7 @@ public final class ZoneShader implements AutoCloseable {
                 vec4 viewPos = uViewMatrix * worldPos;
                 mat3 normalMatrix = transpose(inverse(mat3(uModelMatrix)));
                 vec3 n = normalMatrix * normal;
-                frag_worldNormal = length(n) > 1e-4 ? normalize(n) : vec3(0.0, 1.0, 0.0);
+                frag_worldNormal = length(n) > 1e-4 ? normalize(n) : vec3(0.0, -1.0, 0.0);
                 frag_lightSpacePos = uLightSpaceMatrix * worldPos;
                 frag_viewDistance = length(viewPos.xyz);
 
@@ -183,9 +183,9 @@ public final class ZoneShader implements AutoCloseable {
         glUniform1i(glGetUniformLocation(programId, "uSsaoMap"), 3);
         glUniform1f(discardThresholdLocation, 0.375f);
 
-        // Sensible defaults for standalone viewers that do not configure environment uniforms
+        // Sensible defaults for standalone viewers that do not configure environment uniforms (-Y = Up)
         setLightSpaceMatrix(IDENTITY_MATRIX);
-        glUniform3f(sunDirLocation, 0.3f, 0.9f, 0.2f);
+        glUniform3f(sunDirLocation, 0.3f, -0.9f, 0.2f);
         glUniform3f(sunColorLocation, 0.25f, 0.25f, 0.25f);
         glUniform3f(ambientColorLocation, 0.85f, 0.85f, 0.85f);
         glUniform1i(enableShadowsLocation, 0);

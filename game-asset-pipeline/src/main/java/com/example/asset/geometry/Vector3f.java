@@ -15,8 +15,8 @@ public record Vector3f(float x, float y, float z) {
     public static final Vector3f NEG_X = new Vector3f(-1f, 0f, 0f);
     public static final Vector3f NEG_Y = new Vector3f(0f, -1f, 0f);
     public static final Vector3f NEG_Z = new Vector3f(0f, 0f, -1f);
-    public static final Vector3f UP = Y;
-    public static final Vector3f DOWN = NEG_Y;
+    public static final Vector3f UP = NEG_Y;
+    public static final Vector3f DOWN = Y;
 
     public Vector3f add(Vector3f other) {
         return new Vector3f(this.x + other.x, this.y + other.y, this.z + other.z);

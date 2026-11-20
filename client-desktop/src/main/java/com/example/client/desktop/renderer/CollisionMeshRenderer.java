@@ -153,7 +153,7 @@ public class CollisionMeshRenderer implements AutoCloseable {
         FloatBuffer buffer = BufferUtils.createFloatBuffer(this.vertexCount * 9);
 
         for (com.ffxi.viewer.collision.ZoneCollisionSystem.TransformedTriangle tri : triangles) {
-            float[] color = (tri.ny() > 0.5f) ? new float[]{0.22f, 0.70f, 0.35f} : new float[]{0.70f, 0.30f, 0.22f};
+            float[] color = (tri.ny() < -0.5f) ? new float[]{0.22f, 0.70f, 0.35f} : new float[]{0.70f, 0.30f, 0.22f};
             buffer.put(tri.x0()).put(tri.y0()).put(tri.z0());
             buffer.put(tri.nx()).put(tri.ny()).put(tri.nz());
             buffer.put(color[0]).put(color[1]).put(color[2]);
@@ -214,8 +214,8 @@ public class CollisionMeshRenderer implements AutoCloseable {
         };
         GL20.glUniformMatrix4fv(uModelLoc, false, identity);
 
-        // Sun light
-        GL20.glUniform3f(uLightDirLoc, 0.4f, 1.0f, 0.5f);
+        // Sun light (-Y = Up)
+        GL20.glUniform3f(uLightDirLoc, 0.4f, -1.0f, 0.5f);
         GL20.glUniform3f(uLightColorLoc, 1.0f, 0.98f, 0.92f);
         GL20.glUniform3f(uAmbientLoc, 0.35f, 0.35f, 0.38f);
         GL20.glUniform1i(uWireframeLoc, wireframe ? 1 : 0);
@@ -295,11 +295,11 @@ public class CollisionMeshRenderer implements AutoCloseable {
     }
 
     private void initPlayerMarker() {
-        // Build a diamond marker: apex at y=1.8, base at y=0.2, center at y=1.0, radius=0.4
+        // Build a diamond marker in native FFXI (-Y = Up): head at y=-1.7, waist at y=-0.9, base at y=-0.1
         float r = 0.4f;
-        float yBottom = 0.1f;
-        float yMid = 0.9f;
-        float yTop = 1.7f;
+        float yBottom = -0.1f;
+        float yMid = -0.9f;
+        float yTop = -1.7f;
         float[] color = new float[]{0.1f, 0.9f, 0.9f}; // Cyan
 
         int segments = 8;

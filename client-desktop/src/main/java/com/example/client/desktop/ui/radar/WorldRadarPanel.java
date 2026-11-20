@@ -30,7 +30,7 @@ public class WorldRadarPanel {
         float dx = worldX - localX;
         float dz = worldZ - localZ;
         float screenX = centerX + (dx * pixelsPerMeter);
-        float screenY = centerY + (dz * pixelsPerMeter); // -Z is North (screen up)
+        float screenY = centerY - (dz * pixelsPerMeter); // +Z is North (screen up)
         return new float[]{screenX, screenY};
     }
 
@@ -177,13 +177,13 @@ public class WorldRadarPanel {
                 }
             }
 
-            // --- Horizontal Grid Lines (Constant World Z, -Z is North/Up) ---
+            // --- Horizontal Grid Lines (Constant World Z, +Z is North/Up) ---
             float startZ = (float) Math.floor(minZ / minorStep) * minorStep;
             float endZ = (float) Math.ceil(maxZ / minorStep) * minorStep;
 
             for (float wz = startZ; wz <= endZ; wz += minorStep) {
                 float dz = (wz - localZ) * pixelsPerMeter;
-                float dy = dz; // -Z is North (screen up)
+                float dy = -dz; // +Z is North (screen up)
                 if (Math.abs(dy) >= radarRadiusPixels) {
                     continue;
                 }
@@ -209,7 +209,7 @@ public class WorldRadarPanel {
 
             // --- Origin Marker (0, 0) if visible within radar viewport ---
             float originDx = (0.0f - localX) * pixelsPerMeter;
-            float originDy = (0.0f - localZ) * pixelsPerMeter;
+            float originDy = -(0.0f - localZ) * pixelsPerMeter;
             if (originDx * originDx + originDy * originDy < radarRadiusPixels * radarRadiusPixels) {
                 float ox = centerX + originDx;
                 float oy = centerY + originDy;

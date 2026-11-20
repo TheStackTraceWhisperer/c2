@@ -72,7 +72,7 @@ public final class MapShaderSandbox {
     private float targetZ = 0.0f;
 
     // Fly Camera
-    private final Vector3f flyPos = new Vector3f(0.0f, 25.0f, 0.0f);
+    private final Vector3f flyPos = new Vector3f(0.0f, -25.0f, 0.0f);
     private float flyYaw = 0.0f;
     private float flyPitch = 0.0f;
 
@@ -109,7 +109,7 @@ public final class MapShaderSandbox {
 
     // Lighting parameters
     private boolean lockToSunClock = true;
-    private final Vector3f customSunDir = new Vector3f(0.3f, 0.9f, 0.25f);
+    private final Vector3f customSunDir = new Vector3f(0.3f, -0.9f, 0.25f);
     private float diffuseMultiplier = 1.0f;
     private boolean enableDistanceFog = true;
 
@@ -211,7 +211,7 @@ public final class MapShaderSandbox {
 
             // Light space matrix for shadow mapping
             Matrix4f lightSpaceMatrix = shadowRenderer.computeLightSpaceMatrix(
-                    sunDir.y > 0.0f ? sunDir : moonDir,
+                    sunDir.y < 0.0f ? sunDir : moonDir,
                     flyCamera ? flyPos : new Vector3f(targetX, targetY, targetZ),
                     shadowBoxSize, 10.0f, shadowBoxSize * 2.8f
             );
@@ -622,16 +622,16 @@ public final class MapShaderSandbox {
             float moveSpeed = (keyPressed[GLFW_KEY_LEFT_SHIFT] ? 450.0f : 150.0f) * dt;
             float yawRad = (float) Math.toRadians(flyYaw);
             float fwdX = (float) Math.sin(yawRad);
-            float fwdZ = (float) -Math.cos(yawRad);
+            float fwdZ = (float) Math.cos(yawRad);
             float rightX = (float) Math.cos(yawRad);
-            float rightZ = (float) Math.sin(yawRad);
+            float rightZ = (float) -Math.sin(yawRad);
 
             if (keyPressed[GLFW_KEY_W]) flyPos.add(fwdX * moveSpeed, 0f, fwdZ * moveSpeed);
             if (keyPressed[GLFW_KEY_S]) flyPos.sub(fwdX * moveSpeed, 0f, fwdZ * moveSpeed);
             if (keyPressed[GLFW_KEY_A]) flyPos.sub(rightX * moveSpeed, 0f, rightZ * moveSpeed);
             if (keyPressed[GLFW_KEY_D]) flyPos.add(rightX * moveSpeed, 0f, rightZ * moveSpeed);
-            if (keyPressed[GLFW_KEY_SPACE]) flyPos.y += moveSpeed;
-            if (keyPressed[GLFW_KEY_LEFT_CONTROL]) flyPos.y -= moveSpeed;
+            if (keyPressed[GLFW_KEY_SPACE]) flyPos.y -= moveSpeed;
+            if (keyPressed[GLFW_KEY_LEFT_CONTROL]) flyPos.y += moveSpeed;
         }
     }
 
@@ -649,10 +649,10 @@ public final class MapShaderSandbox {
         } else {
             Vector3f eye = new Vector3f(
                     (float) (orbitDistance * Math.cos(orbitPitch) * Math.sin(orbitYaw)) + targetX,
-                    (float) (orbitDistance * Math.sin(-orbitPitch)) + targetY,
+                    (float) (orbitDistance * Math.sin(orbitPitch)) + targetY,
                     (float) (orbitDistance * Math.cos(orbitPitch) * Math.cos(orbitYaw)) + targetZ
             );
-            return new Matrix4f().lookAt(eye, new Vector3f(targetX, targetY, targetZ), new Vector3f(0f, 1f, 0f));
+            return new Matrix4f().lookAt(eye, new Vector3f(targetX, targetY, targetZ), new Vector3f(0f, -1f, 0f));
         }
     }
 
@@ -662,7 +662,7 @@ public final class MapShaderSandbox {
         } else {
             return new Vector3f(
                     (float) (orbitDistance * Math.cos(orbitPitch) * Math.sin(orbitYaw)) + targetX,
-                    (float) (orbitDistance * Math.sin(-orbitPitch)) + targetY,
+                    (float) (orbitDistance * Math.sin(orbitPitch)) + targetY,
                     (float) (orbitDistance * Math.cos(orbitPitch) * Math.cos(orbitYaw)) + targetZ
             );
         }

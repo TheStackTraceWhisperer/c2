@@ -95,7 +95,7 @@ public final class WeatherParticleSystem implements AutoCloseable {
         glBindVertexArray(0);
 
         for (int i = 0; i < MAX_PARTICLES; i++) {
-            resetParticle(i, new Vector3f(0f, 0f, 0f), WeatherPreset.WeatherEffectType.RAIN, new Vector3f(0f, -10f, 0f));
+            resetParticle(i, new Vector3f(0f, 0f, 0f), WeatherPreset.WeatherEffectType.RAIN, new Vector3f(0f, 10f, 0f));
             life[i] = random.nextFloat();
         }
     }
@@ -105,37 +105,37 @@ public final class WeatherParticleSystem implements AutoCloseable {
         float dist = (float) Math.sqrt(random.nextFloat()) * EMITTER_RADIUS;
 
         posX[i] = origin.x + (float) Math.cos(angle) * dist;
-        posY[i] = origin.y + random.nextFloat() * EMITTER_HEIGHT;
+        posY[i] = origin.y - random.nextFloat() * EMITTER_HEIGHT;
         posZ[i] = origin.z + (float) Math.sin(angle) * dist;
 
         switch (type) {
             case RAIN -> {
                 velX[i] = wind.x + (random.nextFloat() - 0.5f) * 1.5f;
-                velY[i] = -22.0f - random.nextFloat() * 6.0f;
+                velY[i] = 22.0f + random.nextFloat() * 6.0f;
                 velZ[i] = wind.z + (random.nextFloat() - 0.5f) * 1.5f;
                 length[i] = 0.9f + random.nextFloat() * 0.5f;
             }
             case HEAVY_RAIN, THUNDERSTORM -> {
                 velX[i] = wind.x * 1.4f + (random.nextFloat() - 0.5f) * 2.5f;
-                velY[i] = -32.0f - random.nextFloat() * 10.0f;
+                velY[i] = 32.0f + random.nextFloat() * 10.0f;
                 velZ[i] = wind.z * 1.4f + (random.nextFloat() - 0.5f) * 2.5f;
                 length[i] = 1.4f + random.nextFloat() * 0.8f;
             }
             case SNOW -> {
                 velX[i] = wind.x * 0.4f + (random.nextFloat() - 0.5f) * 2.0f;
-                velY[i] = -2.8f - random.nextFloat() * 1.5f;
+                velY[i] = 2.8f + random.nextFloat() * 1.5f;
                 velZ[i] = wind.z * 0.4f + (random.nextFloat() - 0.5f) * 2.0f;
                 length[i] = 0.12f + random.nextFloat() * 0.10f;
             }
             case BLIZZARD -> {
                 velX[i] = wind.x * 1.2f + (random.nextFloat() - 0.5f) * 4.0f;
-                velY[i] = -5.5f - random.nextFloat() * 3.0f;
+                velY[i] = 5.5f + random.nextFloat() * 3.0f;
                 velZ[i] = wind.z * 1.2f + (random.nextFloat() - 0.5f) * 4.0f;
                 length[i] = 0.25f + random.nextFloat() * 0.20f;
             }
             case SANDSTORM, DUST_STORM -> {
                 velX[i] = wind.x * 1.5f + (random.nextFloat() - 0.5f) * 3.0f;
-                velY[i] = (random.nextFloat() - 0.4f) * 3.5f;
+                velY[i] = (0.4f - random.nextFloat()) * 3.5f;
                 velZ[i] = wind.z * 1.5f + (random.nextFloat() - 0.5f) * 3.0f;
                 length[i] = 0.35f + random.nextFloat() * 0.35f;
             }
@@ -196,7 +196,7 @@ public final class WeatherParticleSystem implements AutoCloseable {
             float dy = posY[i] - cameraPos.y;
             float dz = posZ[i] - cameraPos.z;
 
-            if (dy < -5.0f || dy > EMITTER_HEIGHT + 5.0f || (dx * dx + dz * dz) > EMITTER_RADIUS * EMITTER_RADIUS) {
+            if (dy > 5.0f || dy < -(EMITTER_HEIGHT + 5.0f) || (dx * dx + dz * dz) > EMITTER_RADIUS * EMITTER_RADIUS) {
                 resetParticle(i, cameraPos, effect, wind);
             }
         }
@@ -273,7 +273,7 @@ public final class WeatherParticleSystem implements AutoCloseable {
                 vyNorm = (vyNorm / speed) * len;
                 vzNorm = (vzNorm / speed) * len;
             } else {
-                vyNorm = -len;
+                vyNorm = len;
             }
 
             float x1 = x0 - vxNorm;

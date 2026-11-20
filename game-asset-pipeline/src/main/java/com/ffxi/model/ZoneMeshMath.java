@@ -89,10 +89,6 @@ public final class ZoneMeshMath {
         return new float[]{qx / length, qy / length, qz / length, qw / length};
     }
 
-    public static float[] negateXYQuaternion(float[] q) {
-        return new float[]{-q[0], -q[1], q[2], q[3]};
-    }
-
     public static float sanitizeFinite(float value) {
         return Float.isFinite(value) ? value : 0.0f;
     }

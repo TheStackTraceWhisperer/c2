@@ -33,8 +33,8 @@ public final class ZoneMeshBuffer implements AutoCloseable {
 
         ByteBuffer vertexData = BufferUtils.createByteBuffer(vertices.size() * STRIDE_BYTES);
         for (ZoneMeshVertex v : vertices) {
-            vertexData.putFloat(ZoneMeshMath.sanitizeFinite(-v.px())).putFloat(ZoneMeshMath.sanitizeFinite(-v.py())).putFloat(ZoneMeshMath.sanitizeFinite(v.pz()));
-            vertexData.putFloat(ZoneMeshMath.sanitizeFinite(-v.nx())).putFloat(ZoneMeshMath.sanitizeFinite(-v.ny())).putFloat(ZoneMeshMath.sanitizeFinite(v.nz()));
+            vertexData.putFloat(ZoneMeshMath.sanitizeFinite(v.px())).putFloat(ZoneMeshMath.sanitizeFinite(v.py())).putFloat(ZoneMeshMath.sanitizeFinite(v.pz()));
+            vertexData.putFloat(ZoneMeshMath.sanitizeFinite(v.nx())).putFloat(ZoneMeshMath.sanitizeFinite(v.ny())).putFloat(ZoneMeshMath.sanitizeFinite(v.nz()));
             vertexData.putFloat(v.u()).putFloat(v.v());
             vertexData.put((byte) v.colorR()).put((byte) v.colorG()).put((byte) v.colorB()).put((byte) v.colorA());
         }

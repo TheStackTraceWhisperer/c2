@@ -87,25 +87,25 @@ class WorldSceneTest {
     void testSceneCameraCutscene() {
         SceneCamera camera = new SceneCamera();
 
-        Vector3f eyeA = new Vector3f(0f, 5f, 10f);
-        Vector3f targetA = new Vector3f(0f, 1f, 0f);
-        Vector3f up = new Vector3f(0f, 1f, 0f);
+        Vector3f eyeA = new Vector3f(0f, -5f, -10f);
+        Vector3f targetA = new Vector3f(0f, -1f, 0f);
+        Vector3f up = new Vector3f(0f, -1f, 0f);
         camera.setCutsceneCamera(eyeA, targetA, up, 45.0f);
 
         assertEquals(CameraMode.CUTSCENE, camera.getMode());
         assertEquals(45.0f, camera.getFov());
         assertEquals(0f, camera.getEyeX());
-        assertEquals(5f, camera.getEyeY());
-        assertEquals(10f, camera.getEyeZ());
+        assertEquals(-5f, camera.getEyeY());
+        assertEquals(-10f, camera.getEyeZ());
 
-        Vector3f eyeB = new Vector3f(10f, 8f, 20f);
-        Vector3f targetB = new Vector3f(2f, 1f, 2f);
+        Vector3f eyeB = new Vector3f(10f, -8f, -20f);
+        Vector3f targetB = new Vector3f(2f, -1f, 2f);
 
         camera.interpolateCutscene(eyeA, eyeB, targetA, targetB, 45.0f, 60.0f, 0.5f);
 
         assertEquals(5.0f, camera.getEyeX(), 1e-4f);
-        assertEquals(6.5f, camera.getEyeY(), 1e-4f);
-        assertEquals(15.0f, camera.getEyeZ(), 1e-4f);
+        assertEquals(-6.5f, camera.getEyeY(), 1e-4f);
+        assertEquals(-15.0f, camera.getEyeZ(), 1e-4f);
         assertEquals(52.5f, camera.getFov(), 1e-4f);
     }
 

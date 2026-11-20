@@ -95,9 +95,7 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
         shader.bind();
 
         Matrix4f charModelMat = new Matrix4f()
-                .scale(1f, -1f, -1f)
-                .translate(character.modelOffset())
-                .translate(posX, -character.feetOffsetY() - posY, -posZ)
+                .translate(posX, posY - character.feetLocalY(), posZ)
                 .rotateY((float) Math.toRadians(yawDegrees - 90.0f));
 
         shader.setMatrices(proj, view, charModelMat);

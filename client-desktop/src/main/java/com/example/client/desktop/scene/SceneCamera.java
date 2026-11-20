@@ -41,9 +41,9 @@ public class SceneCamera implements Camera {
     private float distance = DEFAULT_DISTANCE;
 
     // Directed Cutscene coordinates
-    private final Vector3f cutsceneEye = new Vector3f(0f, 2f, 5f);
-    private final Vector3f cutsceneTarget = new Vector3f(0f, 1f, 0f);
-    private final Vector3f cutsceneUp = new Vector3f(0f, 1f, 0f);
+    private final Vector3f cutsceneEye = new Vector3f(0f, -2f, -5f);
+    private final Vector3f cutsceneTarget = new Vector3f(0f, -1f, 0f);
+    private final Vector3f cutsceneUp = new Vector3f(0f, -1f, 0f);
 
     // Derived spatial vectors
     private float eyeX;
@@ -147,8 +147,8 @@ public class SceneCamera implements Camera {
         if (lenXZ > 1e-4f) {
             this.forwardX = dir.x / lenXZ;
             this.forwardZ = dir.z / lenXZ;
-            this.rightX = -this.forwardZ;
-            this.rightZ = this.forwardX;
+            this.rightX = this.forwardZ;
+            this.rightZ = -this.forwardX;
         }
     }
 
@@ -165,7 +165,7 @@ public class SceneCamera implements Camera {
         Vector3f curEye = new Vector3f(fromEye).lerp(toEye, clampedT);
         Vector3f curTarget = new Vector3f(fromTarget).lerp(toTarget, clampedT);
         float curFov = fromFov + (toFov - fromFov) * clampedT;
-        setCutsceneCamera(curEye, curTarget, new Vector3f(0f, 1f, 0f), curFov);
+        setCutsceneCamera(curEye, curTarget, new Vector3f(0f, -1f, 0f), curFov);
     }
 
     @Override
@@ -229,8 +229,8 @@ public class SceneCamera implements Camera {
         }
         return new Matrix4f().lookAt(
                 new Vector3f(eyeX, eyeY, eyeZ),
-                new Vector3f(targetX, targetY + targetOffsetY, targetZ),
-                new Vector3f(0f, 1f, 0f)
+                new Vector3f(targetX, targetY - targetOffsetY, targetZ),
+                new Vector3f(0f, -1f, 0f)
         );
     }
 
@@ -243,21 +243,21 @@ public class SceneCamera implements Camera {
         double sinYaw = Math.sin(yawRad);
         double cosYaw = Math.cos(yawRad);
 
-        // Unified client coordinate system (matches PolarCamera):
-        // Y-up, North = -Z, East = +X; yaw = 0 deg faces North (-Z), 90 deg faces East (+X).
+        // Unified native FFXI coordinate system (matches PolarCamera):
+        // -Y = Up, North = +Z, East = +X; yaw = 0 deg faces North (+Z), 90 deg faces East (+X).
         this.forwardX = (float) sinYaw;
-        this.forwardZ = (float) -cosYaw;
+        this.forwardZ = (float) cosYaw;
 
         this.rightX = (float) cosYaw;
-        this.rightZ = (float) sinYaw;
+        this.rightZ = (float) -sinYaw;
 
-        float focusY = targetY + targetOffsetY;
+        float focusY = targetY - targetOffsetY;
         this.eyeX = (float) (targetX - distance * cosPitch * sinYaw);
-        this.eyeY = (float) (focusY + distance * sinPitch);
-        this.eyeZ = (float) (targetZ + distance * cosPitch * cosYaw);
+        this.eyeY = (float) (focusY - distance * sinPitch);
+        this.eyeZ = (float) (targetZ - distance * cosPitch * cosYaw);
 
         this.viewX = (float) (forwardX * cosPitch);
-        this.viewY = (float) -sinPitch;
+        this.viewY = (float) sinPitch;
         this.viewZ = (float) (forwardZ * cosPitch);
     }
 

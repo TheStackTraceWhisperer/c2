@@ -133,12 +133,9 @@ public class NpcPatrolSimulation {
             float fraction = (dist > 1e-6f) ? Math.min(1.0f, step / dist) : 1.0f;
             float nextY = curY + (wp.y() - curY) * fraction;
 
-            // Facing heading in degrees: 0 = North (-Z), 90 = East (+X)
-            double yawRad = Math.atan2(dirX, -dirZ);
-            float yawDeg = (float) Math.toDegrees(yawRad);
-            if (yawDeg < 0.0f) {
-                yawDeg += 360.0f;
-            }
+            // Facing heading in degrees: 0 = North (+Z), 90 = East (+X), 180 = South (-Z), 270 = West (-X)
+            double yawRad = Math.atan2(dirX, dirZ);
+            float yawDeg = ((float) Math.toDegrees(yawRad) + 360.0f) % 360.0f;
 
             float vx = dirX * agent.getMoveSpeed();
             float vy = (dt > 0.0f) ? (nextY - curY) / dt : 0f;

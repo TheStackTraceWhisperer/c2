@@ -73,12 +73,12 @@ class MapShaderSandboxTest {
         Matrix4f lightProj = new Matrix4f();
         Matrix4f lightSpaceMatrix = new Matrix4f();
 
-        Vector3f lightDir = new Vector3f(0.5f, 0.8f, 0.2f).normalize();
-        Vector3f target = new Vector3f(100.0f, 15.0f, -50.0f);
+        Vector3f lightDir = new Vector3f(0.5f, -0.8f, 0.2f).normalize();
+        Vector3f target = new Vector3f(100.0f, -15.0f, -50.0f);
         float boxSize = 1200.0f;
 
         Vector3f eyePos = new Vector3f(target).add(new Vector3f(lightDir).mul(boxSize * 1.2f));
-        lightView.lookAt(eyePos, target, new Vector3f(0f, 1f, 0f));
+        lightView.lookAt(eyePos, target, new Vector3f(0f, -1f, 0f));
         lightProj.ortho(-boxSize, boxSize, -boxSize, boxSize, 10.0f, boxSize * 2.8f);
         lightProj.mul(lightView, lightSpaceMatrix);
 

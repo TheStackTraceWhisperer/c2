@@ -59,18 +59,18 @@ public class ZoneRenderingSnapshotSuiteTest {
             float orthoSize
     ) {
         public ZoneCamera(String id, String label, int zoneId, Vector3f eye, Vector3f target, float fovDegrees, Color zenith, Color horizon) {
-            this(id, label, zoneId, eye, target, new Vector3f(0.0f, 1.0f, 0.0f), fovDegrees, zenith, horizon, ProjectionMode.PERSPECTIVE, 0.0f);
+            this(id, label, zoneId, eye, target, new Vector3f(0.0f, -1.0f, 0.0f), fovDegrees, zenith, horizon, ProjectionMode.PERSPECTIVE, 0.0f);
         }
 
         public ZoneCamera(String id, String label, int zoneId, Vector3f eye, Vector3f target, float fovDegrees) {
-            this(id, label, zoneId, eye, target, new Vector3f(0.0f, 1.0f, 0.0f), fovDegrees, new Color(45, 80, 150), new Color(175, 205, 230), ProjectionMode.PERSPECTIVE, 0.0f);
+            this(id, label, zoneId, eye, target, new Vector3f(0.0f, -1.0f, 0.0f), fovDegrees, new Color(45, 80, 150), new Color(175, 205, 230), ProjectionMode.PERSPECTIVE, 0.0f);
         }
 
         public static ZoneCamera topDownOrtho(String id, String label, int zoneId) {
             return new ZoneCamera(
                     id, label, zoneId,
-                    new Vector3f(0.0f, 0.0f, 0.0f),
-                    new Vector3f(0.0f, -100.0f, 0.0f),
+                    new Vector3f(0.0f, -200.0f, 0.0f),
+                    new Vector3f(0.0f, 100.0f, 0.0f),
                     new Vector3f(0.0f, 0.0f, 1.0f), // North is UP (+Z)
                     0.0f,
                     new Color(22, 26, 32), new Color(22, 26, 32),
@@ -82,8 +82,8 @@ public class ZoneRenderingSnapshotSuiteTest {
         public static ZoneCamera topDownOrtho(String id, String label, int zoneId, float centerX, float centerZ, float altitude, float orthoSize) {
             return new ZoneCamera(
                     id, label, zoneId,
-                    new Vector3f(centerX, altitude, centerZ),
-                    new Vector3f(centerX, -100.0f, centerZ),
+                    new Vector3f(centerX, -Math.abs(altitude), centerZ),
+                    new Vector3f(centerX, 100.0f, centerZ),
                     new Vector3f(0.0f, 0.0f, 1.0f),
                     0.0f,
                     new Color(22, 26, 32), new Color(22, 26, 32),
@@ -107,7 +107,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_230_south_san_doria_overview",
                         "Southern San d'Oria - Grand City Ramparts & Plaza",
                         230,
-                        new Vector3f(120.0f, 65.0f, -80.0f),
+                        new Vector3f(-120.0f, -65.0f, -80.0f),
                         new Vector3f(0.0f, 0.0f, -20.0f),
                         52.0f,
                         new Color(40, 75, 140),
@@ -117,8 +117,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_230_south_san_doria_fountain",
                         "Southern San d'Oria - Fountain Square",
                         230,
-                        new Vector3f(-20.0f, 15.0f, -90.0f),
-                        new Vector3f(-5.0f, 0.0f, -20.0f),
+                        new Vector3f(20.0f, -15.0f, -90.0f),
+                        new Vector3f(5.0f, 0.0f, -20.0f),
                         58.0f,
                         new Color(45, 80, 145),
                         new Color(175, 205, 235)
@@ -127,8 +127,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_231_north_san_doria_cathedral",
                         "Northern San d'Oria - Cathedral Spire & Chateau Approach",
                         231,
-                        new Vector3f(65.0f, 36.0f, 105.0f),
-                        new Vector3f(-110.0f, 14.0f, 120.0f),
+                        new Vector3f(-65.0f, -36.0f, 105.0f),
+                        new Vector3f(110.0f, -14.0f, 120.0f),
                         52.0f,
                         new Color(35, 70, 135),
                         new Color(165, 195, 225)
@@ -137,8 +137,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_232_port_san_doria_airship",
                         "Port San d'Oria - Canal Waterways & Airship Port",
                         232,
-                        new Vector3f(90.0f, 50.0f, -90.0f),
-                        new Vector3f(0.0f, -5.0f, 0.0f),
+                        new Vector3f(-90.0f, -50.0f, -90.0f),
+                        new Vector3f(0.0f, 5.0f, 0.0f),
                         52.0f,
                         new Color(40, 80, 150),
                         new Color(175, 205, 235)
@@ -147,8 +147,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_233_chateau_d_oraguille",
                         "Chateau d'Oraguille - Royal Throne & Grand Hall",
                         233,
-                        new Vector3f(0.0f, 25.0f, 80.0f),
-                        new Vector3f(0.0f, 5.0f, -20.0f),
+                        new Vector3f(0.0f, -25.0f, 80.0f),
+                        new Vector3f(0.0f, -5.0f, -20.0f),
                         55.0f,
                         new Color(30, 45, 80),
                         new Color(120, 140, 175)
@@ -159,7 +159,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_234_bastok_mines_ironworks",
                         "Bastok Mines - Mining Gorge & Rail Tracks",
                         234,
-                        new Vector3f(-70.0f, 45.0f, 90.0f),
+                        new Vector3f(70.0f, -45.0f, 90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         52.0f,
                         new Color(55, 70, 105),
@@ -169,7 +169,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_235_bastok_markets_plaza",
                         "Bastok Markets - Commercial Plazas & Aqueducts",
                         235,
-                        new Vector3f(80.0f, 40.0f, 80.0f),
+                        new Vector3f(-80.0f, -40.0f, 80.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         52.0f,
                         new Color(50, 70, 115),
@@ -179,7 +179,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_236_port_bastok_wharf",
                         "Port Bastok - Steamship Wharf & Warehouses",
                         236,
-                        new Vector3f(90.0f, 45.0f, -90.0f),
+                        new Vector3f(-90.0f, -45.0f, -90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         52.0f,
                         new Color(45, 75, 130),
@@ -191,7 +191,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_238_windurst_waters",
                         "Windurst Waters - Canals & Tarutaru Dwellings",
                         238,
-                        new Vector3f(90.0f, 45.0f, -100.0f),
+                        new Vector3f(-90.0f, -45.0f, -100.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         52.0f,
                         new Color(35, 90, 145),
@@ -201,7 +201,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_241_windurst_woods_tree",
                         "Windurst Woods - Great Star Tree & Mithra Dwellings",
                         241,
-                        new Vector3f(120.0f, 50.0f, 100.0f),
+                        new Vector3f(-120.0f, -50.0f, 100.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         54.0f,
                         new Color(30, 85, 140),
@@ -213,7 +213,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_244_upper_jeuno_ramparts",
                         "Upper Jeuno - Fortress Ramparts & Stone Arches",
                         244,
-                        new Vector3f(80.0f, 45.0f, 90.0f),
+                        new Vector3f(-80.0f, -45.0f, 90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         50.0f,
                         new Color(45, 70, 130),
@@ -223,7 +223,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_245_lower_jeuno_bazaar",
                         "Lower Jeuno - Grand Promenade & Merchants",
                         245,
-                        new Vector3f(80.0f, 40.0f, 80.0f),
+                        new Vector3f(-80.0f, -40.0f, 80.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
                         52.0f,
                         new Color(45, 75, 135),
@@ -235,8 +235,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_248_selbina_windmill_harbor",
                         "Selbina - Windmill Port Harbor & Ocean Overlook",
                         248,
-                        new Vector3f(70.0f, 35.0f, 80.0f),
-                        new Vector3f(0.0f, -5.0f, 0.0f),
+                        new Vector3f(-70.0f, -35.0f, 80.0f),
+                        new Vector3f(0.0f, 5.0f, 0.0f),
                         54.0f,
                         new Color(35, 80, 145),
                         new Color(170, 205, 230)
@@ -245,8 +245,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_249_mhaura_port_pier",
                         "Mhaura - Coastal Docks & Ferry Wharf",
                         249,
-                        new Vector3f(80.0f, 40.0f, -70.0f),
-                        new Vector3f(0.0f, -2.0f, 0.0f),
+                        new Vector3f(-80.0f, -40.0f, -70.0f),
+                        new Vector3f(0.0f, 2.0f, 0.0f),
                         52.0f,
                         new Color(40, 85, 150),
                         new Color(180, 215, 240)
@@ -257,8 +257,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_100_west_ronfaure_overlook",
                         "West Ronfaure - Rolling Woodlands & Watchtower",
                         100,
-                        new Vector3f(260.0f, 95.0f, -140.0f),
-                        new Vector3f(60.0f, 20.0f, 10.0f),
+                        new Vector3f(-260.0f, -95.0f, -140.0f),
+                        new Vector3f(-60.0f, -20.0f, 10.0f),
                         54.0f,
                         new Color(35, 75, 145),
                         new Color(180, 210, 240)
@@ -267,8 +267,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                         "zone_102_la_theine_crag_plateau",
                         "La Theine Plateau - Crag of Holla Highlands",
                         102,
-                        new Vector3f(320.0f, 120.0f, -220.0f),
-                        new Vector3f(40.0f, 10.0f, -20.0f),
+                        new Vector3f(-320.0f, -120.0f, -220.0f),
+                        new Vector3f(-40.0f, -10.0f, -20.0f),
                         55.0f,
                         new Color(30, 75, 155),
                         new Color(185, 215, 245)
@@ -402,7 +402,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                     if (!ZoneMeshMath.hasValidVertices(inst.chunk())) continue;
                     Matrix4f m = inst.modelMatrix();
                     for (ZoneMeshVertex v : inst.chunk().vertices()) {
-                        Vector4f p = new Vector4f(-v.px(), -v.py(), v.pz(), 1.0f);
+                        Vector4f p = new Vector4f(v.px(), v.py(), v.pz(), 1.0f);
                         m.transform(p);
                         minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
                         minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
@@ -425,20 +425,20 @@ public class ZoneRenderingSnapshotSuiteTest {
                 halfH = Math.max(reqHalfH, reqHalfW / aspect);
                 halfW = halfH * aspect;
 
-                altitude = maxY + 200.0f;
+                altitude = minY - 200.0f;
                 far = Math.max(2000.0f, (maxY - minY) + 500.0f);
                 System.out.printf("[ZONE-ORTHO] %s (Zone %d) bounds: X=[%.1f, %.1f] (%.1fm), Z=[%.1f, %.1f] (%.1fm), Y=[%.1f, %.1f] -> View Extents: W=%.1fm x H=%.1fm%n",
                         zone.zoneName(), zone.zoneId(), minX, maxX, sizeX, minZ, maxZ, sizeZ, minY, maxY, halfW * 2.0f, halfH * 2.0f);
             } else {
                 halfW = orthoSize * 0.5f;
                 halfH = (orthoSize * height / (float) width) * 0.5f;
-                far = Math.max(1000.0f, altitude + 1000.0f);
+                far = Math.max(1000.0f, Math.abs(altitude) + 1000.0f);
             }
 
             proj = new Matrix4f().ortho(-halfW, halfW, -halfH, halfH, 1.0f, far);
             view = new Matrix4f().lookAt(
                     new Vector3f(centerX, altitude, centerZ),
-                    new Vector3f(centerX, altitude - 100.0f, centerZ),
+                    new Vector3f(centerX, altitude + 100.0f, centerZ),
                     cam.up()
             );
         } else {
@@ -489,8 +489,8 @@ public class ZoneRenderingSnapshotSuiteTest {
                 for (int i = 0; i < numV; i++) {
                     ZoneMeshVertex v = verts.get(i);
                     Vector4f p = new Vector4f(
-                            ZoneMeshMath.sanitizeFinite(-v.px()),
-                            ZoneMeshMath.sanitizeFinite(-v.py()),
+                            ZoneMeshMath.sanitizeFinite(v.px()),
+                            ZoneMeshMath.sanitizeFinite(v.py()),
                             ZoneMeshMath.sanitizeFinite(v.pz()),
                             1.0f
                     );

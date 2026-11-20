@@ -115,15 +115,14 @@ public final class ShadowMapRenderer implements AutoCloseable {
      */
     public Matrix4f computeLightSpaceMatrix(Vector3f lightDirection, Vector3f targetPos, float boxSize, float nearPlane, float farPlane) {
         Vector3f normLight = new Vector3f(lightDirection).normalize();
-        if (Math.abs(normLight.y) > 0.98f) {
-            normLight.z += 0.05f;
-            normLight.normalize();
-        }
+        Vector3f up = Math.abs(normLight.y) > 0.98f
+                ? new Vector3f(0f, 0f, 1f)
+                : new Vector3f(0f, -1f, 0f);
 
         float shadowDist = boxSize * 1.2f;
         Vector3f eyePos = new Vector3f(targetPos).add(new Vector3f(normLight).mul(shadowDist));
 
-        lightView.identity().lookAt(eyePos, targetPos, new Vector3f(0f, 1f, 0f));
+        lightView.identity().lookAt(eyePos, targetPos, up);
         lightProjection.identity().ortho(-boxSize, boxSize, -boxSize, boxSize, nearPlane, farPlane);
 
         lightSpaceMatrix.identity();

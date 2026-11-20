@@ -119,9 +119,9 @@ public class ZoneCollisionService {
         float finalY = targetY;
         float finalZ = targetZ;
 
-        // 1. Wall / Barrier Segment Check at torso height (+0.8m)
-        Vector3f segStart = new Vector3f(startX, startY + 0.8f, startZ);
-        Vector3f segEnd = new Vector3f(targetX, startY + 0.8f, targetZ);
+        // 1. Wall / Barrier Segment Check at torso height (0.8m above feet in native FFXI -Y=Up)
+        Vector3f segStart = new Vector3f(startX, startY - 0.8f, startZ);
+        Vector3f segEnd = new Vector3f(targetX, startY - 0.8f, targetZ);
         Vector3f segDelta = segEnd.sub(segStart);
         if (segDelta.lengthSquared() > 1e-10f) {
             Optional<RayHit> wallHit = map.raycastSegment(segStart, segEnd, true);
@@ -138,26 +138,26 @@ public class ZoneCollisionService {
             }
         }
 
-        // 2. Downward Ground Raycast at candidate (X, Z)
-        float castStartY = Math.max(startY, targetY);
+        // 2. Downward Ground Raycast at candidate (X, Z) from highest point (min Y in -Y=Up)
+        float castStartY = Math.min(startY, targetY);
         Vector3f queryPos = new Vector3f(finalX, castStartY, finalZ);
         Optional<RayHit> floorHit = map.raycastFloor(queryPos, 2.0f, 50.0f, true);
 
         if (floorHit.isPresent()) {
             float floorY = floorHit.get().point().y();
-            float deltaY = finalY - floorY;
+            float heightAboveFloor = floorY - finalY;
 
-            if (deltaY < -0.15f) {
-                // Client fell through floor -> snap to ground height
+            if (heightAboveFloor < -0.15f) {
+                // Client fell through floor (+Y penetration) -> snap to ground height
                 finalY = floorY;
                 reconciled = true;
                 reason = "FLOOR_PENETRATION";
-            } else if (!airborne && deltaY <= maxStep) {
+            } else if (!airborne && heightAboveFloor <= maxStep) {
                 // Ground clamping for slopes and stairs within step height allowance
                 finalY = floorY;
-            } else if (deltaY > maxJump) {
+            } else if (heightAboveFloor > maxJump) {
                 // Exceeded allowable vertical jump/flight height -> snap to max jump height
-                finalY = floorY + maxJump;
+                finalY = floorY - maxJump;
                 reconciled = true;
                 reason = "EXCEEDED_MAX_JUMP_HEIGHT";
             }

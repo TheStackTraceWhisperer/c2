@@ -569,7 +569,7 @@ public class ZoneIngameMapSnapshotSuiteTest {
                 span, zm.xOffset(), zm.yOffset(), scalePxPerM);
         fontMoji.drawString(canvas, telemetryLeft, 45, fy - 8, FontMojiRenderer.COLOR_WHITE, 1);
 
-        String telemetryRight = String.format("Extents: X[%.0f..%.0f] Z[%.0f..%.0f] | North=-Z South=+Z West=-X East=+X",
+        String telemetryRight = String.format("Extents: X[%.0f..%.0f] Z[%.0f..%.0f] | North=+Z South=-Z West=-X East=+X",
                 xMin, xMax, zMin, zMax);
         int rw = measureTextWidth(telemetryRight, 1);
         fontMoji.drawString(canvas, telemetryRight, canvasW - rw - 45, fy - 8, FontMojiRenderer.COLOR_GOLD, 1);

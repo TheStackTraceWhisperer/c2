@@ -290,9 +290,9 @@ public final class ZoneModelLoader {
     }
 
     private static Matrix4f buildObjectTransform(ZoneObject object) {
-        float[] rotation = ZoneMeshMath.negateXYQuaternion(ZoneMeshMath.quaternionFromZYXEuler(object.rotX(), object.rotY(), object.rotZ()));
+        float[] rotation = ZoneMeshMath.quaternionFromZYXEuler(object.rotX(), object.rotY(), object.rotZ());
         return new Matrix4f()
-                .translate(ZoneMeshMath.sanitizeFinite(-object.posX()), ZoneMeshMath.sanitizeFinite(-object.posY()), ZoneMeshMath.sanitizeFinite(object.posZ()))
+                .translate(ZoneMeshMath.sanitizeFinite(object.posX()), ZoneMeshMath.sanitizeFinite(object.posY()), ZoneMeshMath.sanitizeFinite(object.posZ()))
                 .rotate(new Quaternionf(rotation[0], rotation[1], rotation[2], rotation[3]))
                 .scale(ZoneMeshMath.sanitizeFinite(object.scaleX()), ZoneMeshMath.sanitizeFinite(object.scaleY()), ZoneMeshMath.sanitizeFinite(object.scaleZ()));
     }
@@ -488,20 +488,20 @@ public final class ZoneModelLoader {
             float wz = modelMatrix != null ? (modelMatrix.m02() * lx + modelMatrix.m12() * ly + modelMatrix.m22() * lz + modelMatrix.m32()) : lz;
 
             // Map continuous world coordinates to repeating water texture
-            float u = (-wx) * 0.125f;
+            float u = wx * 0.125f;
             float v = wz * 0.125f;
 
             verts.add(new ZoneMeshVertex(
                     lx, ly, lz,
                     lx, ly, lz,
-                    0.0f, 1.0f, 0.0f,
+                    0.0f, -1.0f, 0.0f,
                     128, 128, 128, 160,
                     u, v
             ));
         }
 
-        // Two triangles forming horizontal quad with normal (0, 1, 0) pointing UP
-        List<Integer> indices = List.of(0, 1, 2, 0, 2, 3);
+        // Two triangles forming horizontal quad with normal (0, -1, 0) pointing UP (expandTriangles swaps i1/i2)
+        List<Integer> indices = List.of(0, 2, 1, 0, 3, 2);
 
         return new ZoneMeshChunk(
                 texName,
@@ -582,9 +582,9 @@ public final class ZoneModelLoader {
                 float wx = modelMatrix != null ? (modelMatrix.m00() * v.px() + modelMatrix.m10() * v.py() + modelMatrix.m20() * v.pz() + modelMatrix.m30()) : v.px();
                 float wz = modelMatrix != null ? (modelMatrix.m02() * v.px() + modelMatrix.m12() * v.py() + modelMatrix.m22() * v.pz() + modelMatrix.m32()) : v.pz();
 
-                // World coordinates: X = -wx, Z = wz
+                // World coordinates: X = wx, Z = wz
                 // Map to repeating water texture with 8.0m tile period
-                float u = (-wx) * 0.125f;
+                float u = wx * 0.125f;
                 float vCoord = wz * 0.125f;
                 int alpha = v.colorA();
                 if (alpha == 0 && verts.stream().allMatch(x -> x.colorA() == 0)) {

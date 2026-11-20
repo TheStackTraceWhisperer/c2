@@ -306,7 +306,7 @@ public class WorldScene implements AutoCloseable {
         float sunAngle = (float) ((hour / 24.0f) * 2.0 * Math.PI);
         Vector3f sunDir = new Vector3f((float) Math.sin(sunAngle), (float) Math.cos(sunAngle), 0.25f).normalize();
         Vector3f moonDir = new Vector3f(-sunDir.x, -sunDir.y, -0.25f).normalize();
-        Vector3f activeLightDir = sunDir.y > 0.0f ? sunDir : moonDir;
+        Vector3f activeLightDir = sunDir.y < 0.0f ? sunDir : moonDir;
 
         float dayFactor = (hour >= 6.0f && hour <= 18.0f) ? 1.0f
                 : ((hour > 18.0f && hour < 20.0f) ? 1.0f - 0.65f * ((hour - 18.0f) / 2.0f)

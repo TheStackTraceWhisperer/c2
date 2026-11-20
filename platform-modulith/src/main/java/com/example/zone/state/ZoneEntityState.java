@@ -1,5 +1,7 @@
 package com.example.zone.state;
 
+import com.example.common.protocol.RaceId;
+import com.example.zone.dto.ActorAppearance;
 import io.netty.channel.ChannelHandlerContext;
 import lombok.Getter;
 import lombok.Setter;
@@ -40,6 +42,8 @@ public class ZoneEntityState {
   private boolean npc;
 
   // Authentic NPC appearance, animation, and behavior metadata
+  private int entityFlags;
+  private int sizeId = 1;
   private int animationSub;
   private int namePrefix;
   private int moving;
@@ -113,6 +117,7 @@ public class ZoneEntityState {
       record.posZ(),
       record.yawDegrees()
     );
+    state.setEntityFlags(record.entityFlags());
     state.setAnimationSub(record.animationSub());
     state.setNamePrefix(record.namePrefix());
     state.setMoving(record.moving());
@@ -130,5 +135,21 @@ public class ZoneEntityState {
     state.setModelId(record.modelId());
     state.setWidescan(record.widescan());
     return state;
+  }
+
+  public ActorAppearance toActorAppearance() {
+    if (npc) {
+      return ActorAppearance.fromRawNpcLook(
+        lookType, raceId, faceId,
+        head, body, hands, legs, feet,
+        mainWeapon, subShield, ranged,
+        modelId, animationSub, entityFlags, namePrefix
+      );
+    }
+    return ActorAppearance.forPlayer(
+      raceId > 0 ? raceId : RaceId.HUME_MALE,
+      faceId,
+      sizeId
+    );
   }
 }

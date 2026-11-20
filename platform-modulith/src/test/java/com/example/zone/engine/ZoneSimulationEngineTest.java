@@ -16,6 +16,8 @@ import com.example.server.repository.NpcJdbcRepository;
 import com.example.server.repository.ZoneInstanceJdbcRepository;
 import com.example.server.repository.ZoneLineJdbcRepository;
 import com.example.zone.collision.ZoneCollisionService;
+import com.example.zone.dto.ActorAppearance;
+import com.example.zone.dto.ActorLookType;
 import com.example.zone.dto.EntitySpawnRecord;
 import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
@@ -660,10 +662,13 @@ class ZoneSimulationEngineTest {
         try {
             engine.registerSessionEntity(600L, 6000L, ctx);
             for (int i = 1; i <= 260; i++) {
-                ZoneEntityState npc = ZoneEntityState.createNpc(
-                        90000L + i, 230, "Citizen_" + i + "_WithLongName",
-                        (i % 20) * 0.5f, 0f, (i / 20) * 0.5f, 0f
-                );
+                ZoneEntityState npc = ZoneEntityState.createNpc(new NpcRecord(
+                        90000L + i, "Citizen_" + i + "_WithLongName",
+                        (i % 20) * 0.5f, 0f, (i / 20) * 0.5f, (short) (i % 256),
+                        230, "normal", 27, (short) 1, (short) 32, (short) 8,
+                        "equipped", (short) 3, (short) 8,
+                        4124, 8220, 12316, 16412, 20508, 24576, 28672, 32769, 0, true
+                ));
                 engine.registerNpc(npc);
             }
 
@@ -981,6 +986,125 @@ class ZoneSimulationEngineTest {
             assertThat(responseCount).isEqualTo(ZoneSimulationEngine.MAX_MOVEMENT_QUEUE_SIZE);
         } finally {
             ch.close();
+        }
+    }
+
+    @Test
+    @DisplayName("AoI spawn appearance: emits stripped slots for Aubejart/Ceraule, modelId for standard NPCs, chocobo race resolution, and player race/face/size")
+    void testAoISpawnEmitsAuthenticActorAppearances() {
+        charRepo.records.put(9201L, new CharacterRecord(
+                1L, 9201L, 1, "ObserverPlayer", (short) 1, (short) 0, (short) 1,
+                (short) 0, (short) 1, (short) 0, (short) 1, (short) 10, (short) 0, (short) 0,
+                230, 0f, 0f, 0f, 0f, 0f,
+                230, 0f, 0f, 0f, Instant.now()
+        ));
+        charRepo.records.put(9202L, new CharacterRecord(
+                2L, 9202L, 1, "PeerElvaan", (short) 4, (short) 1, (short) 7,
+                (short) 2, (short) 2, (short) 0, (short) 5, (short) 25, (short) 3, (short) 12,
+                230, 5f, 0f, 5f, 0f, 0f,
+                230, 5f, 0f, 5f, Instant.now()
+        ));
+
+        EmbeddedChannel chObs = new EmbeddedChannel();
+        List<Object> outObs = new CopyOnWriteArrayList<>();
+        ChannelHandlerContext ctxObs = createProxyContext(chObs, outObs);
+
+        EmbeddedChannel chPeer = new EmbeddedChannel();
+        List<Object> outPeer = new CopyOnWriteArrayList<>();
+        ChannelHandlerContext ctxPeer = createProxyContext(chPeer, outPeer);
+
+        try {
+            // Equipped NPCs: Ceraule & Aubejart placed within AoI of (0, 0)
+            engine.registerNpc(ZoneEntityState.createNpc(new NpcRecord(
+                    17719297L, "Ceraule",
+                    10.0f, 0.0f, 10.0f, (short) 115,
+                    230, "normal", 27, (short) 1, (short) 32, (short) 14,
+                    "equipped", (short) 3, (short) 2,
+                    4108, 8204, 12300, 16396, 20492, 24576, 28672, 0, 0, true
+            )));
+            engine.registerNpc(ZoneEntityState.createNpc(new NpcRecord(
+                    17719298L, "Aubejart",
+                    12.0f, 0.0f, 12.0f, (short) 64,
+                    230, "normal", 27, (short) 1, (short) 32, (short) 8,
+                    "equipped", (short) 3, (short) 8,
+                    4124, 8220, 12316, 16412, 20508, 24576, 28672, 0, 0, true
+            )));
+            // Standard NPC with modelId
+            engine.registerNpc(ZoneEntityState.createNpc(new NpcRecord(
+                    17719481L, "Well",
+                    14.0f, 0.0f, 14.0f, (short) 64,
+                    230, "normal", 27, (short) 1, (short) 32, (short) 1,
+                    "standard", (short) 0, (short) 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 996, true
+            )));
+            // Chocobo NPC with race stored in faceId=34, raceId=0
+            engine.registerNpc(ZoneEntityState.createNpc(new NpcRecord(
+                    17735883L, "Chocobo",
+                    16.0f, 0.0f, 16.0f, (short) 0,
+                    230, "normal", 25, (short) 0, (short) 32, (short) 0,
+                    "chocobo", (short) 0, (short) 34,
+                    0, 0x2001, 0, 0, 0, 0, 0, 0, 0, true
+            )));
+
+            engine.registerSessionEntity(921L, 9201L, ctxObs);
+            engine.registerSessionEntity(922L, 9202L, ctxPeer);
+            engine.tick();
+
+            Map<Long, EntitySpawnRecord> spawnsById = new HashMap<>();
+            for (Object pkt : outObs) {
+                if (pkt instanceof ZoneStateDeltaMessage delta) {
+                    for (EntitySpawnRecord spawn : delta.spawns()) {
+                        spawnsById.put(spawn.characterId(), spawn);
+                    }
+                }
+            }
+
+            assertThat(spawnsById).containsKeys(17719297L, 17719298L, 17719481L, 17735883L, 9202L);
+
+            ActorAppearance ceraule = spawnsById.get(17719297L).appearance();
+            assertThat(ceraule.lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(ceraule.raceId()).isEqualTo(3);
+            assertThat(ceraule.faceId()).isEqualTo(2);
+            assertThat(ceraule.head()).isEqualTo(12);
+            assertThat(ceraule.body()).isEqualTo(12);
+            assertThat(ceraule.hands()).isEqualTo(12);
+            assertThat(ceraule.legs()).isEqualTo(12);
+            assertThat(ceraule.feet()).isEqualTo(12);
+            assertThat(ceraule.mainWeapon()).isEqualTo(0);
+            assertThat(ceraule.subShield()).isEqualTo(0);
+            assertThat(ceraule.animationSub()).isEqualTo(1);
+            assertThat(ceraule.entityFlags()).isEqualTo(27);
+            assertThat(ceraule.namePrefix()).isEqualTo(32);
+
+            ActorAppearance aubejart = spawnsById.get(17719298L).appearance();
+            assertThat(aubejart.lookType()).isEqualTo(ActorLookType.EQUIPPED);
+            assertThat(aubejart.raceId()).isEqualTo(3);
+            assertThat(aubejart.faceId()).isEqualTo(8);
+            assertThat(aubejart.head()).isEqualTo(28);
+            assertThat(aubejart.body()).isEqualTo(28);
+            assertThat(aubejart.hands()).isEqualTo(28);
+            assertThat(aubejart.legs()).isEqualTo(28);
+            assertThat(aubejart.feet()).isEqualTo(28);
+            assertThat(aubejart.mainWeapon()).isEqualTo(0);
+            assertThat(aubejart.subShield()).isEqualTo(0);
+
+            ActorAppearance well = spawnsById.get(17719481L).appearance();
+            assertThat(well.lookType()).isEqualTo(ActorLookType.STANDARD);
+            assertThat(well.modelId()).isEqualTo(996);
+            assertThat(well.entityFlags()).isEqualTo(27);
+
+            ActorAppearance chocobo = spawnsById.get(17735883L).appearance();
+            assertThat(chocobo.lookType()).isEqualTo(ActorLookType.CHOCOBO);
+            assertThat(chocobo.raceId()).isEqualTo(34);
+            assertThat(chocobo.faceId()).isEqualTo(0);
+            assertThat(chocobo.body()).isEqualTo(1);
+            assertThat(chocobo.entityFlags()).isEqualTo(25);
+
+            ActorAppearance peerPlayer = spawnsById.get(9202L).appearance();
+            assertThat(peerPlayer).isEqualTo(ActorAppearance.forPlayer(4, 7, 2));
+        } finally {
+            chObs.close();
+            chPeer.close();
         }
     }
 

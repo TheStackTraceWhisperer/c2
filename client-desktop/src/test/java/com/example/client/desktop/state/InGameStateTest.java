@@ -115,6 +115,66 @@ class InGameStateTest {
         Mockito.verify(keepAlive, Mockito.times(1)).handlePong(pong);
     }
 
+    @Test
+    @DisplayName("DebugLogPanel capture intents are drained cleanly by InGameState in headless mode")
+    void testDebugLogCaptureIntentsDrainedHeadlessly() {
+        InGamePanel panel = Mockito.mock(InGamePanel.class);
+        Mockito.when(panel.getWarpRequestedZoneId()).thenReturn(-1);
+        WorldRadarPanel radarPanel = Mockito.mock(WorldRadarPanel.class);
+        Mockito.when(radarPanel.getConfig()).thenReturn(new com.example.client.desktop.ui.radar.RadarViewportConfig());
+        DebugLogPanel debugLog = Mockito.spy(new DebugLogPanel());
+        Mockito.doNothing().when(debugLog).render();
+        DesktopKeepAliveService keepAlive = Mockito.mock(DesktopKeepAliveService.class);
+        ClientState clientState = new ClientState();
+        DesktopNetworkAdapter networkAdapter = Mockito.mock(DesktopNetworkAdapter.class);
+        ApplicationStateService stateService = Mockito.mock(ApplicationStateService.class);
+        WindowService windowService = Mockito.mock(WindowService.class);
+        Mockito.when(windowService.getHandle()).thenReturn(0L);
+        MovementInputHandler movementHandler = new MovementInputHandler();
+        Camera camera = new PolarCamera();
+        @SuppressWarnings("unchecked")
+        BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
+        @SuppressWarnings("unchecked")
+        BeanProvider<AuthenticatedState> authProvider = Mockito.mock(BeanProvider.class);
+        @SuppressWarnings("unchecked")
+        BeanProvider<CharacterSelectedState> selectedProvider = Mockito.mock(BeanProvider.class);
+        com.example.client.desktop.ui.map.InGameMapPanel mapPanel = Mockito.mock(com.example.client.desktop.ui.map.InGameMapPanel.class);
+
+        InGameState state = new InGameState(
+                panel, radarPanel, debugLog, keepAlive, clientState,
+                networkAdapter, stateService, windowService, movementHandler,
+                camera, unauthProvider, authProvider, selectedProvider,
+                mapPanel
+        );
+        state.init(100L, 200L, "Aldo", 230, 5000L);
+        state.onEnter();
+
+        setPanelCaptureIntent(debugLog, "screenshotRequested");
+        setPanelCaptureIntent(debugLog, "renderDocCaptureRequested");
+        assertTrue(debugLog.isScreenshotRequested());
+        assertTrue(debugLog.isRenderDocCaptureRequested());
+
+        assertDoesNotThrow(() -> state.onUpdate(0.016f));
+
+        assertFalse(debugLog.isScreenshotRequested(), "DebugLogPanel screenshot intent must be cleared");
+        assertFalse(debugLog.isRenderDocCaptureRequested(), "DebugLogPanel RenderDoc intent must be cleared");
+        assertTrue(debugLog.getLinesSnapshot().stream().anyMatch(line -> line.contains("Screenshot skipped")),
+                "Headless screenshot intent should record skip message");
+        assertTrue(debugLog.getLinesSnapshot().stream().anyMatch(line -> line.contains("RenderDoc")),
+                "Headless RenderDoc intent should record capture status");
+        state.onExit();
+    }
+
+    private static void setPanelCaptureIntent(DebugLogPanel panel, String fieldName) {
+        try {
+            var field = DebugLogPanel.class.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.setBoolean(panel, true);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private InGameState createTestState(long windowHandle) {
         InGamePanel panel = Mockito.mock(InGamePanel.class);

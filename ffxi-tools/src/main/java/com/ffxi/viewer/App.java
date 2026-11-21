@@ -11,7 +11,7 @@ import com.ffxi.io.FileUtil;
 import com.ffxi.parser.DatParser;
 import com.ffxi.parser.SectionHeader;
 import com.ffxi.model.DatResourceGraph;
-import com.ffxi.export.DatResourceGraphJsonExporter;
+import com.ffxi.viewer.debug.DatResourceGraphJsonExporter;
 import com.ffxi.tables.ZoneNameTable;
 
 import java.io.File;

@@ -4,6 +4,8 @@ import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
 import com.example.client.desktop.camera.Camera;
+import com.example.client.desktop.capture.RenderDocCapture;
+import com.example.client.desktop.capture.ScreenshotCapture;
 import com.example.client.desktop.engine.services.state.ApplicationState;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
@@ -78,7 +80,11 @@ public class InGameState implements ApplicationState {
     private boolean f2Pressed = false;
     private boolean f3Pressed = false;
     private boolean f4Pressed = false;
+    private boolean f11Pressed = false;
+    private boolean f12Pressed = false;
     private boolean mKeyPressed = false;
+    private boolean pendingScreenshotCapture = false;
+    private boolean pendingRenderDocCapture = false;
     private List<ZoneInteraction> zoneInteractions = List.of();
     private ZoneInteraction activeZoneline = null;
 
@@ -274,6 +280,18 @@ public class InGameState implements ApplicationState {
         }
         f4Pressed = f4Down;
 
+        boolean f11Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F11) == GLFW.GLFW_PRESS;
+        if (f11Down && !f11Pressed) {
+            pendingScreenshotCapture = true;
+        }
+        f11Pressed = f11Down;
+
+        boolean f12Down = !uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_F12) == GLFW.GLFW_PRESS;
+        if (f12Down && !f12Pressed) {
+            pendingRenderDocCapture = true;
+        }
+        f12Pressed = f12Down;
+
         float zoomRate = 50.0f;
         if (!uiWantsKeyboard && GLFW.glfwGetKey(handle, GLFW.GLFW_KEY_PAGE_UP) == GLFW.GLFW_PRESS) {
             radarPanel.getConfig().zoomSmooth(-zoomRate * dt);
@@ -312,6 +330,11 @@ public class InGameState implements ApplicationState {
         worldScene.getCamera().setPitch(camera.getPitch());
         worldScene.getCamera().setDistance(camera.getDistance());
 
+        if (pendingRenderDocCapture) {
+            pendingRenderDocCapture = false;
+            triggerRenderDocCapture();
+        }
+
         worldScene.update(dt, vTime);
         worldScene.render(fbWidth, fbHeight);
 
@@ -320,7 +343,23 @@ public class InGameState implements ApplicationState {
         float[] view = new float[16];
         worldScene.getCamera().getProjectionMatrix(aspect).get(proj);
         worldScene.getCamera().getViewMatrix().get(view);
-        hudOverlay.renderNameplates(clientState, characterName, proj, view, fbWidth, fbHeight, now);
+        hudOverlay.renderNameplates(
+                clientState,
+                characterName,
+                proj,
+                view,
+                fbWidth,
+                fbHeight,
+                now,
+                worldScene,
+                worldScene.getFontMojiGlRenderer(),
+                activeZoneline
+        );
+
+        if (pendingScreenshotCapture) {
+            pendingScreenshotCapture = false;
+            captureViewportScreenshot();
+        }
 
         screenFader.render(handle, fbWidth, fbHeight);
 
@@ -369,11 +408,51 @@ public class InGameState implements ApplicationState {
             }
             handleZoneTransfer(new ZoneTransferNotification(warpZoneId, "127.0.0.1", 9001, spawnX, spawnY, spawnZ));
         }
+        if (debugLog.isScreenshotRequested()) {
+            pendingScreenshotCapture = true;
+        }
+        if (debugLog.isRenderDocCaptureRequested()) {
+            pendingRenderDocCapture = true;
+        }
         panel.clearIntents();
+        debugLog.clearIntents();
+
+        if (windowService.getHandle() == 0L) {
+            if (pendingRenderDocCapture) {
+                pendingRenderDocCapture = false;
+                triggerRenderDocCapture();
+            }
+            if (pendingScreenshotCapture) {
+                pendingScreenshotCapture = false;
+                debugLog.log("Screenshot skipped (headless / no OpenGL viewport)");
+            }
+        }
+    }
+
+    private void captureViewportScreenshot() {
+        try {
+            Path saved = ScreenshotCapture.captureActiveFramebuffer(
+                    "ingame_zone" + currentZoneId + "_" + System.currentTimeMillis()
+            );
+            debugLog.log("Screenshot saved -> " + saved.toAbsolutePath());
+        } catch (Exception e) {
+            log.warn("Failed to capture viewport screenshot: {}", e.getMessage(), e);
+            debugLog.log("Screenshot capture failed: " + e.getMessage());
+        }
+    }
+
+    private void triggerRenderDocCapture() {
+        if (RenderDocCapture.triggerCapture()) {
+            debugLog.log("RenderDoc frame capture triggered -> " + RenderDocCapture.getRenderDocDirectory().toAbsolutePath());
+        } else {
+            debugLog.log("RenderDoc not attached (launch under RenderDoc to capture .rdc)");
+        }
     }
 
     @Override
     public void onExit() {
+        pendingScreenshotCapture = false;
+        pendingRenderDocCapture = false;
         keepAlive.stop();
         movementHandler.reset();
         clientState.resetZoneSession();

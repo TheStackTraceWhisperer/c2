@@ -18,6 +18,8 @@ import com.ffxi.viewer.environment.WeatherPreset;
 import com.ffxi.viewer.model.LoadedZone;
 import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterShader;
+import com.ffxi.viewer.renderer.FontMojiGlRenderer;
+import com.ffxi.viewer.renderer.FontMojiRenderer;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
 import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneShader;
@@ -91,6 +93,9 @@ public class WorldScene implements AutoCloseable {
     // Collision & Zone Boundary Visuals
     private CollisionMeshRenderer collisionRenderer;
 
+    // In-Scene Font Moji Renderer
+    private FontMojiGlRenderer fontMojiGlRenderer;
+
     // File Table Manager
     private FileTableManager fileTableManager;
 
@@ -133,6 +138,15 @@ public class WorldScene implements AutoCloseable {
                 this.weatherParticleSystem = new WeatherParticleSystem();
             } catch (Exception e) {
                 log.warn("Atmospheric systems unavailable in current GL context: {}", e.getMessage());
+            }
+
+            try {
+                FontMojiRenderer mojiFont = FontMojiRenderer.load(FfxiPathConfig.resolveFfxiInstallDirectory());
+                this.fontMojiGlRenderer = new FontMojiGlRenderer(mojiFont);
+                log.info("Initialized FontMojiGlRenderer from retail ROM/0/1.DAT ({}x{})",
+                        mojiFont.getTexWidth(), mojiFont.getTexHeight());
+            } catch (Exception e) {
+                log.warn("FontMojiGlRenderer unavailable (falling back to ImGui labels): {}", e.getMessage());
             }
 
             this.initialized = true;
@@ -610,6 +624,10 @@ public class WorldScene implements AutoCloseable {
         if (weatherParticleSystem != null) {
             try { weatherParticleSystem.close(); } catch (Exception ignored) {}
             weatherParticleSystem = null;
+        }
+        if (fontMojiGlRenderer != null) {
+            try { fontMojiGlRenderer.close(); } catch (Exception ignored) {}
+            fontMojiGlRenderer = null;
         }
         this.lastSkyDomePreset = null;
         this.initialized = false;

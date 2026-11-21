@@ -1,5 +1,6 @@
 package com.example.client.desktop.engine.services.glfw;
 
+import com.example.client.desktop.capture.RenderDocCapture;
 import com.example.client.desktop.engine.IService;
 import jakarta.inject.Singleton;
 import lombok.Getter;
@@ -31,6 +32,7 @@ public class GlfwContextService implements IService {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
         initialized = true;
+        RenderDocCapture.initialize();
         log.info("GLFW initialized");
     }
 

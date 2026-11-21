@@ -48,6 +48,18 @@ public final class FontMojiRenderer {
             {0, 12}, {0, 13}, {0, 15}, {1, 14}, {0, 15}, {6, 10}, {0, 15}, {0, 15}
     };
 
+    public record GlyphQuad(
+            float x0,
+            float y0,
+            float x1,
+            float y1,
+            float u0,
+            float v0,
+            float u1,
+            float v1
+    ) {
+    }
+
     private final BufferedImage mojiTexture;
     private final int texWidth;
     private final int texHeight;
@@ -56,6 +68,14 @@ public final class FontMojiRenderer {
         this.mojiTexture = mojiTexture;
         this.texWidth = mojiTexture.getWidth();
         this.texHeight = mojiTexture.getHeight();
+    }
+
+    public int getTexWidth() {
+        return texWidth;
+    }
+
+    public int getTexHeight() {
+        return texHeight;
     }
 
     /**
@@ -145,21 +165,105 @@ public final class FontMojiRenderer {
      * Calculates width of a rendered text line in pixels.
      */
     public int measureString(String text, int scale) {
-        if (text == null || text.isEmpty()) return 0;
+        if (text == null || text.isEmpty() || scale <= 0) return 0;
         int width = 0;
         for (char ch : text.toCharArray()) {
             if (ch == '\n') break;
             int index = mapCharToIndex(ch);
             if (index < 0) continue;
-            int minX = 0, maxX = 15;
-            if (index < CHAR_WIDTHS.length) {
-                minX = CHAR_WIDTHS[index][0];
-                maxX = CHAR_WIDTHS[index][1];
-            }
-            int gw = (maxX - minX) + 1;
+            int gw = (glyphMaxX(index) - glyphMinX(index)) + 1;
             width += (gw + 1) * scale;
         }
         return width;
+    }
+
+    /**
+     * Calculates floating-point width of the first text line in pixels.
+     */
+    public float measureStringWidth(String text, float scale) {
+        if (text == null || text.isEmpty() || scale <= 0.0f || !Float.isFinite(scale)) {
+            return 0.0f;
+        }
+        float width = 0.0f;
+        for (char ch : text.toCharArray()) {
+            if (ch == '\n') {
+                break;
+            }
+            int index = mapCharToIndex(ch);
+            if (index < 0) {
+                continue;
+            }
+            int gw = (glyphMaxX(index) - glyphMinX(index)) + 1;
+            width += (gw + 1) * scale;
+        }
+        return width;
+    }
+
+    /**
+     * Computes screen-pixel quads and normalized texture coordinates for GPU text batching.
+     */
+    public List<GlyphQuad> layoutString(String text, float startX, float startY, float scale) {
+        if (text == null || text.isEmpty() || scale <= 0.0f || !Float.isFinite(scale)
+                || texWidth <= 0 || texHeight <= 0) {
+            return List.of();
+        }
+        List<GlyphQuad> quads = new ArrayList<>(text.length());
+        float curX = startX;
+        float curY = startY;
+        final int gh = 16;
+
+        for (char ch : text.toCharArray()) {
+            if (ch == '\n') {
+                curX = startX;
+                curY += 16.0f * scale;
+                continue;
+            }
+            int index = mapCharToIndex(ch);
+            if (index < 0) {
+                continue;
+            }
+            int minX = glyphMinX(index);
+            int maxX = glyphMaxX(index);
+            int gw = (maxX - minX) + 1;
+            int gx = (index % 64) * 16;
+            int gy = (index / 64) * 16;
+
+            if (ch != ' ' && gx + minX >= 0 && gx + minX + gw <= texWidth && gy >= 0 && gy + gh <= texHeight) {
+                float u0 = (gx + minX) / (float) texWidth;
+                float v0 = gy / (float) texHeight;
+                float u1 = (gx + minX + gw) / (float) texWidth;
+                float v1 = (gy + gh) / (float) texHeight;
+                quads.add(new GlyphQuad(curX, curY, curX + gw * scale, curY + gh * scale, u0, v0, u1, v1));
+            }
+            curX += (gw + 1) * scale;
+        }
+        return quads;
+    }
+
+    /**
+     * Packs the decoded atlas into top-to-bottom RGBA8888 bytes for OpenGL texture upload.
+     */
+    public byte[] toRgbaBytes() {
+        int[] argb = new int[texWidth * texHeight];
+        mojiTexture.getRGB(0, 0, texWidth, texHeight, argb, 0, texWidth);
+        byte[] rgba = new byte[argb.length * 4];
+        for (int i = 0; i < argb.length; i++) {
+            int px = argb[i];
+            int base = i * 4;
+            rgba[base] = (byte) ((px >>> 16) & 0xFF);
+            rgba[base + 1] = (byte) ((px >>> 8) & 0xFF);
+            rgba[base + 2] = (byte) (px & 0xFF);
+            rgba[base + 3] = (byte) ((px >>> 24) & 0xFF);
+        }
+        return rgba;
+    }
+
+    private static int glyphMinX(int index) {
+        return index < CHAR_WIDTHS.length ? CHAR_WIDTHS[index][0] : 0;
+    }
+
+    private static int glyphMaxX(int index) {
+        return index < CHAR_WIDTHS.length ? CHAR_WIDTHS[index][1] : 15;
     }
 
     /**
@@ -186,11 +290,8 @@ public final class FontMojiRenderer {
             int index = mapCharToIndex(ch);
             if (index < 0) continue;
 
-            int minX = 0, maxX = 15;
-            if (index < CHAR_WIDTHS.length) {
-                minX = CHAR_WIDTHS[index][0];
-                maxX = CHAR_WIDTHS[index][1];
-            }
+            int minX = glyphMinX(index);
+            int maxX = glyphMaxX(index);
             int gw = (maxX - minX) + 1;
             int gh = 16;
 

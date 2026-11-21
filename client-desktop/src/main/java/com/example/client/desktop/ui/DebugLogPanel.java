@@ -4,6 +4,7 @@ import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.type.ImBoolean;
 import jakarta.inject.Singleton;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalTime;
@@ -20,6 +21,8 @@ public class DebugLogPanel {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final Deque<String> lines = new ArrayDeque<>(MAX_LINES);
     private final ImBoolean autoScroll = new ImBoolean(true);
+    @Getter private boolean screenshotRequested;
+    @Getter private boolean renderDocCaptureRequested;
 
     public synchronized void log(String message) {
         if (lines.size() >= MAX_LINES) {
@@ -39,6 +42,10 @@ public class DebugLogPanel {
         ImGui.checkbox("Auto scroll", autoScroll);
         ImGui.sameLine();
         if (ImGui.button("Clear")) lines.clear();
+        ImGui.sameLine();
+        if (ImGui.button("Screenshot [F11]")) screenshotRequested = true;
+        ImGui.sameLine();
+        if (ImGui.button("RenderDoc [F12]")) renderDocCaptureRequested = true;
         ImGui.separator();
         ImGui.beginChild("log-scroll");
         for (String line : lines) {
@@ -49,5 +56,10 @@ public class DebugLogPanel {
         }
         ImGui.endChild();
         ImGui.end();
+    }
+
+    public void clearIntents() {
+        screenshotRequested = false;
+        renderDocCaptureRequested = false;
     }
 }

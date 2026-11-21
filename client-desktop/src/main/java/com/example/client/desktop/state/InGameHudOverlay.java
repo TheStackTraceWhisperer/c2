@@ -1,12 +1,16 @@
 package com.example.client.desktop.state;
 
 import com.example.asset.interaction.ZoneInteraction;
+import com.example.client.desktop.scene.SceneActor;
+import com.example.client.desktop.scene.WorldScene;
 import com.example.client.desktop.util.MatrixMath;
 import com.example.client.interp.InterpolatedEntityState;
 import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
+import com.ffxi.viewer.model.LoadedCharacter;
+import com.ffxi.viewer.renderer.FontMojiGlRenderer;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
@@ -82,12 +86,44 @@ public final class InGameHudOverlay {
             int fbHeight,
             long now
     ) {
+        renderNameplates(clientState, localCharacterName, proj, view, fbWidth, fbHeight, now, null, null, null);
+    }
+
+    public void renderNameplates(
+            ClientState clientState,
+            String localCharacterName,
+            float[] proj,
+            float[] view,
+            int fbWidth,
+            int fbHeight,
+            long now,
+            WorldScene worldScene,
+            FontMojiGlRenderer fontMojiGlRenderer,
+            ZoneInteraction activeZoneline
+    ) {
+        boolean useFontMoji = fontMojiGlRenderer != null;
+        if (useFontMoji) {
+            fontMojiGlRenderer.begin(fbWidth, fbHeight);
+        }
+
+        SceneActor localActor = worldScene != null ? worldScene.getLocalPlayerActor() : null;
+        float localOffsetY = resolveActorNameplateOffsetY(localActor, 2.0f);
         float[] playerScreen = MatrixMath.projectToScreen(
-                clientState.getX(), clientState.getY() - 2.0f, clientState.getZ(),
+                clientState.getX(), clientState.getY() - localOffsetY, clientState.getZ(),
                 proj, view, fbWidth, fbHeight
         );
         if (playerScreen != null) {
-            drawBillboardLabel(playerScreen[0], playerScreen[1], "##nameplate_local", localCharacterName, 0.4f, 0.8f, 1.0f);
+            if (useFontMoji) {
+                fontMojiGlRenderer.queueCenteredText(
+                        localCharacterName,
+                        playerScreen[0],
+                        playerScreen[1],
+                        1.0f,
+                        0.51f, 0.82f, 1.0f, 1.0f
+                );
+            } else {
+                drawBillboardLabel(playerScreen[0], playerScreen[1], "##nameplate_local", localCharacterName, 0.4f, 0.8f, 1.0f);
+            }
         }
 
         for (var entity : clientState.getRemoteEntities().values()) {
@@ -98,8 +134,10 @@ public final class InGameHudOverlay {
                 continue;
             }
 
+            SceneActor remoteActor = worldScene != null ? worldScene.getActor(entity.characterId()) : null;
+            float remoteOffsetY = resolveActorNameplateOffsetY(remoteActor, 1.9f);
             float[] screen = MatrixMath.projectToScreen(
-                    interp.x(), interp.y() - 1.9f, interp.z(),
+                    interp.x(), interp.y() - remoteOffsetY, interp.z(),
                     proj, view, fbWidth, fbHeight
             );
             if (screen != null) {
@@ -107,12 +145,47 @@ public final class InGameHudOverlay {
                 String label = isNpc
                         ? "[NPC] " + entity.name()
                         : entity.name() + " (" + JobId.toAbbreviation(entity.mainJobId()) + " Lv" + entity.level() + ")";
-                float r = isNpc ? 0.95f : 0.40f;
-                float g = isNpc ? 0.80f : 0.80f;
-                float b = isNpc ? 0.25f : 1.00f;
-                drawBillboardLabel(screen[0], screen[1], "##nameplate_" + entity.characterId(), label, r, g, b);
+                if (useFontMoji) {
+                    float r = isNpc ? 1.00f : 0.51f;
+                    float g = isNpc ? 0.86f : 0.82f;
+                    float b = isNpc ? 0.39f : 1.00f;
+                    fontMojiGlRenderer.queueCenteredText(label, screen[0], screen[1], 1.0f, r, g, b, 1.0f);
+                } else {
+                    float r = isNpc ? 0.95f : 0.40f;
+                    float g = isNpc ? 0.80f : 0.80f;
+                    float b = isNpc ? 0.25f : 1.00f;
+                    drawBillboardLabel(screen[0], screen[1], "##nameplate_" + entity.characterId(), label, r, g, b);
+                }
             }
         }
+
+        if (useFontMoji) {
+            if (activeZoneline != null) {
+                fontMojiGlRenderer.queueCenteredText(
+                        "[ZONELINE] Gate to Zone #" + activeZoneline.getDestId(),
+                        fbWidth * 0.5f,
+                        36.0f,
+                        1.0f,
+                        0.55f, 0.96f, 0.60f, 1.0f
+                );
+            }
+            fontMojiGlRenderer.flush();
+        }
+    }
+
+    static float resolveActorNameplateOffsetY(SceneActor actor, float fallbackHeight) {
+        if (actor == null || actor.getVisualModel() == null) {
+            return fallbackHeight;
+        }
+        LoadedCharacter character = actor.getVisualModel().getCharacter();
+        if (character == null) {
+            return fallbackHeight;
+        }
+        float height = character.feetOffsetY() * 2.0f * character.effectiveScale();
+        if (!Float.isFinite(height) || height <= 0.25f) {
+            return fallbackHeight;
+        }
+        return height + 0.35f;
     }
 
     public static void drawBillboardLabel(float screenX, float screenY, String windowId, String text, float r, float g, float b) {

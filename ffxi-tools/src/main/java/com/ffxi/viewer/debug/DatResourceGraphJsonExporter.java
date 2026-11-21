@@ -1,4 +1,4 @@
-package com.ffxi.export;
+package com.ffxi.viewer.debug;
 
 import com.ffxi.model.*;
 

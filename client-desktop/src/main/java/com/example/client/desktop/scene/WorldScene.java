@@ -680,7 +680,7 @@ public class WorldScene implements AutoCloseable {
             } catch (Exception ignored) {}
         }
 
-        String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/1/30.DAT" : null);
+        String relRom = (zoneId == 230) ? "ROM/1/31.DAT" : (zoneId == 100 ? "ROM/0/120.DAT" : null);
         if (relRom != null) {
             Optional<Path> installedPath = FfxiPathConfig.resolveRomFile(relRom);
             if (installedPath.isPresent() && Files.isRegularFile(installedPath.get())) {

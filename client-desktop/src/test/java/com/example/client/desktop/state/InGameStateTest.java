@@ -17,6 +17,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -36,14 +39,16 @@ class InGameStateTest {
 
     @Test
     @DisplayName("InGameState can locate and read West Ronfaure DAT bytes")
-    void testLoadZoneBytesWestRonfaure() {
-        assumeTrue(FfxiPathConfig.resolveRomFile("ROM/1/30.DAT").isPresent(),
-                "Retail FFXI ROM/1/30.DAT not found under " + FfxiPathConfig.resolveFfxiInstallDirectory());
+    void testLoadZoneBytesWestRonfaure() throws Exception {
+        Path romPath = FfxiPathConfig.resolveRomFile("ROM/0/120.DAT").orElse(null);
+        assumeTrue(romPath != null,
+                "Retail FFXI ROM/0/120.DAT not found under " + FfxiPathConfig.resolveFfxiInstallDirectory());
         InGameState state = createTestState(0L);
         byte[] bytes = state.loadZoneBytes(100);
 
         assertNotNull(bytes, "Zone 100 DAT bytes should be resolved");
-        assertTrue(bytes.length > 1000, "Zone 100 DAT bytes should contain valid file data");
+        assertArrayEquals(Files.readAllBytes(romPath), bytes,
+                "Zone 100 DAT bytes must match retail West Ronfaure ROM/0/120.DAT");
     }
 
     @Test

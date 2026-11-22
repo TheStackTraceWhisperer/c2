@@ -1,10 +1,15 @@
 package com.example.zone.collision;
 
+import com.example.asset.collision.CollisionMap;
 import com.example.asset.config.FfxiPathConfig;
+import com.example.asset.geometry.RayHit;
+import com.example.asset.geometry.Vector3f;
 import com.example.config.ZoneServerProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -110,5 +115,43 @@ class ZoneCollisionServiceTest {
 
         assertFalse(res.reconciled());
         assertEquals(100.0f, res.y(), 0.001f);
+    }
+
+    @Test
+    @DisplayName("Dynamic ZoneDatLoader resolves West Ronfaure (100) and Port San d'Oria (232) collision meshes")
+    void testLoadZone100WestRonfaureAndOtherRetailZones() {
+        assumeTrue(
+                FfxiPathConfig.resolveRomFile("ROM/0/120.DAT").isPresent(),
+                "Skipping test: retail FFXI Zone 100 DAT (ROM/0/120.DAT) not present"
+        );
+
+        Optional<CollisionMap> westRonfaureOpt = collisionService.loadZoneCollision(100);
+        assertTrue(westRonfaureOpt.isPresent(), "Zone 100 (West Ronfaure) must resolve and load dynamically");
+        CollisionMap westRonfaure = westRonfaureOpt.get();
+        assertTrue(westRonfaure.allWorldSpaceTriangles().size() > 50_000,
+                "Expected outdoor West Ronfaure collision mesh (>50k triangles), got "
+                        + westRonfaure.allWorldSpaceTriangles().size());
+
+        boolean foundGround = false;
+        for (int bz = 0; bz < westRonfaure.totalCellsZ() && !foundGround; bz += 4) {
+            for (int bx = 0; bx < westRonfaure.totalCellsX() && !foundGround; bx += 4) {
+                float[] center = westRonfaure.getBlockCenterXZ(bx, bz);
+                if (center == null) {
+                    continue;
+                }
+                Optional<RayHit> hit = westRonfaure.raycastFloor(
+                        new Vector3f(center[0], -2000.0f, center[1]), 0.0f, Float.POSITIVE_INFINITY, true);
+                if (hit.isPresent() && Float.isFinite(hit.get().point().y())) {
+                    foundGround = true;
+                }
+            }
+        }
+        assertTrue(foundGround, "Expected valid floor raycast hit in West Ronfaure (Zone 100)");
+
+        if (FfxiPathConfig.resolveRomFile("ROM/0/113.DAT").isPresent()) {
+            Optional<CollisionMap> portSanDoriaOpt = collisionService.loadZoneCollision(232);
+            assertTrue(portSanDoriaOpt.isPresent(), "Zone 232 (Port San d'Oria) must resolve dynamically");
+            assertFalse(portSanDoriaOpt.get().allWorldSpaceTriangles().isEmpty());
+        }
     }
 }

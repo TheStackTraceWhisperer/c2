@@ -29,6 +29,9 @@ public final class RayTriangleCollider {
         if (Math.abs(d) <= EPSILON) {
             return Optional.empty(); // Parallel to triangle plane
         }
+        if (tri.v1().sub(tri.v0()).cross(tri.v2().sub(tri.v0())).lengthSquared() < 1e-12f) {
+            return Optional.empty(); // Degenerate zero-area triangle
+        }
 
         float planeConstant = normal.dot(tri.v0());
         float rayDistance = (planeConstant - normal.dot(origin)) / d;

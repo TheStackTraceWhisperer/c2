@@ -1,9 +1,15 @@
 package com.example.client.desktop.scene;
 
-import com.ffxi.model.ZoneCollisionMap;
-import com.ffxi.model.ZoneCollisionObject;
-import com.ffxi.model.ZoneCollisionObjectGroup;
-import com.ffxi.model.ZoneCollisionTriangle;
+import com.example.asset.collision.CollisionMap;
+import com.example.asset.collision.CollisionMesh;
+import com.example.asset.collision.CollisionObject;
+import com.example.asset.collision.CollisionObjectGroup;
+import com.example.asset.collision.CollisionTransform;
+import com.example.asset.geometry.BoundingBox;
+import com.example.asset.geometry.CollisionTriangle;
+import com.example.asset.geometry.Matrix4f;
+import com.example.asset.geometry.TerrainType;
+import com.example.asset.geometry.TriFlags;
 import com.ffxi.viewer.collision.ZoneCollisionSystem;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.DisplayName;
@@ -16,13 +22,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SceneCameraTest {
 
-    private static float[] identityMatrix() {
-        return new float[]{
-                1f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f,
-                0f, 0f, 1f, 0f,
-                0f, 0f, 0f, 1f
-        };
+    private static com.example.asset.geometry.Vector3f v(float x, float y, float z) {
+        return new com.example.asset.geometry.Vector3f(x, y, z);
+    }
+
+    private static CollisionTriangle tri(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float x2, float y2, float z2,
+            float nx, float ny, float nz,
+            int flags
+    ) {
+        return new CollisionTriangle(v(x0, y0, z0), v(x1, y1, z1), v(x2, y2, z2), v(nx, ny, nz), new TriFlags(flags), TerrainType.STONE);
+    }
+
+    private static ZoneCollisionSystem singleObjectCollision(List<CollisionTriangle> triangles) {
+        BoundingBox.Builder bbox = BoundingBox.builder();
+        for (CollisionTriangle tri : triangles) {
+            bbox.include(tri.v0()).include(tri.v1()).include(tri.v2());
+        }
+        CollisionMesh mesh = new CollisionMesh(1, triangles, bbox.build());
+        Matrix4f identity = new Matrix4f();
+        CollisionTransform transform = new CollisionTransform(1, identity, identity, 0, 0, null);
+        CollisionObject obj = new CollisionObject(1, mesh, transform);
+        CollisionObjectGroup group = new CollisionObjectGroup(1, List.of(obj));
+        return new ZoneCollisionSystem(new CollisionMap(1, 1, 64, 64, 1, 1, new CollisionObjectGroup[][]{{group}}));
     }
 
     @Test
@@ -246,15 +270,11 @@ class SceneCameraTest {
     @Test
     @DisplayName("applyCollisionClamp pulls camera eye in front of a vertical wall while preserving desired distance")
     void testCollisionClampPullsEyeInFrontOfWall() {
-        List<ZoneCollisionTriangle> wallTris = List.of(
-                new ZoneCollisionTriangle(-10f, -10f, -3f, 10f, -10f, -3f, 10f, 5f, -3f, 0f, 0f, 1f),
-                new ZoneCollisionTriangle(-10f, -10f, -3f, 10f, 5f, -3f, -10f, 5f, -3f, 0f, 0f, 1f)
+        List<CollisionTriangle> wallTris = List.of(
+                tri(-10f, -10f, -3f, 10f, -10f, -3f, 10f, 5f, -3f, 0f, 0f, 1f, 0x40),
+                tri(-10f, -10f, -3f, 10f, 5f, -3f, -10f, 5f, -3f, 0f, 0f, 1f, 0x40)
         );
-        ZoneCollisionObject obj = new ZoneCollisionObject(wallTris, identityMatrix());
-        ZoneCollisionObjectGroup group = new ZoneCollisionObjectGroup(List.of(obj));
-        ZoneCollisionSystem collisionSystem = new ZoneCollisionSystem(
-                new ZoneCollisionMap(1, 1, 64, 64, 1, 1, new ZoneCollisionObjectGroup[][]{{group}})
-        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(wallTris);
 
         SceneCamera camera = new SceneCamera();
         camera.setTarget(0.0f, 0.0f, 0.0f);
@@ -274,15 +294,11 @@ class SceneCameraTest {
     @DisplayName("applyCollisionClamp prevents camera eye from dropping beneath the floor surface")
     void testCollisionClampPreventsUndergroundEye() {
         // Upward floor at y = 0 (-Y = Up in native FFXI)
-        List<ZoneCollisionTriangle> floorTris = List.of(
-                new ZoneCollisionTriangle(-20f, 0f, -20f, 20f, 0f, -20f, 20f, 0f, 20f, 0f, -1f, 0f),
-                new ZoneCollisionTriangle(-20f, 0f, -20f, 20f, 0f, 20f, -20f, 0f, 20f, 0f, -1f, 0f)
+        List<CollisionTriangle> floorTris = List.of(
+                tri(-20f, 0f, -20f, 20f, 0f, -20f, 20f, 0f, 20f, 0f, -1f, 0f, 0),
+                tri(-20f, 0f, -20f, 20f, 0f, 20f, -20f, 0f, 20f, 0f, -1f, 0f, 0)
         );
-        ZoneCollisionObject obj = new ZoneCollisionObject(floorTris, identityMatrix());
-        ZoneCollisionObjectGroup group = new ZoneCollisionObjectGroup(List.of(obj));
-        ZoneCollisionSystem collisionSystem = new ZoneCollisionSystem(
-                new ZoneCollisionMap(1, 1, 64, 64, 1, 1, new ZoneCollisionObjectGroup[][]{{group}})
-        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(floorTris);
 
         SceneCamera camera = new SceneCamera();
         camera.setTarget(0.0f, 0.0f, 0.0f);
@@ -301,15 +317,11 @@ class SceneCameraTest {
     @Test
     @DisplayName("applyCollisionClamp leaves CUTSCENE mode camera untouched")
     void testCollisionClampIgnoresCutsceneMode() {
-        List<ZoneCollisionTriangle> wallTris = List.of(
-                new ZoneCollisionTriangle(-10f, -10f, -3f, 10f, -10f, -3f, 10f, 5f, -3f, 0f, 0f, 1f),
-                new ZoneCollisionTriangle(-10f, -10f, -3f, 10f, 5f, -3f, -10f, 5f, -3f, 0f, 0f, 1f)
+        List<CollisionTriangle> wallTris = List.of(
+                tri(-10f, -10f, -3f, 10f, -10f, -3f, 10f, 5f, -3f, 0f, 0f, 1f, 0x40),
+                tri(-10f, -10f, -3f, 10f, 5f, -3f, -10f, 5f, -3f, 0f, 0f, 1f, 0x40)
         );
-        ZoneCollisionObject obj = new ZoneCollisionObject(wallTris, identityMatrix());
-        ZoneCollisionObjectGroup group = new ZoneCollisionObjectGroup(List.of(obj));
-        ZoneCollisionSystem collisionSystem = new ZoneCollisionSystem(
-                new ZoneCollisionMap(1, 1, 64, 64, 1, 1, new ZoneCollisionObjectGroup[][]{{group}})
-        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(wallTris);
 
         SceneCamera camera = new SceneCamera();
         camera.setCutsceneCamera(new Vector3f(0f, -1f, -10f), new Vector3f(0f, -1f, 0f), new Vector3f(0f, -1f, 0f), 50.0f);

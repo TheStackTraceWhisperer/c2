@@ -1,5 +1,6 @@
 package com.ffxi.model;
 
+import com.example.asset.collision.CollisionMap;
 import java.util.List;
 
 public record ZoneDefResource(
@@ -25,7 +26,7 @@ public record ZoneDefResource(
         List<List<Integer>> cullingTables,
         ZoneSpacePartitionNode spacePartitioningTreeRoot,
         List<String> pointLightLinks,
-        ZoneCollisionMap collisionMap
+        CollisionMap collisionMap
 ) implements ResourceNode {
     public ZoneDefResource {
         zoneObjects = List.copyOf(zoneObjects != null ? zoneObjects : List.of());

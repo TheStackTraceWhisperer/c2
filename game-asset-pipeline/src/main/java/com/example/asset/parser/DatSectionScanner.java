@@ -16,18 +16,26 @@ public final class DatSectionScanner {
     }
 
     /**
-     * Scans through all sequential sections in a DAT stream until the end of the buffer
-     * or an S00_END section is encountered.
+     * Scans through all sequential sections in a DAT stream until the enclosing root directory
+     * closes via {@code S00_END}, the end of the buffer is reached, or an invalid section size
+     * is encountered. Nested {@code S01_DIRECTORY} blocks increment directory depth so inner
+     * {@code S00_END} markers close only their local directory.
      */
     public static List<DatSectionHeader> scanSections(DatByteReader reader) {
         List<DatSectionHeader> headers = new ArrayList<>();
+        int directoryDepth = 0;
 
         while (reader.remaining() >= 16) {
             DatSectionHeader header = DatSectionHeader.read(reader);
             headers.add(header);
 
-            if (header.sectionType() == SectionType.S00_END) {
-                break;
+            if (header.sectionType() == SectionType.S01_DIRECTORY) {
+                directoryDepth++;
+            } else if (header.sectionType() == SectionType.S00_END) {
+                directoryDepth--;
+                if (directoryDepth <= 0) {
+                    break;
+                }
             }
 
             int nextOffset = header.sectionEndPosition();

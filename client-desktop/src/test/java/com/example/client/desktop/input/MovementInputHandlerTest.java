@@ -1,11 +1,18 @@
 package com.example.client.desktop.input;
 
+import com.example.asset.collision.CollisionMap;
+import com.example.asset.collision.CollisionMesh;
+import com.example.asset.collision.CollisionObject;
+import com.example.asset.collision.CollisionObjectGroup;
+import com.example.asset.collision.CollisionTransform;
+import com.example.asset.geometry.BoundingBox;
+import com.example.asset.geometry.CollisionTriangle;
+import com.example.asset.geometry.Matrix4f;
+import com.example.asset.geometry.TerrainType;
+import com.example.asset.geometry.TriFlags;
+import com.example.asset.geometry.Vector3f;
 import com.example.client.desktop.scene.SceneCamera;
 import com.example.common.protocol.MovementFlags;
-import com.ffxi.model.ZoneCollisionMap;
-import com.ffxi.model.ZoneCollisionObject;
-import com.ffxi.model.ZoneCollisionObjectGroup;
-import com.ffxi.model.ZoneCollisionTriangle;
 import com.ffxi.viewer.collision.ZoneCollisionSystem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -292,9 +299,9 @@ class MovementInputHandlerTest {
     @DisplayName("Client movement prediction snaps upward along sloped floor within MAX_STEP_HEIGHT")
     void testClientCollisionFloorClamping() {
         // Elevated ramp platform at y = -0.6m (-Y = Up in native FFXI, normal pointing -Y)
-        List<ZoneCollisionTriangle> rampTris = List.of(
-                new ZoneCollisionTriangle(-20f, -0.6f, -20f, 20f, -0.6f, -20f, 20f, -0.6f, 20f, 0f, -1f, 0f),
-                new ZoneCollisionTriangle(-20f, -0.6f, -20f, 20f, -0.6f, 20f, -20f, -0.6f, 20f, 0f, -1f, 0f)
+        List<CollisionTriangle> rampTris = List.of(
+                tri(-20f, -0.6f, -20f, 20f, -0.6f, -20f, 20f, -0.6f, 20f, 0f, -1f, 0f, 0),
+                tri(-20f, -0.6f, -20f, 20f, -0.6f, 20f, -20f, -0.6f, 20f, 0f, -1f, 0f, 0)
         );
         ZoneCollisionSystem collisionSystem = singleObjectCollision(rampTris);
 
@@ -316,9 +323,9 @@ class MovementInputHandlerTest {
     @Test
     @DisplayName("Client movement prediction stops before a vertical collision wall")
     void testClientCollisionWallStop() {
-        List<ZoneCollisionTriangle> wallTris = List.of(
-                new ZoneCollisionTriangle(-10f, -5f, 0.5f, 10f, -5f, 0.5f, 10f, 2f, 0.5f, 0f, 0f, -1f),
-                new ZoneCollisionTriangle(-10f, -5f, 0.5f, 10f, 2f, 0.5f, -10f, 2f, 0.5f, 0f, 0f, -1f)
+        List<CollisionTriangle> wallTris = List.of(
+                tri(-10f, -5f, 0.5f, 10f, -5f, 0.5f, 10f, 2f, 0.5f, 0f, 0f, -1f, 0),
+                tri(-10f, -5f, 0.5f, 10f, 2f, 0.5f, -10f, 2f, 0.5f, 0f, 0f, -1f, 0)
         );
         ZoneCollisionSystem collisionSystem = singleObjectCollision(wallTris);
 
@@ -337,15 +344,58 @@ class MovementInputHandlerTest {
         assertTrue(res.z() < 0.5f, "Client predicted position must not penetrate wall at z=0.5");
     }
 
-    private static ZoneCollisionSystem singleObjectCollision(List<ZoneCollisionTriangle> tris) {
-        float[] identity = new float[]{
-                1f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f,
-                0f, 0f, 1f, 0f,
-                0f, 0f, 0f, 1f
-        };
-        ZoneCollisionObject obj = new ZoneCollisionObject(tris, identity);
-        ZoneCollisionObjectGroup group = new ZoneCollisionObjectGroup(List.of(obj));
-        return new ZoneCollisionSystem(new ZoneCollisionMap(1, 1, 64, 64, 1, 1, new ZoneCollisionObjectGroup[][]{{group}}));
+    @Test
+    @DisplayName("Client movement prediction honors TriFlags.isHitWall() barriers")
+    void testClientCollisionBarrierFlagStop() {
+        // Geometrically valid 53-degree ramp/barrier passing through (y=-0.8, z=0.5) with normal (0, -0.6, -0.8);
+        // |ny| >= WALL_NORMAL_Y_MAX so only TriFlags(0x40) marks it as an impassable wall barrier.
+        List<CollisionTriangle> barrierTris = List.of(
+                tri(-10f, -4.8f, 3.5f, 10f, 3.2f, -2.5f, 10f, -4.8f, 3.5f, 0f, -0.6f, -0.8f, 0x40),
+                tri(-10f, -4.8f, 3.5f, -10f, 3.2f, -2.5f, 10f, 3.2f, -2.5f, 0f, -0.6f, -0.8f, 0x40)
+        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(barrierTris);
+
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(0.0f, 0.0f, 0.0f);
+        SceneCamera camera = new SceneCamera();
+
+        var res = handler.compute(
+                true, false, false, false, false, camera,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.1f, 100L, collisionSystem
+        );
+
+        assertEquals(0.5f - MovementInputHandler.WALL_PULLBACK_MARGIN, res.z(), 0.01f);
+        assertTrue(res.z() < 0.5f, "Client predicted position must honor TriFlags.isHitWall()");
+    }
+
+    private static CollisionTriangle tri(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float x2, float y2, float z2,
+            float nx, float ny, float nz,
+            int flags
+    ) {
+        return new CollisionTriangle(
+                new Vector3f(x0, y0, z0),
+                new Vector3f(x1, y1, z1),
+                new Vector3f(x2, y2, z2),
+                new Vector3f(nx, ny, nz),
+                new TriFlags(flags),
+                TerrainType.STONE
+        );
+    }
+
+    private static ZoneCollisionSystem singleObjectCollision(List<CollisionTriangle> tris) {
+        BoundingBox.Builder bbox = BoundingBox.builder();
+        for (CollisionTriangle tri : tris) {
+            bbox.include(tri.v0()).include(tri.v1()).include(tri.v2());
+        }
+        CollisionMesh mesh = new CollisionMesh(1, tris, bbox.build());
+        Matrix4f identity = new Matrix4f();
+        CollisionTransform transform = new CollisionTransform(1, identity, identity, 0, 0, null);
+        CollisionObject obj = new CollisionObject(1, mesh, transform);
+        CollisionObjectGroup group = new CollisionObjectGroup(1, List.of(obj));
+        return new ZoneCollisionSystem(new CollisionMap(1, 1, 64, 64, 1, 1, new CollisionObjectGroup[][]{{group}}));
     }
 }

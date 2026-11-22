@@ -3,6 +3,7 @@ package com.ffxi.viewer.model;
 import lombok.extern.slf4j.Slf4j;
 import com.ffxi.crypto.KeyTables;
 
+import com.example.asset.collision.CollisionMap;
 import com.ffxi.io.ByteReader;
 import com.ffxi.io.FileTableManager;
 import com.ffxi.io.FileUtil;
@@ -11,7 +12,6 @@ import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.model.DirectoryResource;
 import com.ffxi.model.ResourceNode;
 import com.ffxi.model.TextureResource;
-import com.ffxi.model.ZoneCollisionMap;
 import com.ffxi.model.ZoneDefResource;
 import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshResource;
@@ -244,7 +244,7 @@ public final class ZoneModelLoader {
         log.info(String.format("[LOADER] Zone %d: %d meshes total, %d with objects, %d standalone, %d chunk instances", zoneId, allMeshes.size(), meshesWithObjects, meshesWithoutObjects, totalChunkInstances));
 
         ZoneCollisionSystem collisionSystem = null;
-        ZoneCollisionMap collisionMap = findCollisionMap(zoneDat.graph().rootDirectory());
+        CollisionMap collisionMap = findCollisionMap(zoneDat.graph().rootDirectory());
         if (collisionMap != null) {
             collisionSystem = new ZoneCollisionSystem(collisionMap);
             log.info(String.format("[LOADER] Zone %d: collision map loaded", zoneId));
@@ -321,7 +321,7 @@ public final class ZoneModelLoader {
         return null;
     }
 
-    private static ZoneCollisionMap findCollisionMap(DirectoryResource dir) {
+    private static CollisionMap findCollisionMap(DirectoryResource dir) {
         if (dir == null) {
             return null;
         }
@@ -330,7 +330,7 @@ public final class ZoneModelLoader {
                 return zoneDef.collisionMap();
             }
             if (child instanceof DirectoryResource subDir) {
-                ZoneCollisionMap collisionMap = findCollisionMap(subDir);
+                CollisionMap collisionMap = findCollisionMap(subDir);
                 if (collisionMap != null) {
                     return collisionMap;
                 }

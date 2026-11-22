@@ -1,6 +1,6 @@
 # Dual Collision Stack Unification Plan (`game-asset-pipeline` Phase 4)
 
-**Status**: Planned follow-up after `006-cleanup-and-polish` Phases 1–3  
+**Status**: Completed in Phase 4 on `006-cleanup-and-polish`  
 **Modules Impacted**: `game-asset-pipeline`, `platform-modulith`, `client-desktop`
 
 ---
@@ -37,10 +37,10 @@ Converge onto **`com.example.asset.collision.CollisionMap`** parsed from a singl
 
 ---
 
-## 3. Incremental Migration Sequence
+## 3. Completed Migration Sequence
 
-1. **Step A — Harden `CollisionMap`**: Port `ZoneCollisionMap`'s zero-subblock clamping and `getObjectsAlongSegment` into `com.example.asset.collision.CollisionMap`, backed by unit tests migrated from `ZoneCollisionMapTest`.
-2. **Step B — Unify Parser Output**: Have `DatParser.parseZoneDefSection(...)` delegate collision section decoding to the unified `ZoneDefParser` / `CollisionMap` builder (carrying `TriFlags` and `TerrainType`) and attach `CollisionMap` to `ZoneDefResource`.
-3. **Step C — Adapt Client Consumers**: Update `ZoneCollisionSystem` and `CollisionMeshRenderer` in `client-desktop` to wrap `CollisionMap` (`findFloorY`, `raycastSegmentDistance`, `raycastWallDistance`, and `getAllWorldTriangles` reading pre-transformed `worldSpaceTriangles` directly).
-4. **Step D — Verify Equivalence**: Run deterministic comparison assertions over retail Zone #230 and Zone #100 verifying `findFloorY` and `raycastSegmentDistance` parity between the old `ZoneCollisionMap` and unified `CollisionMap` across a grid of coordinates.
-5. **Step E — Retire Legacy Types**: Delete `ZoneCollisionMap`, `ZoneCollisionObject`, `ZoneCollisionObjectGroup`, and `ZoneCollisionTriangle` once `DatParser`, `ZoneDefResource`, `ZoneCollisionSystem`, and `ZoneModelLoader` compile cleanly with zero references remaining.
+1. **Step A — Harden `CollisionMap` (Done)**: Ported zero-subblock clamping, null/bounds safety, `getBlockCenterXZ(...)`, `allObjects()`, `getObjectsAlongSegment(...)`, and segment-wide `raycastSegment(start, end, minDistance, triangleFilter)` into `com.example.asset.collision.CollisionMap`, plus zero-area degenerate triangle rejection in `RayTriangleCollider`, backed by `CollisionMapTest`.
+2. **Step B — Unify Parser Output (Done)**: Extracted decryption-free `ZoneDefParser.parseCollisionMeshSection(...)` so both `ZoneDefParser` and `DatParser.parseZoneDefSection(...)` invoke one binary collision decoder carrying `TriFlags` and `TerrainType` into `ZoneDefResource.collisionMap()`.
+3. **Step C — Adapt Client Consumers (Done)**: Updated `ZoneCollisionSystem`, `ZoneModelLoader`, `CollisionMeshRenderer`, and `WorldScene` to consume `CollisionMap` directly and deleted redundant per-raycast matrix math and `TransformedTriangle`.
+4. **Step D — Verify Equivalence (Done)**: Added retail DAT parity tests across Zone #230 and Zone #100 in `ZoneDefParserTest` and `ZoneModelLoaderIntegrationTest`.
+5. **Step E — Retire Legacy Types (Done)**: Deleted `ZoneCollisionMap`, `ZoneCollisionObject`, `ZoneCollisionObjectGroup`, `ZoneCollisionTriangle`, and `ZoneCollisionMapTest`.

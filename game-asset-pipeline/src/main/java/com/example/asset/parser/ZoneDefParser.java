@@ -27,6 +27,9 @@ import java.util.Optional;
  */
 public final class ZoneDefParser {
 
+    /** Upper bound on zone collision grid cells accepted from untrusted data. */
+    private static final long MAX_COLLISION_GRID_CELLS = 1L << 22;
+
     private ZoneDefParser() {
     }
 
@@ -62,7 +65,7 @@ public final class ZoneDefParser {
         int nodeCount = keyNodeData & 0x00FFFFFF;
 
         int collisionMeshOffset = reader.nextI32();
-        if (collisionMeshOffset == 0) {
+        if (collisionMeshOffset <= 0) {
             return null; // Zones without collision mesh (e.g. ship hulls)
         }
 
@@ -72,28 +75,68 @@ public final class ZoneDefParser {
         int blockWidth = reader.nextU8();
         int blockLength = reader.nextU8();
 
-        int subBlocksX = blockWidth / 4;
-        int subBlocksZ = blockLength / 4;
-
         int spacePartitioningTreeOffset = reader.nextI32();
         int cullingTablesOffset = reader.nextI32();
         int pointLightOffset = reader.nextI32();
         int unk = reader.nextI32();
 
-        // Navigate to collision mesh section
-        reader.position(collisionMeshOffset + header.dataStartPosition());
+        return parseCollisionMeshSection(
+                reader,
+                header.dataStartPosition(),
+                header.sectionEndPosition(),
+                collisionMeshOffset,
+                zoneBlocksX,
+                zoneBlocksZ,
+                blockWidth,
+                blockLength
+        );
+    }
+
+    /**
+     * Parses the collision mesh section from an already-decrypted {@code S1C_ZONE_DEF} buffer.
+     * Callers must ensure {@link com.example.asset.decoder.ZoneDecrypt#decryptZoneObjects} (or equivalent)
+     * has already been applied once before invoking this method.
+     */
+    public static CollisionMap parseCollisionMeshSection(
+            DatByteReader reader,
+            int dataStartPosition,
+            int sectionEndPosition,
+            int collisionMeshOffset,
+            int zoneBlocksX,
+            int zoneBlocksZ,
+            int blockWidth,
+            int blockLength
+    ) {
+        if (collisionMeshOffset <= 0 || reader == null) {
+            return null;
+        }
+
+        int effectiveSectionEnd = Math.min(sectionEndPosition, reader.capacity());
+        long absCollOffsetLong = (long) dataStartPosition + collisionMeshOffset;
+        if (absCollOffsetLong < dataStartPosition || absCollOffsetLong + 32L > effectiveSectionEnd) {
+            throw new IllegalStateException("Collision mesh header out of range at 0x" + Long.toHexString(absCollOffsetLong));
+        }
+
+        reader.position((int) absCollOffsetLong);
 
         int numMeshes = reader.nextI32();
-        int firstMeshOffset = reader.nextI32() + header.dataStartPosition();
+        int firstMeshOffset = reader.nextI32() + dataStartPosition;
 
         int matrixMeshPairCount = reader.nextI32();
-        int matrixMeshPairsOffset = reader.nextI32() + header.dataStartPosition();
+        int matrixMeshPairsOffset = reader.nextI32() + dataStartPosition;
 
-        int collisionMapOffset = reader.nextI32() + header.dataStartPosition();
-        int collisionMeshTransformsOffset = reader.nextI32() + header.dataStartPosition();
+        int collisionMapOffset = reader.nextI32() + dataStartPosition;
+        int collisionMeshTransformsOffset = reader.nextI32() + dataStartPosition;
 
         reader.nextI32(); // space tree index count match
         reader.nextI32(); // 0
+
+        if (matrixMeshPairCount < 0
+                || matrixMeshPairsOffset < dataStartPosition
+                || (long) matrixMeshPairsOffset + (long) matrixMeshPairCount * 8L > effectiveSectionEnd) {
+            throw new IllegalStateException("Collision groups table out of range: count=" + matrixMeshPairCount
+                    + " offset=0x" + Integer.toHexString(matrixMeshPairsOffset));
+        }
 
         // Parse mesh transform pairs
         reader.position(matrixMeshPairsOffset);
@@ -104,30 +147,42 @@ public final class ZoneDefParser {
         Map<Integer, Integer> collisionGroupsByIndex = new HashMap<>();
 
         for (int i = 0; i < matrixMeshPairCount; i++) {
+            if ((long) reader.position() + 4L > effectiveSectionEnd) {
+                throw new IllegalStateException("Unexpected end of collision group header at index " + i);
+            }
             int groupPos = reader.position();
             collisionGroupsByIndex.put(groupPos, i);
 
             int countFlags = reader.nextI32();
             int groupSize = countFlags & 0x7FF;
+            if ((long) reader.position() + (long) groupSize * 8L + 4L > effectiveSectionEnd) {
+                throw new IllegalStateException("Collision group objects out of range: size=" + groupSize);
+            }
 
             List<CollisionObject> groupObjects = new ArrayList<>(groupSize);
 
             for (int j = 0; j < groupSize; j++) {
                 int objPos = reader.position();
 
-                int matrixOffset = reader.nextI32() + header.dataStartPosition();
-                int meshOffset = reader.nextI32() + header.dataStartPosition();
+                int matrixOffset = reader.nextI32() + dataStartPosition;
+                int meshOffset = reader.nextI32() + dataStartPosition;
 
                 int resumePos = reader.position();
 
                 CollisionTransform transform = transformsByOffset.computeIfAbsent(matrixOffset, off -> {
+                    if (off < 0 || (long) off + 0xC0L > reader.capacity()) {
+                        throw new IllegalStateException("Collision transform out of range at 0x" + Integer.toHexString(off));
+                    }
                     reader.position(off);
                     return parseTransform(reader, off);
                 });
 
                 CollisionMesh mesh = meshesByOffset.computeIfAbsent(meshOffset, off -> {
+                    if (off < 0 || (long) off + 16L > reader.capacity()) {
+                        throw new IllegalStateException("Collision mesh out of range at 0x" + Integer.toHexString(off));
+                    }
                     reader.position(off);
-                    return parseCollisionMesh(reader, off, header.dataStartPosition());
+                    return parseCollisionMesh(reader, off, dataStartPosition);
                 });
 
                 reader.position(resumePos);
@@ -140,37 +195,51 @@ public final class ZoneDefParser {
         }
 
         // Parse 2D collision map grid
-        reader.position(collisionMapOffset);
+        int rawSubBlocksX = blockWidth / 4;
+        int rawSubBlocksZ = blockLength / 4;
+        int totalRows = Math.max(0, zoneBlocksZ) * Math.max(0, rawSubBlocksZ);
+        int totalCols = Math.max(0, zoneBlocksX) * Math.max(0, rawSubBlocksX);
+        if ((long) totalRows * totalCols > MAX_COLLISION_GRID_CELLS) {
+            throw new IllegalStateException("Collision grid too large: " + totalCols + "x" + totalRows);
+        }
 
-        int totalRows = zoneBlocksZ * subBlocksZ;
-        int totalCols = zoneBlocksX * subBlocksX;
         CollisionObjectGroup[][] map = new CollisionObjectGroup[totalRows][totalCols];
-        int found = 0;
+        if (totalRows > 0 && totalCols > 0 && matrixMeshPairCount > 0) {
+            if (collisionMapOffset < dataStartPosition || collisionMapOffset > effectiveSectionEnd) {
+                throw new IllegalStateException("Collision map grid out of range at 0x" + Integer.toHexString(collisionMapOffset));
+            }
+            reader.position(collisionMapOffset);
+            int found = 0;
 
-        for (int z = 0; z < totalRows; z++) {
-            for (int x = 0; x < totalCols; x++) {
-                int offset = reader.nextI32();
-                if (offset == 0) {
-                    continue;
+            for (int z = 0; z < totalRows; z++) {
+                for (int x = 0; x < totalCols; x++) {
+                    if ((long) reader.position() + 4L > effectiveSectionEnd) {
+                        found = matrixMeshPairCount;
+                        break;
+                    }
+                    int offset = reader.nextI32();
+                    if (offset == 0) {
+                        continue;
+                    }
+
+                    found++;
+                    int fileOffset = offset + dataStartPosition;
+                    Integer groupIdx = collisionGroupsByIndex.get(fileOffset);
+                    if (groupIdx != null) {
+                        map[z][x] = collisionGroups.get(groupIdx);
+                    }
+
+                    if (found == matrixMeshPairCount) {
+                        break;
+                    }
                 }
-
-                found++;
-                int fileOffset = offset + header.dataStartPosition();
-                Integer groupIdx = collisionGroupsByIndex.get(fileOffset);
-                if (groupIdx != null) {
-                    map[z][x] = collisionGroups.get(groupIdx);
-                }
-
                 if (found == matrixMeshPairCount) {
                     break;
                 }
             }
-            if (found == matrixMeshPairCount) {
-                break;
-            }
         }
 
-        return new CollisionMap(zoneBlocksX, zoneBlocksZ, blockWidth, blockLength, subBlocksX, subBlocksZ, map);
+        return new CollisionMap(zoneBlocksX, zoneBlocksZ, blockWidth, blockLength, rawSubBlocksX, rawSubBlocksZ, map);
     }
 
     private static CollisionTransform parseTransform(DatByteReader reader, int offset) {
@@ -212,6 +281,10 @@ public final class ZoneDefParser {
         int numTris = reader.nextU16();
         int unk = reader.nextU16();
 
+        if (indexOffset < 0 || (long) indexOffset + numTris * 8L > reader.capacity()) {
+            throw new IllegalStateException("Collision mesh indices out of range at 0x" + Integer.toHexString(indexOffset));
+        }
+
         List<CollisionTriangle> triangles = new ArrayList<>(numTris);
         BoundingBox.Builder bboxBuilder = BoundingBox.builder();
 
@@ -228,6 +301,11 @@ public final class ZoneDefParser {
 
             int rawD = reader.nextU16();
             int dOff = directionOffset + (rawD & 0x7FFF) * 12;
+
+            requireVec3Readable(reader, pOff0, "p0");
+            requireVec3Readable(reader, pOff1, "p1");
+            requireVec3Readable(reader, pOff2, "p2");
+            requireVec3Readable(reader, dOff, "normal");
 
             int nextIndexPos = reader.position();
 
@@ -264,5 +342,11 @@ public final class ZoneDefParser {
         triangles.sort((a, b) -> Float.compare(Math.abs(b.normal().y()), Math.abs(a.normal().y())));
 
         return new CollisionMesh(offset, triangles, bboxBuilder.build());
+    }
+
+    private static void requireVec3Readable(DatByteReader reader, int offset, String label) {
+        if (offset < 0 || (long) offset + 12L > reader.capacity()) {
+            throw new IllegalStateException("Collision mesh " + label + " out of range at 0x" + Integer.toHexString(offset));
+        }
     }
 }

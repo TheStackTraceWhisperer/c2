@@ -270,7 +270,7 @@ public class WorldScene implements AutoCloseable {
                 }
                 if (loadedZone.collisionSystem() != null && collisionRenderer != null) {
                     var collisionTris = loadedZone.collisionSystem().getAllWorldTriangles();
-                    collisionRenderer.uploadTransformedTriangles(collisionTris);
+                    collisionRenderer.upload(collisionTris);
                 }
                 log.info("WorldScene: Loaded zone #{}: {} chunk instances, {} textures",
                         zoneId, zoneRenderChunks.size(), loadedZone.textureSources().size());

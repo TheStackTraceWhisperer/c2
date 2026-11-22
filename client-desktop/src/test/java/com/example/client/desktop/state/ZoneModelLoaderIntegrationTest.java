@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.BitSet;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +49,19 @@ class ZoneModelLoaderIntegrationTest {
         assertTrue(visible.cardinality() > 0 && visible.cardinality() < indexed.cardinality(),
                 "Frustum query at gate should select a strict non-empty subset (" + visible.cardinality()
                         + " / " + indexed.cardinality() + ")");
+
+        // Unified CollisionMap checks for Zone 230
+        assertNotNull(zone.collisionSystem(), "Zone 230 must expose unified ZoneCollisionSystem");
+        assertTrue(zone.collisionSystem().getAllWorldTriangles().size() >= 100_000,
+                "Zone 230 expected at least 100,000 collision triangles");
+        float aubejartFloor = zone.collisionSystem().findFloorY(2.900f, 46.644f, -4.0f);
+        assertEquals(-1.999f, aubejartFloor, 0.05f, "Zone 230 Aubejart floor Y should match LSB pos_y");
+
+        // Zone 100 (West Ronfaure) collision smoke check
+        LoadedZone westRonfaure = ZoneModelLoader.loadZone(ffxiRoot, 100);
+        assertNotNull(westRonfaure);
+        assertNotNull(westRonfaure.collisionSystem(), "Zone 100 must expose unified ZoneCollisionSystem");
+        assertNotNull(westRonfaure.collisionSystem().findAnyFloor(), "Zone 100 must locate walkable floor");
 
         // 2. Character
         LoadedCharacter character = CharacterModelLoader.loadCharacter(ffxiRoot, RaceGenderConfig.HumeM);

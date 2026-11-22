@@ -1,5 +1,8 @@
 package com.ffxi.parser;
 
+import com.example.asset.collision.CollisionMap;
+import com.example.asset.parser.ZoneDefParser;
+import com.example.asset.reader.DatByteReader;
 import com.ffxi.crypto.KeyTables;
 import com.ffxi.crypto.ZoneDecryptor;
 import com.ffxi.io.ByteReader;
@@ -20,9 +23,6 @@ public class DatParser {
 
     /** Smallest serialized space-partition node: 8 vectors + 6 dwords. */
     private static final int MIN_SPACE_NODE_BYTES = 8 * 12 + 24;
-
-    /** Upper bound on zone collision grid cells accepted from untrusted data. */
-    private static final long MAX_COLLISION_GRID_CELLS = 1L << 22;
 
     /**
      * Lists the section headers of a DAT. This is a read-only scan: section headers are not encrypted, so
@@ -1099,13 +1099,21 @@ public class DatParser {
         byteReader.setPosition(pointLightOffset + header.getDataStartPosition());
         List<String> pointLightLinks = readZonePointLights(byteReader, sectionEnd, header.getSectionId());
 
-        ZoneCollisionMap collisionMap = null;
+        CollisionMap collisionMap = null;
         if (collisionMeshOffset > 0) {
             int absCollOffset = header.getDataStartPosition() + collisionMeshOffset;
             if (absCollOffset < sectionEnd) {
                 try {
-                    collisionMap = parseCollisionMeshData(byteReader, header, sectionEnd,
-                            zoneBlocksX, zoneBlocksZ, blockWidth, blockLength, subBlocksX, subBlocksZ, absCollOffset);
+                    collisionMap = ZoneDefParser.parseCollisionMeshSection(
+                            new DatByteReader(byteReader.getBytes()),
+                            header.getDataStartPosition(),
+                            sectionEnd,
+                            collisionMeshOffset,
+                            zoneBlocksX,
+                            zoneBlocksZ,
+                            blockWidth,
+                            blockLength
+                    );
                 } catch (Exception e) {
                     log.warn("Failed to parse collision mesh for {}: {}", header.getSectionId(), e.getMessage());
                 }
@@ -1137,155 +1145,6 @@ public class DatParser {
                 pointLightLinks,
                 collisionMap
         );
-    }
-
-    private static ZoneCollisionMap parseCollisionMeshData(
-            ByteReader byteReader, SectionHeader header, int sectionEnd,
-            int zoneBlocksX, int zoneBlocksZ, int blockWidth, int blockLength,
-            int subBlocksX, int subBlocksZ, int absOffset) {
-        byteReader.setPosition(absOffset);
-
-        byteReader.next32();
-        byteReader.next32();
-        int pairCount = byteReader.next32();
-        int pairsAbsOff = byteReader.next32() + header.getDataStartPosition();
-        int mapAbsOff = byteReader.next32() + header.getDataStartPosition();
-        byteReader.next32();
-        byteReader.next32();
-        byteReader.next32();
-
-        byteReader.setPosition(pairsAbsOff);
-        requireCountFits(byteReader, sectionEnd, pairCount, 8, "collision groups", header.getSectionId());
-        java.util.Map<Integer, float[]> transformCache = new java.util.LinkedHashMap<>();
-        java.util.Map<Integer, List<ZoneCollisionTriangle>> meshCache = new java.util.LinkedHashMap<>();
-
-        List<ZoneCollisionObjectGroup> groupList = new ArrayList<>();
-        java.util.Map<Integer, Integer> groupByOffset = new java.util.LinkedHashMap<>();
-
-        byteReader.setPosition(pairsAbsOff);
-        for (int i = 0; i < pairCount; i++) {
-            int groupFileOffset = byteReader.getPosition();
-            groupByOffset.put(groupFileOffset, i);
-
-            int countFlags = byteReader.next32();
-            int groupSize = countFlags & 0x7FF;
-
-            requireCountFits(byteReader, sectionEnd, groupSize, 8, "collision group objects", header.getSectionId());
-            List<ZoneCollisionObject> objects = new ArrayList<>(groupSize);
-            for (int j = 0; j < groupSize; j++) {
-                int matrixAbsOff = byteReader.next32() + header.getDataStartPosition();
-                int meshAbsOff = byteReader.next32() + header.getDataStartPosition();
-
-                float[] transform = transformCache.computeIfAbsent(matrixAbsOff,
-                        off -> readCollisionTransform(byteReader, off));
-                List<ZoneCollisionTriangle> triangles = meshCache.computeIfAbsent(meshAbsOff,
-                        off -> readCollisionMesh(byteReader, off, header));
-
-                objects.add(new ZoneCollisionObject(triangles, transform));
-            }
-            byteReader.next32();
-
-            groupList.add(new ZoneCollisionObjectGroup(objects));
-        }
-
-        int totalX = zoneBlocksX * subBlocksX;
-        int totalZ = zoneBlocksZ * subBlocksZ;
-        if ((long) totalX * totalZ > MAX_COLLISION_GRID_CELLS) {
-            throw new IllegalStateException("[" + header.getSectionId() + "] Collision grid too large: " + totalX + "x"
-                    + totalZ);
-        }
-        ZoneCollisionObjectGroup[][] grid = new ZoneCollisionObjectGroup[totalZ][totalX];
-
-        byteReader.setPosition(mapAbsOff);
-        int found = 0;
-        outer:
-        for (int z = 0; z < totalZ; z++) {
-            for (int x = 0; x < totalX; x++) {
-                int rawOffset = byteReader.next32();
-                if (rawOffset == 0) {
-                    continue;
-                }
-                found++;
-                int fileOffset = rawOffset + header.getDataStartPosition();
-                Integer groupIndex = groupByOffset.get(fileOffset);
-                if (groupIndex != null) {
-                    grid[z][x] = groupList.get(groupIndex);
-                }
-                if (found >= pairCount) {
-                    break outer;
-                }
-            }
-        }
-
-        return new ZoneCollisionMap(zoneBlocksX, zoneBlocksZ, blockWidth, blockLength, subBlocksX, subBlocksZ, grid);
-    }
-
-    private static float[] readCollisionTransform(ByteReader byteReader, int absOffset) {
-        int saved = byteReader.getPosition();
-        byteReader.setPosition(absOffset);
-        float[] matrix = new float[16];
-        for (int i = 0; i < 16; i++) {
-            matrix[i] = byteReader.nextFloat();
-        }
-        byteReader.setPosition(saved);
-        return matrix;
-    }
-
-    private static List<ZoneCollisionTriangle> readCollisionMesh(
-            ByteReader byteReader, int absOffset, SectionHeader header) {
-        int saved = byteReader.getPosition();
-        byteReader.setPosition(absOffset);
-
-        int positionOffset = byteReader.next32() + header.getDataStartPosition();
-        int directionOffset = byteReader.next32() + header.getDataStartPosition();
-        int indexOffset = byteReader.next32() + header.getDataStartPosition();
-        int numTris = byteReader.next16();
-        byteReader.next16();
-
-        byteReader.setPosition(indexOffset);
-        if ((long) indexOffset < 0 || (long) indexOffset + numTris * 8L > byteReader.getBytes().length) {
-            byteReader.setPosition(saved);
-            throw new IllegalStateException("Collision mesh indices out of range at 0x" + Integer.toHexString(indexOffset));
-        }
-        List<ZoneCollisionTriangle> triangles = new ArrayList<>(numTris);
-        for (int i = 0; i < numTris; i++) {
-            int rawP0 = byteReader.next16();
-            int rawP1 = byteReader.next16();
-            int rawP2 = byteReader.next16();
-            int rawD = byteReader.next16();
-
-            int pOff0 = positionOffset + (rawP0 & 0x7FFF) * 12;
-            int pOff1 = positionOffset + (rawP1 & 0x3FFF) * 12;
-            int pOff2 = positionOffset + (rawP2 & 0x3FFF) * 12;
-            int dOff = directionOffset + (rawD & 0x7FFF) * 12;
-
-            int nextPos = byteReader.getPosition();
-
-            float[] p0 = readVec3At(byteReader, pOff0);
-            float[] p1 = readVec3At(byteReader, pOff1);
-            float[] p2 = readVec3At(byteReader, pOff2);
-            float[] d0 = readVec3At(byteReader, dOff);
-
-            triangles.add(new ZoneCollisionTriangle(
-                    p0[0], p0[1], p0[2],
-                    p1[0], p1[1], p1[2],
-                    p2[0], p2[1], p2[2],
-                    d0[0], d0[1], d0[2]
-            ));
-
-            byteReader.setPosition(nextPos);
-        }
-
-        byteReader.setPosition(saved);
-        return triangles;
-    }
-
-    private static float[] readVec3At(ByteReader byteReader, int absOffset) {
-        int saved = byteReader.getPosition();
-        byteReader.setPosition(absOffset);
-        float[] v = {byteReader.nextFloat(), byteReader.nextFloat(), byteReader.nextFloat()};
-        byteReader.setPosition(saved);
-        return v;
     }
 
     private static List<ZoneObject> parseZoneObjects(ByteReader byteReader, int sectionEnd, int nodeCount,

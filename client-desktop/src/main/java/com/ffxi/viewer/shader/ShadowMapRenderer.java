@@ -21,7 +21,7 @@ public final class ShadowMapRenderer implements AutoCloseable {
     public static final int SHADOW_HEIGHT = 2048;
 
     private static final String DEPTH_VERT_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec3 aPos;
             layout (location = 2) in vec2 aTexCoord;
 
@@ -37,7 +37,7 @@ public final class ShadowMapRenderer implements AutoCloseable {
             """;
 
     private static final String DEPTH_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec2 vTexCoord;
 
             uniform sampler2D uDiffuseTexture;

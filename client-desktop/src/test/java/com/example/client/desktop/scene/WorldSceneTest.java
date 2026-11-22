@@ -1,7 +1,6 @@
 package com.example.client.desktop.scene;
 
 import com.example.asset.config.FfxiPathConfig;
-import com.example.client.desktop.camera.PolarCamera;
 import com.ffxi.model.SkeletonResource;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.AuthenticCharacterInstance;
@@ -47,37 +46,34 @@ class WorldSceneTest {
     }
 
     @Test
-    @DisplayName("SceneCamera and PolarCamera produce identical eye, forward, right, and view vectors across all yaws and pitches")
-    void testSceneCameraMatchesPolarCameraVectors() {
-        SceneCamera sceneCam = new SceneCamera();
-        PolarCamera polarCam = new PolarCamera();
+    @DisplayName("WorldScene shares the injected SceneCamera instance and maintains native FFXI vector conventions")
+    void testWorldSceneSharedSceneCameraAndVectors() {
+        SceneCamera sharedCamera = new SceneCamera();
+        try (WorldScene scene = new WorldScene(sharedCamera)) {
+            assertSame(sharedCamera, scene.getCamera());
 
-        float[] yaws = {0.0f, 45.0f, 90.0f, 135.0f, 180.0f, 225.0f, 270.0f, 315.0f};
-        float[] pitches = {-40.0f, 0.0f, 25.0f, 60.0f};
+            float[] yaws = {0.0f, 45.0f, 90.0f, 135.0f, 180.0f, 225.0f, 270.0f, 315.0f};
+            float[] pitches = {-40.0f, 0.0f, 25.0f, 60.0f};
 
-        for (float yaw : yaws) {
-            for (float pitch : pitches) {
-                sceneCam.setTarget(12.5f, -3.0f, 44.0f);
-                sceneCam.setDistance(14.0f);
-                sceneCam.setYaw(yaw);
-                sceneCam.setPitch(pitch);
+            for (float yaw : yaws) {
+                for (float pitch : pitches) {
+                    sharedCamera.setTarget(12.5f, -3.0f, 44.0f);
+                    sharedCamera.setTargetOffsetY(1.0f);
+                    sharedCamera.setDistance(14.0f);
+                    sharedCamera.setYaw(yaw);
+                    sharedCamera.setPitch(pitch);
 
-                polarCam.setTarget(12.5f, -3.0f, 44.0f);
-                polarCam.setDistance(14.0f);
-                polarCam.setYaw(yaw);
-                polarCam.setPitch(pitch);
+                    double yawRad = Math.toRadians(yaw);
+                    double pitchRad = Math.toRadians(pitch);
+                    float expectedFwdX = (float) Math.sin(yawRad);
+                    float expectedFwdZ = (float) Math.cos(yawRad);
 
-                String ctx = "yaw=" + yaw + ", pitch=" + pitch;
-                assertEquals(polarCam.getForwardX(), sceneCam.getForwardX(), 1e-4f, "forwardX mismatch at " + ctx);
-                assertEquals(polarCam.getForwardZ(), sceneCam.getForwardZ(), 1e-4f, "forwardZ mismatch at " + ctx);
-                assertEquals(polarCam.getRightX(), sceneCam.getRightX(), 1e-4f, "rightX mismatch at " + ctx);
-                assertEquals(polarCam.getRightZ(), sceneCam.getRightZ(), 1e-4f, "rightZ mismatch at " + ctx);
-                assertEquals(polarCam.getEyeX(), sceneCam.getEyeX(), 1e-4f, "eyeX mismatch at " + ctx);
-                assertEquals(polarCam.getEyeY(), sceneCam.getEyeY(), 1e-4f, "eyeY mismatch at " + ctx);
-                assertEquals(polarCam.getEyeZ(), sceneCam.getEyeZ(), 1e-4f, "eyeZ mismatch at " + ctx);
-                assertEquals(polarCam.getViewX(), sceneCam.getViewX(), 1e-4f, "viewX mismatch at " + ctx);
-                assertEquals(polarCam.getViewY(), sceneCam.getViewY(), 1e-4f, "viewY mismatch at " + ctx);
-                assertEquals(polarCam.getViewZ(), sceneCam.getViewZ(), 1e-4f, "viewZ mismatch at " + ctx);
+                    assertEquals(expectedFwdX, scene.getCamera().getForwardX(), 1e-4f);
+                    assertEquals(expectedFwdZ, scene.getCamera().getForwardZ(), 1e-4f);
+                    assertEquals(12.5f - 14.0f * (float) Math.cos(pitchRad) * expectedFwdX, scene.getCamera().getEyeX(), 1e-4f);
+                    assertEquals(-4.0f - 14.0f * (float) Math.sin(pitchRad), scene.getCamera().getEyeY(), 1e-4f);
+                    assertEquals(44.0f - 14.0f * (float) Math.cos(pitchRad) * expectedFwdZ, scene.getCamera().getEyeZ(), 1e-4f);
+                }
             }
         }
     }
@@ -152,6 +148,15 @@ class WorldSceneTest {
             assertNull(scene.getActor(2L));
             assertTrue(npcModel.isClosed(), "removeActor must dispose AuthenticCharacterInstance");
             assertEquals(1, scene.getActors().size());
+
+            SceneActor remote2 = new SceneActor(3L, "Curilla", SceneActor.ActorType.NPC);
+            AuthenticCharacterInstance remote2Model = new AuthenticCharacterInstance(dummyChar, List.of(), null, false);
+            remote2.setVisualModel(remote2Model);
+            scene.addActor(remote2);
+            scene.clearRemoteActors();
+            assertTrue(remote2Model.isClosed(), "clearRemoteActors must dispose remote actors");
+            assertFalse(playerModel.isClosed(), "clearRemoteActors must keep local player active");
+            assertSame(player, scene.getActor(1L));
         }
         assertTrue(playerModel.isClosed(), "WorldScene.close must dispose remaining actor visual models");
     }

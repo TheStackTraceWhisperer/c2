@@ -2,6 +2,7 @@ package com.example.client.desktop.input;
 
 import com.example.client.desktop.camera.Camera;
 import com.example.common.protocol.MovementFlags;
+import com.ffxi.viewer.collision.ZoneCollisionSystem;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
 import org.lwjgl.glfw.GLFW;
@@ -11,6 +12,11 @@ public class MovementInputHandler {
 
     public static final float MOVE_SPEED = 6.0f; // meters per second
     public static final long PACKET_DISPATCH_INTERVAL_MS = 50L; // 20 Hz target
+
+    // Client-side floor & wall collision prediction constants (matching ZoneCollisionService)
+    public static final float MAX_STEP_HEIGHT = 1.2f;
+    public static final float TORSO_HEIGHT_OFFSET = 0.8f;
+    public static final float WALL_PULLBACK_MARGIN = 0.1f;
 
     // Client-side prediction and error-smoothing constants
     public static final float ERROR_DECAY_RATE = 15.0f; // Exponential decay rate (s^-1), decays ~95% in 200ms
@@ -104,6 +110,14 @@ public class MovementInputHandler {
                                          float currentX, float currentY, float currentZ,
                                          float currentYaw, float currentPitch,
                                          float dt, long nowMs) {
+        return pollAndCompute(windowHandle, camera, currentX, currentY, currentZ, currentYaw, currentPitch, dt, nowMs, null);
+    }
+
+    public MovementResult pollAndCompute(long windowHandle, Camera camera,
+                                         float currentX, float currentY, float currentZ,
+                                         float currentYaw, float currentPitch,
+                                         float dt, long nowMs,
+                                         ZoneCollisionSystem collisionSystem) {
         boolean forward = isKeyDown(windowHandle, GLFW.GLFW_KEY_W);
         boolean backward = isKeyDown(windowHandle, GLFW.GLFW_KEY_S);
         boolean moveLeft = isKeyDown(windowHandle, GLFW.GLFW_KEY_A);
@@ -111,7 +125,7 @@ public class MovementInputHandler {
         boolean strafing = windowHandle != 0L && GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS;
 
         return compute(forward, backward, moveLeft, moveRight, strafing, camera,
-                currentX, currentY, currentZ, currentYaw, currentPitch, dt, nowMs);
+                currentX, currentY, currentZ, currentYaw, currentPitch, dt, nowMs, collisionSystem);
     }
 
     public MovementResult compute(boolean forward, boolean backward,
@@ -120,6 +134,17 @@ public class MovementInputHandler {
                                   float currentX, float currentY, float currentZ,
                                   float currentYaw, float currentPitch,
                                   float dt, long nowMs) {
+        return compute(forward, backward, moveLeft, moveRight, strafing, camera,
+                currentX, currentY, currentZ, currentYaw, currentPitch, dt, nowMs, null);
+    }
+
+    public MovementResult compute(boolean forward, boolean backward,
+                                  boolean moveLeft, boolean moveRight,
+                                  boolean strafing, Camera camera,
+                                  float currentX, float currentY, float currentZ,
+                                  float currentYaw, float currentPitch,
+                                  float dt, long nowMs,
+                                  ZoneCollisionSystem collisionSystem) {
         if (!initialized || Math.hypot(currentX - simX, currentZ - simZ) > HARD_SNAP_DISTANCE) {
             setPosition(currentX, currentY, currentZ);
         }
@@ -154,6 +179,7 @@ public class MovementInputHandler {
         float dirLenSq = dirX * dirX + dirZ * dirZ;
 
         float vx = 0.0f;
+        float vy = 0.0f;
         float vz = 0.0f;
         float newYaw = currentYaw;
         int moveFlags = MovementFlags.IDLE;
@@ -188,10 +214,43 @@ public class MovementInputHandler {
             newYaw = camera.getYaw();
         }
 
-        // 4. Immediate local prediction: integrate velocity onto simulation state
+        // 4. Immediate local prediction: integrate velocity & clamp against zone collision geometry
         // Keep internal simY authoritative rather than overwriting with smoothed visibleY (prevents Y drift)
-        simX += vx * dt;
-        simZ += vz * dt;
+        float prevSimX = simX;
+        float prevSimY = simY;
+        float prevSimZ = simZ;
+        float nextSimX = simX + vx * dt;
+        float nextSimZ = simZ + vz * dt;
+
+        if (collisionSystem != null && isMoving && dt > 0.0f) {
+            float wallHit = collisionSystem.raycastWallDistance(
+                    prevSimX, prevSimY - TORSO_HEIGHT_OFFSET, prevSimZ,
+                    nextSimX, prevSimY - TORSO_HEIGHT_OFFSET, nextSimZ,
+                    0.0f
+            );
+            if (Float.isFinite(wallHit)) {
+                float stepLen = (float) Math.hypot(nextSimX - prevSimX, nextSimZ - prevSimZ);
+                float allowedDist = Math.max(0.0f, wallHit - WALL_PULLBACK_MARGIN);
+                if (stepLen > 1.0e-5f && allowedDist < stepLen) {
+                    float ratio = allowedDist / stepLen;
+                    nextSimX = prevSimX + (nextSimX - prevSimX) * ratio;
+                    nextSimZ = prevSimZ + (nextSimZ - prevSimZ) * ratio;
+                    if (allowedDist <= 1.0e-4f) {
+                        vx = 0.0f;
+                        vz = 0.0f;
+                    }
+                }
+            }
+
+            float floorY = collisionSystem.findFloorY(nextSimX, nextSimZ, prevSimY - MAX_STEP_HEIGHT);
+            if (Float.isFinite(floorY) && Math.abs(floorY - prevSimY) <= MAX_STEP_HEIGHT) {
+                simY = floorY;
+                vy = (dt > 1.0e-5f) ? (simY - prevSimY) / dt : 0.0f;
+            }
+        }
+
+        simX = nextSimX;
+        simZ = nextSimZ;
 
         // 5. Exponentially decay visual error offset towards zero
         if (dt > 0.0f) {
@@ -229,7 +288,7 @@ public class MovementInputHandler {
         return new MovementResult(
                 visibleX, visibleY, visibleZ,
                 simX, simY, simZ,
-                vx, 0.0f, vz,
+                vx, vy, vz,
                 newYaw, currentPitch,
                 moveFlags, isMoving, shouldSend
         );

@@ -27,6 +27,7 @@ import com.example.zone.dto.PlayerMovementRequest;
 import com.example.zone.dto.PlayerMovementResponse;
 import com.example.zone.dto.ZoneStateDeltaMessage;
 import com.example.zone.patrol.NpcPatrolSimulation;
+import com.example.zone.patrol.ZonePatrolCatalog;
 import com.example.zone.spatial.FastMath3D;
 import com.example.zone.spatial.SpatialGrid;
 import com.example.zone.state.ZoneEntityState;
@@ -165,6 +166,7 @@ public class ZoneSimulationEngine {
     List<NpcRecord> npcs = npcRepository.findByZoneId(properties.getZoneId());
     int loaded = 0;
     int skipped = 0;
+    int seededPatrols = 0;
     for (NpcRecord r : npcs) {
       if (!NpcSpawnFilter.shouldSpawn(r)) {
         skipped++;
@@ -173,13 +175,22 @@ public class ZoneSimulationEngine {
       ZoneEntityState npcState = ZoneEntityState.createNpc(r);
       npcState.setY(resolveGroundedNpcY(r));
       registerNpc(npcState);
+      if (properties.isNpcPatrolsEnabled()) {
+        Optional<ZonePatrolCatalog.PatrolDefinition> patrolDef = ZonePatrolCatalog.findRoute(r.zoneId(), r.name());
+        if (patrolDef.isPresent()) {
+          ZonePatrolCatalog.PatrolDefinition def = patrolDef.get();
+          patrolSimulation.registerPatrol(npcState.getCharacterId(), def.route(), def.moveSpeed());
+          seededPatrols++;
+        }
+      }
       loaded++;
     }
     log.info(
-        "[ZONE-ENGINE] Spawned {} authentic LandSandBoat NPCs into Zone #{} (filtered/skipped {})",
+        "[ZONE-ENGINE] Spawned {} authentic LandSandBoat NPCs into Zone #{} (filtered/skipped {}, seededPatrols={})",
         loaded,
         properties.getZoneId(),
-        skipped);
+        skipped,
+        seededPatrols);
   }
 
   /**

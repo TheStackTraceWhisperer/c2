@@ -7,6 +7,7 @@ import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.common.time.VanadielTime;
 import com.example.zone.dto.ActorAppearance;
 import com.ffxi.io.FileTableManager;
+import com.ffxi.model.ZoneSpacePartitionNode;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.tables.ZoneConfig;
 import com.ffxi.tables.ZoneIdToResourceId;
@@ -20,6 +21,7 @@ import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterShader;
 import com.ffxi.viewer.renderer.FontMojiGlRenderer;
 import com.ffxi.viewer.renderer.FontMojiRenderer;
+import com.ffxi.viewer.renderer.ZoneFrustumCuller;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
 import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneShader;
@@ -42,6 +44,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -58,7 +61,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Getter
 public class WorldScene implements AutoCloseable {
 
-    private final SceneCamera camera = new SceneCamera();
+    private final SceneCamera camera;
 
     // Scene Graph Entities
     private SceneActor localPlayerActor;
@@ -71,6 +74,10 @@ public class WorldScene implements AutoCloseable {
     private ZoneTextureLoader zoneTextureLoader;
     private final List<ZoneRenderChunk> zoneRenderChunks = new ArrayList<>();
     private List<ZoneInteraction> zoneInteractions = List.of();
+    private ZoneSpacePartitionNode zoneSpaceTreeRoot;
+    private BitSet indexedZoneObjectIds;
+    private int lastDrawnZoneChunkCount = 0;
+    private int lastCulledZoneChunkCount = 0;
 
     // Character Rendering & Shared Asset Cache
     private CharacterShader characterShader;
@@ -106,8 +113,28 @@ public class WorldScene implements AutoCloseable {
     @Setter private boolean showCollisionMarkers = false;
     @Setter private boolean showSkyDome = true;
     @Setter private boolean showWeather = true;
+    @Setter private boolean enableFog = true;
+    @Setter private boolean enableFrustumCulling = true;
+
+    private float clearR = 0.08f;
+    private float clearG = 0.10f;
+    private float clearB = 0.14f;
 
     private boolean initialized = false;
+
+    public WorldScene() {
+        this(new SceneCamera());
+    }
+
+    public WorldScene(SceneCamera camera) {
+        this.camera = camera != null ? camera : new SceneCamera();
+    }
+
+    public void setClearColor(float r, float g, float b) {
+        this.clearR = r;
+        this.clearG = g;
+        this.clearB = b;
+    }
 
     /**
      * Initializes core GPU shaders, sky dome, particle system, and collision renderer.
@@ -183,10 +210,39 @@ public class WorldScene implements AutoCloseable {
     }
 
     /**
+     * Disposes and removes all non-local actors from the scene graph.
+     */
+    public void clearRemoteActors() {
+        List<Long> remoteIds = new ArrayList<>();
+        for (SceneActor actor : actors.values()) {
+            if (!actor.isLocalPlayer() && actor != localPlayerActor) {
+                remoteIds.add(actor.getId());
+            }
+        }
+        for (Long id : remoteIds) {
+            removeActor(id);
+        }
+    }
+
+    /**
      * Loads authentic zone geometry, textures, collision system, and zoneline interactions from DAT files.
      */
     public void loadZone(Path ffxiRoot, int zoneId) {
+        boolean zoneChanged = this.currentZoneId != -1 && this.currentZoneId != zoneId;
+        if (zoneChanged) {
+            clearRemoteActors();
+            int evicted = characterAssetCache.evictUnusedAssets();
+            if (evicted > 0) {
+                log.info("WorldScene: Evicted {} unused cached GPU character bundles after zone transition to #{}",
+                        evicted, zoneId);
+            }
+        }
+
         this.currentZoneId = zoneId;
+        this.zoneSpaceTreeRoot = null;
+        this.indexedZoneObjectIds = null;
+        this.lastDrawnZoneChunkCount = 0;
+        this.lastCulledZoneChunkCount = 0;
 
         for (ZoneRenderChunk chunk : zoneRenderChunks) {
             try { chunk.close(); } catch (Exception ignored) {}
@@ -200,13 +256,16 @@ public class WorldScene implements AutoCloseable {
         if (initialized && ffxiRoot != null && Files.isDirectory(ffxiRoot)) {
             try {
                 this.loadedZone = ZoneModelLoader.loadZone(ffxiRoot, zoneId);
+                this.zoneSpaceTreeRoot = loadedZone.spacePartitioningTreeRoot();
+                this.indexedZoneObjectIds = ZoneFrustumCuller.collectIndexedObjectIds(zoneSpaceTreeRoot);
                 this.zoneTextureLoader = new ZoneTextureLoader(loadedZone.textureSources());
                 for (LoadedZone.ZoneChunkInstance inst : loadedZone.chunkInstances()) {
                     zoneRenderChunks.add(new ZoneRenderChunk(
                             new ZoneMeshBuffer(inst.chunk()),
                             new Matrix4f(inst.modelMatrix()),
                             inst.invertCull(),
-                            inst.discardThreshold()
+                            inst.discardThreshold(),
+                            inst.zoneObjectIndex()
                     ));
                 }
                 if (loadedZone.collisionSystem() != null && collisionRenderer != null) {
@@ -279,8 +338,13 @@ public class WorldScene implements AutoCloseable {
      * Steps animations, weather particles, sky dome mesh, camera tracking, and environmental time.
      */
     public void update(float dt, VanadielTime time) {
-        if (localPlayerActor != null && camera.getMode() == CameraMode.THIRD_PERSON) {
-            camera.setTarget(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ());
+        if (camera.getMode() == CameraMode.THIRD_PERSON) {
+            if (localPlayerActor != null) {
+                camera.setTarget(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ());
+            }
+            if (loadedZone != null && loadedZone.collisionSystem() != null) {
+                camera.applyCollisionClamp(loadedZone.collisionSystem());
+            }
         }
 
         for (SceneActor actor : actors.values()) {
@@ -316,6 +380,10 @@ public class WorldScene implements AutoCloseable {
         float aspect = (float) w / (float) h;
         Matrix4f pMat = camera.getProjectionMatrix(aspect);
         Matrix4f vMat = camera.getViewMatrix();
+
+        BitSet visibleZoneObjectIds = (enableFrustumCulling && zoneSpaceTreeRoot != null)
+                ? ZoneFrustumCuller.collectVisibleObjectIds(zoneSpaceTreeRoot, new Matrix4f(pMat).mul(vMat))
+                : null;
 
         float[] proj = new float[16];
         float[] view = new float[16];
@@ -365,6 +433,9 @@ public class WorldScene implements AutoCloseable {
                 if (chunk.buffer().renderBlend()) {
                     continue;
                 }
+                if (!ZoneFrustumCuller.isChunkVisible(chunk.zoneObjectIndex(), indexedZoneObjectIds, visibleZoneObjectIds)) {
+                    continue;
+                }
                 ssaoRenderer.setGeometryModelMatrix(chunk.modelMatrix());
                 chunk.buffer().draw();
             }
@@ -374,8 +445,20 @@ public class WorldScene implements AutoCloseable {
         // 3. Clear Target Framebuffer & Main Viewport Setup
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, targetFbo);
         GL11.glViewport(0, 0, w, h);
-        GL11.glClearColor(0.08f, 0.10f, 0.14f, 1.0f);
+        float bgR = clearR;
+        float bgG = clearG;
+        float bgB = clearB;
+        if (showSkyDome && weatherPreset != null) {
+            float skyBrightness = dayFactor * weatherPreset.diffuseMultiplier();
+            bgR = Math.min(1.0f, weatherPreset.clearColor().x * skyBrightness);
+            bgG = Math.min(1.0f, weatherPreset.clearColor().y * skyBrightness);
+            bgB = Math.min(1.0f, weatherPreset.clearColor().z * skyBrightness);
+        }
+        GL11.glClearColor(bgR, bgG, bgB, 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthMask(true);
 
         // 4. Atmospheric Sky Dome Pass
         if (showSkyDome && skyDome != null) {
@@ -418,7 +501,7 @@ public class WorldScene implements AutoCloseable {
                     w,
                     h
             );
-            zoneShader.setFog(true, weatherPreset.fogNear(), weatherPreset.fogFar(), weatherPreset.fogColor());
+            zoneShader.setFog(enableFog, weatherPreset.fogNear(), weatherPreset.fogFar(), weatherPreset.fogColor());
 
             if (shadowsActive) {
                 GL13.glActiveTexture(GL13.GL_TEXTURE2);
@@ -430,6 +513,8 @@ public class WorldScene implements AutoCloseable {
             }
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
+            int drawnChunks = 0;
+            int culledChunks = 0;
             for (int pass = 0; pass < 2; pass++) {
                 boolean blendedPass = (pass == 1);
                 GL11.glDepthMask(!blendedPass);
@@ -443,6 +528,11 @@ public class WorldScene implements AutoCloseable {
                     if (chunk.buffer().renderBlend() != blendedPass) {
                         continue;
                     }
+                    if (!ZoneFrustumCuller.isChunkVisible(chunk.zoneObjectIndex(), indexedZoneObjectIds, visibleZoneObjectIds)) {
+                        culledChunks++;
+                        continue;
+                    }
+                    drawnChunks++;
                     zoneShader.setDiscardThreshold(chunk.discardThreshold());
                     zoneShader.setMatrices(pMat, vMat, chunk.modelMatrix());
 
@@ -458,10 +548,15 @@ public class WorldScene implements AutoCloseable {
                     chunk.buffer().draw();
                 }
             }
+            this.lastDrawnZoneChunkCount = drawnChunks;
+            this.lastCulledZoneChunkCount = culledChunks;
             GL11.glDisable(GL11.GL_BLEND);
             GL11.glDepthMask(true);
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glFrontFace(GL11.GL_CCW);
+        } else {
+            this.lastDrawnZoneChunkCount = 0;
+            this.lastCulledZoneChunkCount = 0;
         }
 
         // 6. Animated Skinned Character Actors Pass
@@ -498,7 +593,17 @@ public class WorldScene implements AutoCloseable {
      * Used by tests, automated snapshot suites, and tools to exercise production rendering logic.
      */
     public BufferedImage captureFrame(int width, int height) {
+        return captureFrame(width, height, null);
+    }
+
+    /**
+     * Renders offscreen to a high-resolution frame buffer, runs an optional post-render overlay pass
+     * targeting the same FBO (for example in-scene HUD/nameplates), and returns an opaque BufferedImage.
+     */
+    public BufferedImage captureFrame(int width, int height, Runnable postRenderOverlay) {
         int prevFbo = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
+        int[] prevViewport = new int[4];
+        GL11.glGetIntegerv(GL11.GL_VIEWPORT, prevViewport);
 
         int fbo = GL30.glGenFramebuffers();
         int colorTex = GL11.glGenTextures();
@@ -518,12 +623,25 @@ public class WorldScene implements AutoCloseable {
             GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH24_STENCIL8, width, height);
             GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_RENDERBUFFER, depthRb);
 
+            int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+            if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
+                throw new IllegalStateException("Offscreen capture FBO incomplete, status: " + status);
+            }
+
             renderToFramebuffer(fbo, width, height);
 
+            if (postRenderOverlay != null) {
+                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+                GL11.glViewport(0, 0, width, height);
+                postRenderOverlay.run();
+            }
+
             GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
             GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
         } finally {
             GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prevFbo);
+            GL11.glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
             if (depthRb != 0) GL30.glDeleteRenderbuffers(depthRb);
             if (colorTex != 0) GL11.glDeleteTextures(colorTex);
             if (fbo != 0) GL30.glDeleteFramebuffers(fbo);
@@ -537,8 +655,7 @@ public class WorldScene implements AutoCloseable {
                 int r = buffer.get(srcIdx) & 0xFF;
                 int g = buffer.get(srcIdx + 1) & 0xFF;
                 int b = buffer.get(srcIdx + 2) & 0xFF;
-                int a = buffer.get(srcIdx + 3) & 0xFF;
-                pixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+                pixels[y * width + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
             }
         }
         image.setRGB(0, 0, width, height, pixels, 0, width);
@@ -630,6 +747,10 @@ public class WorldScene implements AutoCloseable {
             fontMojiGlRenderer = null;
         }
         this.lastSkyDomePreset = null;
+        this.zoneSpaceTreeRoot = null;
+        this.indexedZoneObjectIds = null;
+        this.lastDrawnZoneChunkCount = 0;
+        this.lastCulledZoneChunkCount = 0;
         this.initialized = false;
         log.info("Disposed WorldScene GPU resources");
     }

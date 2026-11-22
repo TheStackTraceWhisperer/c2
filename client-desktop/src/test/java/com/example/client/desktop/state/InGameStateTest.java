@@ -2,7 +2,7 @@ package com.example.client.desktop.state;
 
 import com.example.asset.config.FfxiPathConfig;
 import com.example.client.desktop.camera.Camera;
-import com.example.client.desktop.camera.PolarCamera;
+import com.example.client.desktop.scene.SceneCamera;
 import com.example.client.desktop.engine.services.state.ApplicationStateService;
 import com.example.client.desktop.engine.services.window.WindowService;
 import com.example.client.desktop.input.MovementInputHandler;
@@ -89,7 +89,7 @@ class InGameStateTest {
         WindowService windowService = Mockito.mock(WindowService.class);
         Mockito.when(windowService.getHandle()).thenReturn(0L);
         MovementInputHandler movementHandler = new MovementInputHandler();
-        Camera camera = new PolarCamera();
+        Camera camera = new SceneCamera();
         @SuppressWarnings("unchecked")
         BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
         @SuppressWarnings("unchecked")
@@ -104,6 +104,7 @@ class InGameStateTest {
                 camera, unauthProvider, authProvider, selectedProvider,
                 mapPanel
         );
+        assertSame(camera, state.getWorldScene().getCamera(), "InGameState and WorldScene must share the same SceneCamera instance");
         state.init(100L, 200L, "Aldo", 230, 5000L);
         state.onEnter();
         state.onUpdate(0.016f);
@@ -131,7 +132,7 @@ class InGameStateTest {
         WindowService windowService = Mockito.mock(WindowService.class);
         Mockito.when(windowService.getHandle()).thenReturn(0L);
         MovementInputHandler movementHandler = new MovementInputHandler();
-        Camera camera = new PolarCamera();
+        Camera camera = new SceneCamera();
         @SuppressWarnings("unchecked")
         BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
         @SuppressWarnings("unchecked")
@@ -146,6 +147,7 @@ class InGameStateTest {
                 camera, unauthProvider, authProvider, selectedProvider,
                 mapPanel
         );
+        assertSame(camera, state.getWorldScene().getCamera(), "InGameState and WorldScene must share the same SceneCamera instance");
         state.init(100L, 200L, "Aldo", 230, 5000L);
         state.onEnter();
 
@@ -188,7 +190,7 @@ class InGameStateTest {
         WindowService windowService = Mockito.mock(WindowService.class);
         Mockito.when(windowService.getHandle()).thenReturn(windowHandle);
         MovementInputHandler movementHandler = new MovementInputHandler();
-        Camera camera = new PolarCamera();
+        Camera camera = new SceneCamera();
         BeanProvider<UnauthenticatedState> unauthProvider = Mockito.mock(BeanProvider.class);
         BeanProvider<AuthenticatedState> authProvider = Mockito.mock(BeanProvider.class);
         BeanProvider<CharacterSelectedState> selectedProvider = Mockito.mock(BeanProvider.class);

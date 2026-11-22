@@ -17,6 +17,7 @@ import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshResource;
 import com.ffxi.model.ZoneMeshVertex;
 import com.ffxi.model.ZoneObject;
+import com.ffxi.model.ZoneSpacePartitionNode;
 import com.ffxi.parser.DatParser;
 import com.ffxi.tables.ZoneConfig;
 import com.ffxi.tables.ZoneIdToResourceId;
@@ -143,7 +144,8 @@ public final class ZoneModelLoader {
                                 quadChunk,
                                 modelMatrix,
                                 false,
-                                0.0f
+                                0.0f,
+                                object.index()
                         ));
                         totalChunkInstances++;
                     }
@@ -163,7 +165,8 @@ public final class ZoneModelLoader {
                                 preparedChunk,
                                 modelMatrix,
                                 chunk.invertCull(),
-                                blend ? 0.0f : discardThreshold
+                                blend ? 0.0f : discardThreshold,
+                                object.index()
                         ));
                         totalChunkInstances++;
                     }
@@ -180,7 +183,8 @@ public final class ZoneModelLoader {
                                             prep,
                                             modelMatrix,
                                             partChunk.invertCull(),
-                                            0.0f
+                                            0.0f,
+                                            object.index()
                                     ));
                                     totalChunkInstances++;
                                 }
@@ -229,7 +233,8 @@ public final class ZoneModelLoader {
                             quadChunk,
                             modelMatrix,
                             false,
-                            0.0f
+                            0.0f,
+                            object.index()
                     ));
                     totalChunkInstances++;
                 }
@@ -247,7 +252,8 @@ public final class ZoneModelLoader {
             log.info(String.format("[LOADER] Zone %d: no collision map found", zoneId));
         }
 
-        return new LoadedZone(zoneId, zoneName, chunkInstances, textureSources, collisionSystem);
+        ZoneSpacePartitionNode spacePartitioningTreeRoot = findSpacePartitioningTreeRoot(zoneDat.graph().rootDirectory());
+        return new LoadedZone(zoneId, zoneName, chunkInstances, textureSources, collisionSystem, spacePartitioningTreeRoot);
     }
 
     public static List<ZoneSelectionOption> loadZoneOptions(Path ffxiRoot) throws IOException {
@@ -295,6 +301,24 @@ public final class ZoneModelLoader {
                 .translate(ZoneMeshMath.sanitizeFinite(object.posX()), ZoneMeshMath.sanitizeFinite(object.posY()), ZoneMeshMath.sanitizeFinite(object.posZ()))
                 .rotate(new Quaternionf(rotation[0], rotation[1], rotation[2], rotation[3]))
                 .scale(ZoneMeshMath.sanitizeFinite(object.scaleX()), ZoneMeshMath.sanitizeFinite(object.scaleY()), ZoneMeshMath.sanitizeFinite(object.scaleZ()));
+    }
+
+    private static ZoneSpacePartitionNode findSpacePartitioningTreeRoot(DirectoryResource dir) {
+        if (dir == null) {
+            return null;
+        }
+        for (ResourceNode child : dir.children()) {
+            if (child instanceof ZoneDefResource zoneDef && zoneDef.spacePartitioningTreeRoot() != null) {
+                return zoneDef.spacePartitioningTreeRoot();
+            }
+            if (child instanceof DirectoryResource subDir) {
+                ZoneSpacePartitionNode root = findSpacePartitioningTreeRoot(subDir);
+                if (root != null) {
+                    return root;
+                }
+            }
+        }
+        return null;
     }
 
     private static ZoneCollisionMap findCollisionMap(DirectoryResource dir) {

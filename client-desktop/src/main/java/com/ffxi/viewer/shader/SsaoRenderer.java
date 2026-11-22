@@ -22,7 +22,7 @@ public final class SsaoRenderer implements AutoCloseable {
     public static final int KERNEL_SIZE = 32;
 
     private static final String GEOM_VERT_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec3 aNormal;
 
@@ -41,7 +41,7 @@ public final class SsaoRenderer implements AutoCloseable {
             """;
 
     private static final String GEOM_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec3 vViewNormal;
             layout (location = 0) out vec4 gNormalOut;
 
@@ -51,7 +51,7 @@ public final class SsaoRenderer implements AutoCloseable {
             """;
 
     private static final String QUAD_VERT_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec2 aPos;
             layout (location = 1) in vec2 aTexCoord;
 
@@ -64,7 +64,7 @@ public final class SsaoRenderer implements AutoCloseable {
             """;
 
     private static final String SSAO_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec2 vTexCoord;
             out float FragColor;
 
@@ -127,7 +127,7 @@ public final class SsaoRenderer implements AutoCloseable {
             """;
 
     private static final String BLUR_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec2 vTexCoord;
             out float FragColor;
 

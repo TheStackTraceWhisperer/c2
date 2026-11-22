@@ -1,9 +1,16 @@
 package com.example.client.desktop.input;
 
-import com.example.client.desktop.camera.PolarCamera;
+import com.example.client.desktop.scene.SceneCamera;
 import com.example.common.protocol.MovementFlags;
+import com.ffxi.model.ZoneCollisionMap;
+import com.ffxi.model.ZoneCollisionObject;
+import com.ffxi.model.ZoneCollisionObjectGroup;
+import com.ffxi.model.ZoneCollisionTriangle;
+import com.ffxi.viewer.collision.ZoneCollisionSystem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,7 +40,7 @@ class MovementInputHandlerTest {
     @DisplayName("Forward movement with North-facing camera moves North (+Z) and character faces North")
     void testForwardMovementFacingNorth() {
         MovementInputHandler handler = new MovementInputHandler();
-        PolarCamera camera = new PolarCamera(); // Default yaw = 0 deg (North +Z)
+        SceneCamera camera = new SceneCamera(); // Default yaw = 0 deg (North +Z)
 
         var result = handler.compute(
                 true, false, false, false, false, camera,
@@ -54,7 +61,7 @@ class MovementInputHandlerTest {
     @DisplayName("Strafe right with North-facing camera moves East (+X) and character faces East (90 deg)")
     void testStrafeRightFacingNorth() {
         MovementInputHandler handler = new MovementInputHandler();
-        PolarCamera camera = new PolarCamera();
+        SceneCamera camera = new SceneCamera();
 
         var result = handler.compute(
                 false, false, false, true, false, camera,
@@ -73,7 +80,7 @@ class MovementInputHandlerTest {
     @DisplayName("Camera rotated East (90 deg): W moves East (+X), A moves North (+Z), S moves West (-X), D moves South (-Z)")
     void testMovementWithRotatedCamera() {
         MovementInputHandler handler = new MovementInputHandler();
-        PolarCamera camera = new PolarCamera();
+        SceneCamera camera = new SceneCamera();
         camera.setYaw(90.0f); // Looking East
 
         // 1. W (forward relative to camera) -> East (+X)
@@ -105,7 +112,7 @@ class MovementInputHandlerTest {
     @DisplayName("Diagonal movement normalizes speed to MOVE_SPEED and faces 45 degrees")
     void testDiagonalMovement() {
         MovementInputHandler handler = new MovementInputHandler();
-        PolarCamera camera = new PolarCamera(); // North
+        SceneCamera camera = new SceneCamera(); // North
 
         // W + D: North-East (+X, +Z)
         var result = handler.compute(
@@ -124,7 +131,7 @@ class MovementInputHandlerTest {
     @DisplayName("Strafing mode locks character facing to camera yaw while translating")
     void testStrafingMode() {
         MovementInputHandler handler = new MovementInputHandler();
-        PolarCamera camera = new PolarCamera();
+        SceneCamera camera = new SceneCamera();
         camera.setYaw(45.0f); // Looking North-East (+X, +Z)
 
         // Moving S (backward) while strafing: moves South-West (-X, -Z) but facing remains camera yaw (45 deg)
@@ -279,5 +286,66 @@ class MovementInputHandlerTest {
         assertEquals(2.0f, visibleY, 0.001f);
         assertEquals(0.0f, handler.getErrorOffsetY(), 0.001f);
         assertEquals(6.0f, visibleZ, 0.01f); // 1.0s forward north (+Z) at 6 m/s
+    }
+
+    @Test
+    @DisplayName("Client movement prediction snaps upward along sloped floor within MAX_STEP_HEIGHT")
+    void testClientCollisionFloorClamping() {
+        // Elevated ramp platform at y = -0.6m (-Y = Up in native FFXI, normal pointing -Y)
+        List<ZoneCollisionTriangle> rampTris = List.of(
+                new ZoneCollisionTriangle(-20f, -0.6f, -20f, 20f, -0.6f, -20f, 20f, -0.6f, 20f, 0f, -1f, 0f),
+                new ZoneCollisionTriangle(-20f, -0.6f, -20f, 20f, -0.6f, 20f, -20f, -0.6f, 20f, 0f, -1f, 0f)
+        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(rampTris);
+
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(0.0f, 0.0f, 0.0f);
+        SceneCamera camera = new SceneCamera();
+
+        var res = handler.compute(
+                true, false, false, false, false, camera,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.1f, 100L, collisionSystem
+        );
+
+        assertEquals(-0.6f, res.y(), 0.001f, "Client prediction must follow floor height up within MAX_STEP_HEIGHT");
+        assertEquals(-0.6f, res.simY(), 0.001f);
+        assertTrue(res.vy() < 0.0f, "Climbing upward in -Y=Up space must emit negative vy");
+    }
+
+    @Test
+    @DisplayName("Client movement prediction stops before a vertical collision wall")
+    void testClientCollisionWallStop() {
+        List<ZoneCollisionTriangle> wallTris = List.of(
+                new ZoneCollisionTriangle(-10f, -5f, 0.5f, 10f, -5f, 0.5f, 10f, 2f, 0.5f, 0f, 0f, -1f),
+                new ZoneCollisionTriangle(-10f, -5f, 0.5f, 10f, 2f, 0.5f, -10f, 2f, 0.5f, 0f, 0f, -1f)
+        );
+        ZoneCollisionSystem collisionSystem = singleObjectCollision(wallTris);
+
+        MovementInputHandler handler = new MovementInputHandler();
+        handler.setPosition(0.0f, 0.0f, 0.0f);
+        SceneCamera camera = new SceneCamera();
+
+        // Moving 0.6m North toward a wall at z = 0.5f must stop at wall - pullback margin (0.4f)
+        var res = handler.compute(
+                true, false, false, false, false, camera,
+                0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                0.1f, 100L, collisionSystem
+        );
+
+        assertEquals(0.5f - MovementInputHandler.WALL_PULLBACK_MARGIN, res.z(), 0.01f);
+        assertTrue(res.z() < 0.5f, "Client predicted position must not penetrate wall at z=0.5");
+    }
+
+    private static ZoneCollisionSystem singleObjectCollision(List<ZoneCollisionTriangle> tris) {
+        float[] identity = new float[]{
+                1f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f,
+                0f, 0f, 1f, 0f,
+                0f, 0f, 0f, 1f
+        };
+        ZoneCollisionObject obj = new ZoneCollisionObject(tris, identity);
+        ZoneCollisionObjectGroup group = new ZoneCollisionObjectGroup(List.of(obj));
+        return new ZoneCollisionSystem(new ZoneCollisionMap(1, 1, 64, 64, 1, 1, new ZoneCollisionObjectGroup[][]{{group}}));
     }
 }

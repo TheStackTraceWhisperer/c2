@@ -9,7 +9,6 @@ import com.example.client.state.ClientState;
 import com.example.common.protocol.JobId;
 import com.example.common.time.VanadielTime;
 import com.example.common.time.WeatherType;
-import com.ffxi.viewer.model.LoadedCharacter;
 import com.ffxi.viewer.renderer.FontMojiGlRenderer;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -177,15 +176,7 @@ public final class InGameHudOverlay {
         if (actor == null || actor.getVisualModel() == null) {
             return fallbackHeight;
         }
-        LoadedCharacter character = actor.getVisualModel().getCharacter();
-        if (character == null) {
-            return fallbackHeight;
-        }
-        float height = character.feetOffsetY() * 2.0f * character.effectiveScale();
-        if (!Float.isFinite(height) || height <= 0.25f) {
-            return fallbackHeight;
-        }
-        return height + 0.35f;
+        return actor.getVisualModel().resolveNameplateHeightOffset(fallbackHeight);
     }
 
     public static void drawBillboardLabel(float screenX, float screenY, String windowId, String text, float r, float g, float b) {

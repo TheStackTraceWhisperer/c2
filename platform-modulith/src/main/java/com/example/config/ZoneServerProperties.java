@@ -29,4 +29,6 @@ public class ZoneServerProperties {
   private float maxStepHeight = 1.2f;
 
   private float maxJumpHeight = 3.5f;
+
+  private boolean npcPatrolsEnabled = true;
 }

@@ -22,7 +22,7 @@ import static org.lwjgl.opengl.GL20C.glUseProgram;
  */
 public final class ZoneShader implements AutoCloseable {
     private static final String VERTEX_SHADER = """
-            #version 330 core
+            #version 460 core
 
             uniform mat4 uProjMatrix;
             uniform mat4 uViewMatrix;
@@ -57,7 +57,7 @@ public final class ZoneShader implements AutoCloseable {
             """;
 
     private static final String FRAGMENT_SHADER = """
-            #version 330 core
+            #version 460 core
 
             uniform sampler2D diffuseTexture;
             uniform sampler2D uShadowMap;

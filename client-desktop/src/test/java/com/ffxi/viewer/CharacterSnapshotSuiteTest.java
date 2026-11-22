@@ -1,233 +1,117 @@
 package com.ffxi.viewer;
 
 import com.example.asset.config.FfxiPathConfig;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.RaceModelLoader;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.CompositeCharacterModel;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedMesh;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedSubMesh;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.SkinnedVertex;
-import com.ffxi.viewer.SnapshotCharacterTestHelper.DecodedTexture;
+import com.example.client.desktop.capture.ScreenshotCapture;
+import com.example.client.desktop.scene.CameraMode;
+import com.example.client.desktop.scene.SceneActor;
+import com.example.client.desktop.scene.SceneCamera;
+import com.example.client.desktop.scene.WorldScene;
+import com.example.common.time.VanadielTime;
+import com.ffxi.tables.RaceGenderConfig;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
-import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+/**
+ * Playable Race Character Portrait Snapshot Suite.
+ * Renders idle postures for all 8 playable race/gender combinations using the production
+ * OpenGL 4.6 Core {@link WorldScene} and {@link com.ffxi.viewer.renderer.CharacterShader} pipeline.
+ */
 public class CharacterSnapshotSuiteTest {
 
     private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
-    private static final Path OUTPUT_DIR = Path.of("target/snapshots");
+    private static final int WIDTH = 1440;
+    private static final int HEIGHT = 1620;
 
-    record RaceConfig(RaceModelLoader.CharacterRace race, String snapshotKey) {}
+    record RaceConfig(RaceGenderConfig race, String snapshotKey) {}
+
+    private static HeadlessGlContext glContext;
+    private static WorldScene worldScene;
+
+    @BeforeAll
+    static void initSuite() {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required for OpenGL 4.6 Core snapshots (run via scripts/with-xvfb.sh)");
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+
+        glContext = HeadlessGlContext.create();
+        worldScene = new WorldScene();
+        worldScene.init();
+        assertTrue(worldScene.isInitialized(), "WorldScene must initialize in OpenGL 4.6 Core context");
+
+        worldScene.setShowSkyDome(false);
+        worldScene.setEnableShadows(false);
+        worldScene.setEnableSsao(false);
+        worldScene.setClearColor(22.0f / 255.0f, 26.0f / 255.0f, 38.0f / 255.0f);
+    }
+
+    @AfterAll
+    static void tearDownSuite() {
+        if (worldScene != null) {
+            worldScene.close();
+        }
+        if (glContext != null) {
+            glContext.close();
+        }
+    }
 
     @Test
     @DisplayName("Render and snapshot authentic idle animation poses for all playable race and gender combinations")
     void testRenderAndSnapshotAllPlayableRaces() throws Exception {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required (run via scripts/with-xvfb.sh)");
         assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
-        Files.createDirectories(OUTPUT_DIR);
 
         RaceConfig[] playableRaces = new RaceConfig[] {
-                new RaceConfig(RaceModelLoader.CharacterRace.HUME_MALE, "humem"),
-                new RaceConfig(RaceModelLoader.CharacterRace.HUME_FEMALE, "humef"),
-                new RaceConfig(RaceModelLoader.CharacterRace.ELVAAN_MALE, "elvaanm"),
-                new RaceConfig(RaceModelLoader.CharacterRace.ELVAAN_FEMALE, "elvaanf"),
-                new RaceConfig(RaceModelLoader.CharacterRace.TARUTARU_MALE, "tarum"),
-                new RaceConfig(RaceModelLoader.CharacterRace.TARUTARU_FEMALE, "taruf"),
-                new RaceConfig(RaceModelLoader.CharacterRace.MITHRA, "mithra"),
-                new RaceConfig(RaceModelLoader.CharacterRace.GALKA, "galka")
+                new RaceConfig(RaceGenderConfig.HumeM, "humem"),
+                new RaceConfig(RaceGenderConfig.HumeF, "humef"),
+                new RaceConfig(RaceGenderConfig.ElvaanM, "elvaanm"),
+                new RaceConfig(RaceGenderConfig.ElvaanF, "elvaanf"),
+                new RaceConfig(RaceGenderConfig.TaruM, "tarum"),
+                new RaceConfig(RaceGenderConfig.TaruF, "taruf"),
+                new RaceConfig(RaceGenderConfig.Mithra, "mithra"),
+                new RaceConfig(RaceGenderConfig.Galka, "galka")
         };
 
-        RaceModelLoader loader = new RaceModelLoader();
-
         for (RaceConfig cfg : playableRaces) {
-            System.out.println("[SNAPSHOT-TEST] Loading authentic character model: " + cfg.race.displayName());
-            CompositeCharacterModel model = loader.loadRaceModel(cfg.race);
-            assertNotNull(model, "Character should load for " + cfg.race.displayName());
-            assertNotNull(model.skeleton(), "Skeleton must exist for " + cfg.race.displayName());
+            System.out.println("[SNAPSHOT-TEST] Loading authentic character model: " + cfg.race.name());
+            AuthenticCharacterInstance instance = worldScene.createCharacterInstance(FFXI_ROOT, cfg.race);
+            assertNotNull(instance.getCharacter(), "Character should load for " + cfg.race.name());
+            assertNotNull(instance.getCharacter().skeleton(), "Skeleton must exist for " + cfg.race.name());
 
-            BufferedImage snapshot = renderCharacterSnapshot(model);
-            File outFile = OUTPUT_DIR.resolve("character_idle_" + cfg.snapshotKey + ".png").toFile();
-            ImageIO.write(snapshot, "PNG", outFile);
-            assertTrue(outFile.exists() && outFile.length() > 0, "Snapshot file should be written");
-            System.out.printf("[SNAPSHOT-TEST] Saved %s to %s (%d bytes)%n", cfg.race.displayName(), outFile.getPath(), outFile.length());
+            SceneActor actor = new SceneActor(1L, cfg.race.name(), SceneActor.ActorType.PLAYER);
+            actor.setVisualModel(instance);
+            actor.setPosition(0.0f, 0.0f, 0.0f);
+            actor.setRotation(0.0f);
+            worldScene.setLocalPlayer(actor);
+
+            float charHeight = Math.max(0.6f, instance.getCharacter().feetOffsetY() * 2.0f * instance.getCharacter().effectiveScale());
+
+            SceneCamera camera = worldScene.getCamera();
+            camera.setMode(CameraMode.FREE_ORBIT);
+            camera.setFov(38.0f);
+            camera.setNearPlane(0.1f);
+            camera.setFarPlane(100.0f);
+            camera.setTarget(0.0f, 0.0f, 0.0f);
+            camera.setTargetOffsetY(charHeight * 0.5f);
+            camera.setYaw(155.0f);
+            camera.setPitch(6.0f);
+            camera.setDistance(charHeight * 1.65f);
+
+            worldScene.update(0.0f, VanadielTime.ofHour(12.0f));
+            BufferedImage snapshot = worldScene.captureFrame(WIDTH, HEIGHT);
+            Path outPath = ScreenshotCapture.saveBufferedImage(snapshot, "character_idle_" + cfg.snapshotKey);
+
+            assertTrue(Files.isRegularFile(outPath) && Files.size(outPath) > 0, "Snapshot file should be written");
+            System.out.printf("[SNAPSHOT-TEST] Saved GL4.6 %s to %s (%,d bytes)%n",
+                    cfg.race.name(), outPath.getFileName(), Files.size(outPath));
         }
-    }
-
-    private BufferedImage renderCharacterSnapshot(CompositeCharacterModel model) {
-        int width = 1440;
-        int height = 1620;
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        float[] zBuffer = new float[width * height];
-        Arrays.fill(zBuffer, Float.POSITIVE_INFINITY);
-
-        // Retail-style UI dark slate gradient background
-        Graphics2D g = image.createGraphics();
-        for (int y = 0; y < height; y++) {
-            float ratio = (float) y / height;
-            int r = (int) (18 + ratio * 10);
-            int gr = (int) (22 + ratio * 12);
-            int b = (int) (30 + ratio * 18);
-            g.setColor(new Color(r, gr, b));
-            g.drawLine(0, y, width, y);
-        }
-        g.dispose();
-
-        float minX = 1e9f, maxX = -1e9f;
-        float minY = 1e9f, maxY = -1e9f;
-        float minZ = 1e9f, maxZ = -1e9f;
-
-        for (SkinnedMesh mesh : model.equipmentSlots().values()) {
-            for (SkinnedSubMesh sub : mesh.subMeshes()) {
-                for (SkinnedVertex v : sub.vertices()) {
-                    float x = v.position().x();
-                    float y = v.position().y();
-                    float z = v.position().z();
-                    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-                    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-                    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-                }
-            }
-        }
-
-        float cx = (minX + maxX) * 0.5f;
-        float cy = (minY + maxY) * 0.5f;
-        float cz = (minZ + maxZ) * 0.5f;
-        float charHeight = Math.max(0.5f, maxY - minY);
-
-        // Retail FFXI front-quarter angle
-        float angle = (float) Math.toRadians(25.0);
-        float cosA = (float) Math.cos(angle);
-        float sinA = (float) Math.sin(angle);
-        float dist = charHeight * 1.55f;
-        float fov = (float) Math.tan(Math.toRadians(20.0));
-
-        System.out.printf("[DEBUG-TEST] Bounds: cx=%.3f cy=%.3f cz=%.3f height=%.3f slots=%d%n",
-                cx, cy, cz, charHeight, model.equipmentSlots().size());
-        int drawnCount = 0;
-        int[] pixels = new int[width * height];
-        image.getRGB(0, 0, width, height, pixels, 0, width);
-
-        for (SkinnedMesh mesh : model.equipmentSlots().values()) {
-            for (SkinnedSubMesh sub : mesh.subMeshes()) {
-                DecodedTexture tex = model.textures().get(sub.textureName());
-                List<SkinnedVertex> verts = sub.vertices();
-                List<Integer> indices = sub.indices();
-
-                for (int i = 0; i + 2 < indices.size(); i += 3) {
-                    SkinnedVertex v0 = verts.get(indices.get(i));
-                    SkinnedVertex v1 = verts.get(indices.get(i + 1));
-                    SkinnedVertex v2 = verts.get(indices.get(i + 2));
-
-                    float[] c0 = toCamera(v0.position().x() - cx, -(v0.position().y() - cy), v0.position().z() - cz, cosA, sinA, dist);
-                    float[] c1 = toCamera(v1.position().x() - cx, -(v1.position().y() - cy), v1.position().z() - cz, cosA, sinA, dist);
-                    float[] c2 = toCamera(v2.position().x() - cx, -(v2.position().y() - cy), v2.position().z() - cz, cosA, sinA, dist);
-
-                    if (c0[2] <= 0.1f || c1[2] <= 0.1f || c2[2] <= 0.1f) continue;
-
-                    float sx0 = (c0[0] / (c0[2] * fov) * 0.5f + 0.5f) * width;
-                    float sy0 = (0.5f - c0[1] / (c0[2] * fov) * 0.5f) * height;
-
-                    float sx1 = (c1[0] / (c1[2] * fov) * 0.5f + 0.5f) * width;
-                    float sy1 = (0.5f - c1[1] / (c1[2] * fov) * 0.5f) * height;
-
-                    float sx2 = (c2[0] / (c2[2] * fov) * 0.5f + 0.5f) * width;
-                    float sy2 = (0.5f - c2[1] / (c2[2] * fov) * 0.5f) * height;
-
-                    drawnCount++;
-                    rasterizeTriangle(pixels, zBuffer, width, height,
-                            sx0, sy0, c0[2], v0.u(), v0.v(),
-                            sx1, sy1, c1[2], v1.u(), v1.v(),
-                            sx2, sy2, c2[2], v2.u(), v2.v(),
-                            tex);
-                }
-            }
-        }
-
-        System.out.println("[DEBUG-TEST] Drawn triangles count: " + drawnCount);
-        image.setRGB(0, 0, width, height, pixels, 0, width);
-        return image;
-    }
-
-    private static float[] toCamera(float fwd, float up, float right, float cosA, float sinA, float dist) {
-        float camZ = dist - (cosA * fwd - sinA * right);
-        float camX = sinA * fwd + cosA * right;
-        float camY = up;
-        return new float[] { camX, camY, camZ };
-    }
-
-    private static void rasterizeTriangle(int[] pixels, float[] zBuffer, int width, int height,
-                                          float x0, float y0, float z0, float u0, float v0,
-                                          float x1, float y1, float z1, float u1, float v1,
-                                          float x2, float y2, float z2, float u2, float v2,
-                                          DecodedTexture texture) {
-        int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
-        int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
-        int minY = Math.max(0, (int) Math.floor(Math.min(y0, Math.min(y1, y2))));
-        int maxY = Math.min(height - 1, (int) Math.ceil(Math.max(y0, Math.max(y1, y2))));
-
-        float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
-        if (Math.abs(denom) < 1e-5f) return;
-
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                float px = x + 0.5f;
-                float py = y + 0.5f;
-
-                float w0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom;
-                float w1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom;
-                float w2 = 1.0f - w0 - w1;
-
-                if (w0 >= 0f && w1 >= 0f && w2 >= 0f) {
-                    float z = w0 * z0 + w1 * z1 + w2 * z2;
-                    int idx = y * width + x;
-                    if (z < zBuffer[idx]) {
-                        float u = w0 * u0 + w1 * u1 + w2 * u2;
-                        float v = w0 * v0 + w1 * v1 + w2 * v2;
-
-                        if (texture != null && texture.rgbaPixels() != null && texture.rgbaPixels().length > 0) {
-                            int texColor = sampleOpaque(texture, u, v);
-                            if (texColor == 0) continue; // transparent / alpha discard
-                            zBuffer[idx] = z;
-                            pixels[idx] = texColor;
-                        } else {
-                            zBuffer[idx] = z;
-                            pixels[idx] = 0xFFCCCCCC; // light neutral gray
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static int sampleOpaque(DecodedTexture tex, float u, float v) {
-        int width = tex.width();
-        int height = tex.height();
-        float fu = u - (float) Math.floor(u);
-        float fv = v - (float) Math.floor(v);
-        int tx = Math.max(0, Math.min(width - 1, (int) (fu * width)));
-        int ty = Math.max(0, Math.min(height - 1, (int) (fv * height)));
-        int offset = (ty * width + tx) * 4;
-
-        byte[] rgba = tex.rgbaPixels();
-        if (offset + 3 >= rgba.length) return 0;
-        int a = rgba[offset + 3] & 0xFF;
-        if (a < 32) return 0; // discard transparent fringe
-
-        int r = rgba[offset] & 0xFF;
-        int g = rgba[offset + 1] & 0xFF;
-        int b = rgba[offset + 2] & 0xFF;
-
-        return (0xFF << 24) | (r << 16) | (g << 8) | b;
     }
 }

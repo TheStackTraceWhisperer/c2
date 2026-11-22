@@ -13,19 +13,26 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Caches parsed {@link LoadedCharacter} DAT payloads and shared immutable GPU mesh buffers / texture atlases
- * per {@link AppearanceCacheKey}. Each spawned actor receives its own {@link AuthenticCharacterInstance} with an
- * independent {@link AuthenticLocomotionController} animation state while sharing the underlying VAO/VBOs and
- * GL textures, avoiding render-thread DAT reload stalls and VRAM duplication across identical guards and NPCs.
+ * per {@link AppearanceCacheKey} with reference-counted LRU eviction. Each spawned actor receives its own
+ * {@link AuthenticCharacterInstance} with an independent {@link AuthenticLocomotionController} animation state
+ * while sharing the underlying VAO/VBOs and GL textures, avoiding render-thread DAT reload stalls and VRAM
+ * duplication across identical guards and NPCs.
  */
 @Slf4j
 public final class CharacterAssetCache implements AutoCloseable {
+
+    public static final int DEFAULT_MAX_CPU_ENTRIES = 256;
+    public static final int DEFAULT_MAX_GPU_ENTRIES = 128;
 
     public record AppearanceCacheKey(
             ActorLookType lookType,
@@ -115,28 +122,71 @@ public final class CharacterAssetCache implements AutoCloseable {
                 } catch (Exception ignored) {
                 }
             }
-            try {
-                textureLoader.close();
-            } catch (Exception ignored) {
+            if (textureLoader != null) {
+                try {
+                    textureLoader.close();
+                } catch (Exception ignored) {
+                }
             }
         }
     }
 
-    private final Map<AppearanceCacheKey, LoadedCharacter> cpuCache = new ConcurrentHashMap<>();
-    private final Map<AppearanceCacheKey, SharedGpuAssets> gpuCache = new LinkedHashMap<>();
+    private static final class GpuCacheEntry {
+        final LoadedCharacter character;
+        final SharedGpuAssets assets;
+        int activeRefs = 0;
+
+        GpuCacheEntry(LoadedCharacter character, SharedGpuAssets assets) {
+            this.character = character;
+            this.assets = assets;
+        }
+    }
+
+    private final int maxCpuEntries;
+    private final int maxGpuEntries;
+    private final ReentrantLock cpuLock = new ReentrantLock();
+    private final ReentrantLock gpuLock = new ReentrantLock();
+    private final Map<AppearanceCacheKey, LoadedCharacter> cpuCache = new LinkedHashMap<>(64, 0.75f, true);
+    private final Map<AppearanceCacheKey, GpuCacheEntry> gpuCache = new LinkedHashMap<>(64, 0.75f, true);
+
+    public CharacterAssetCache() {
+        this(DEFAULT_MAX_CPU_ENTRIES, DEFAULT_MAX_GPU_ENTRIES);
+    }
+
+    public CharacterAssetCache(int maxCpuEntries, int maxGpuEntries) {
+        this.maxCpuEntries = Math.max(1, maxCpuEntries);
+        this.maxGpuEntries = Math.max(1, maxGpuEntries);
+    }
 
     /**
      * Loads or retrieves the cached CPU {@link LoadedCharacter} for {@code appearance}. Safe to call off the GL thread.
      */
     public LoadedCharacter getOrLoadActor(Path ffxiRoot, ActorAppearance appearance) throws IOException {
         AppearanceCacheKey key = AppearanceCacheKey.from(appearance);
-        LoadedCharacter existing = cpuCache.get(key);
-        if (existing != null) {
-            return existing;
+        cpuLock.lock();
+        try {
+            LoadedCharacter existing = cpuCache.get(key);
+            if (existing != null) {
+                return existing;
+            }
+        } finally {
+            cpuLock.unlock();
         }
+
         LoadedCharacter loaded = CharacterModelLoader.loadActor(ffxiRoot, appearance);
-        LoadedCharacter prev = cpuCache.putIfAbsent(key, loaded);
-        return prev != null ? prev : loaded;
+
+        cpuLock.lock();
+        try {
+            LoadedCharacter existing = cpuCache.get(key);
+            if (existing != null) {
+                return existing;
+            }
+            cpuCache.put(key, loaded);
+            trimCpuCacheLocked();
+            return loaded;
+        } finally {
+            cpuLock.unlock();
+        }
     }
 
     /**
@@ -146,24 +196,207 @@ public final class CharacterAssetCache implements AutoCloseable {
      */
     public AuthenticCharacterInstance acquireInstance(Path ffxiRoot, ActorAppearance appearance) throws IOException {
         AppearanceCacheKey key = AppearanceCacheKey.from(appearance);
-        SharedGpuAssets shared = gpuCache.get(key);
-        if (shared == null) {
+        List<SharedGpuAssets> toClose = new ArrayList<>();
+        GpuCacheEntry entry;
+
+        gpuLock.lock();
+        try {
+            entry = gpuCache.get(key);
+        } finally {
+            gpuLock.unlock();
+        }
+
+        if (entry == null) {
             LoadedCharacter character = getOrLoadActor(ffxiRoot, appearance);
             List<CharacterMeshBuffer> meshBuffers = new ArrayList<>(character.meshes().size());
             for (SkeletonMeshMesh mesh : character.meshes()) {
                 meshBuffers.add(new CharacterMeshBuffer(mesh));
             }
             CharacterTextureLoader textureLoader = new CharacterTextureLoader(character.textures());
-            shared = new SharedGpuAssets(character, List.copyOf(meshBuffers), textureLoader);
-            gpuCache.put(key, shared);
-            log.debug("Uploaded shared GPU character assets for {} ({} meshes)", key, meshBuffers.size());
+            SharedGpuAssets created = new SharedGpuAssets(character, List.copyOf(meshBuffers), textureLoader);
+
+            gpuLock.lock();
+            try {
+                entry = gpuCache.get(key);
+                if (entry == null) {
+                    entry = new GpuCacheEntry(character, created);
+                    gpuCache.put(key, entry);
+                    log.debug("Uploaded shared GPU character assets for {} ({} meshes)", key, meshBuffers.size());
+                } else {
+                    toClose.add(created);
+                }
+            } finally {
+                gpuLock.unlock();
+            }
         }
+
+        final GpuCacheEntry boundEntry = entry;
+        gpuLock.lock();
+        try {
+            boundEntry.activeRefs++;
+            collectLruEvictionsLocked(toClose);
+        } finally {
+            gpuLock.unlock();
+        }
+
+        for (SharedGpuAssets unused : toClose) {
+            unused.close();
+        }
+
         return new AuthenticCharacterInstance(
-                shared.character(),
-                shared.meshBuffers(),
-                shared.textureLoader(),
-                false
+                boundEntry.character,
+                boundEntry.assets.meshBuffers(),
+                boundEntry.assets.textureLoader(),
+                false,
+                () -> releaseGpuReference(key, boundEntry)
         );
+    }
+
+    AuthenticCharacterInstance acquireSharedForKey(
+            AppearanceCacheKey key,
+            LoadedCharacter character,
+            List<CharacterMeshBuffer> meshBuffers,
+            CharacterTextureLoader textureLoader
+    ) {
+        cpuLock.lock();
+        try {
+            cpuCache.put(key, character);
+            trimCpuCacheLocked();
+        } finally {
+            cpuLock.unlock();
+        }
+
+        List<SharedGpuAssets> toClose = new ArrayList<>();
+        GpuCacheEntry entry;
+        gpuLock.lock();
+        try {
+            entry = gpuCache.get(key);
+            if (entry == null) {
+                SharedGpuAssets shared = new SharedGpuAssets(
+                        character,
+                        meshBuffers != null ? List.copyOf(meshBuffers) : List.of(),
+                        textureLoader
+                );
+                entry = new GpuCacheEntry(character, shared);
+                gpuCache.put(key, entry);
+            }
+            entry.activeRefs++;
+            collectLruEvictionsLocked(toClose);
+        } finally {
+            gpuLock.unlock();
+        }
+
+        for (SharedGpuAssets unused : toClose) {
+            unused.close();
+        }
+
+        final GpuCacheEntry boundEntry = entry;
+        return new AuthenticCharacterInstance(
+                boundEntry.character,
+                boundEntry.assets.meshBuffers(),
+                boundEntry.assets.textureLoader(),
+                false,
+                () -> releaseGpuReference(key, boundEntry)
+        );
+    }
+
+    private void releaseGpuReference(AppearanceCacheKey key, GpuCacheEntry entry) {
+        gpuLock.lock();
+        try {
+            if (entry.activeRefs > 0) {
+                entry.activeRefs--;
+            }
+        } finally {
+            gpuLock.unlock();
+        }
+    }
+
+    private void collectLruEvictionsLocked(List<SharedGpuAssets> toClose) {
+        if (gpuCache.size() <= maxGpuEntries) {
+            return;
+        }
+        Iterator<Map.Entry<AppearanceCacheKey, GpuCacheEntry>> it = gpuCache.entrySet().iterator();
+        while (gpuCache.size() > maxGpuEntries && it.hasNext()) {
+            GpuCacheEntry candidate = it.next().getValue();
+            if (candidate.activeRefs <= 0) {
+                it.remove();
+                if (candidate.assets != null) {
+                    toClose.add(candidate.assets);
+                }
+            }
+        }
+    }
+
+    private void trimCpuCacheLocked() {
+        Iterator<Map.Entry<AppearanceCacheKey, LoadedCharacter>> it = cpuCache.entrySet().iterator();
+        while (cpuCache.size() > maxCpuEntries && it.hasNext()) {
+            it.next();
+            it.remove();
+        }
+    }
+
+    /**
+     * Evicts and disposes all cached GPU bundles with zero active actor references.
+     * Must be called on the OpenGL render thread.
+     */
+    public int evictUnusedGpuAssets() {
+        List<SharedGpuAssets> toClose = new ArrayList<>();
+        gpuLock.lock();
+        try {
+            Iterator<Map.Entry<AppearanceCacheKey, GpuCacheEntry>> it = gpuCache.entrySet().iterator();
+            while (it.hasNext()) {
+                GpuCacheEntry candidate = it.next().getValue();
+                if (candidate.activeRefs <= 0) {
+                    it.remove();
+                    if (candidate.assets != null) {
+                        toClose.add(candidate.assets);
+                    }
+                }
+            }
+        } finally {
+            gpuLock.unlock();
+        }
+
+        for (SharedGpuAssets assets : toClose) {
+            assets.close();
+        }
+        return toClose.size();
+    }
+
+    /**
+     * Evicts unused GPU assets and drops CPU cache entries not pinned by any remaining GPU bundle.
+     * Must be called on the OpenGL render thread (for example on zone transitions).
+     */
+    public int evictUnusedAssets() {
+        int evictedGpu = evictUnusedGpuAssets();
+        Set<AppearanceCacheKey> pinnedKeys;
+        gpuLock.lock();
+        try {
+            pinnedKeys = new HashSet<>(gpuCache.keySet());
+        } finally {
+            gpuLock.unlock();
+        }
+
+        cpuLock.lock();
+        try {
+            cpuCache.keySet().retainAll(pinnedKeys);
+        } finally {
+            cpuLock.unlock();
+        }
+        return evictedGpu;
+    }
+
+    public int activeGpuReferenceCount() {
+        gpuLock.lock();
+        try {
+            int total = 0;
+            for (GpuCacheEntry entry : gpuCache.values()) {
+                total += entry.activeRefs;
+            }
+            return total;
+        } finally {
+            gpuLock.unlock();
+        }
     }
 
     /**
@@ -185,19 +418,47 @@ public final class CharacterAssetCache implements AutoCloseable {
     }
 
     public int cachedCpuRaceCount() {
-        return cpuCache.size();
+        cpuLock.lock();
+        try {
+            return cpuCache.size();
+        } finally {
+            cpuLock.unlock();
+        }
     }
 
     public int cachedGpuRaceCount() {
-        return gpuCache.size();
+        gpuLock.lock();
+        try {
+            return gpuCache.size();
+        } finally {
+            gpuLock.unlock();
+        }
     }
 
     @Override
     public void close() {
-        for (SharedGpuAssets assets : gpuCache.values()) {
+        List<SharedGpuAssets> toClose = new ArrayList<>();
+        gpuLock.lock();
+        try {
+            for (GpuCacheEntry entry : gpuCache.values()) {
+                if (entry.assets != null) {
+                    toClose.add(entry.assets);
+                }
+            }
+            gpuCache.clear();
+        } finally {
+            gpuLock.unlock();
+        }
+
+        cpuLock.lock();
+        try {
+            cpuCache.clear();
+        } finally {
+            cpuLock.unlock();
+        }
+
+        for (SharedGpuAssets assets : toClose) {
             assets.close();
         }
-        gpuCache.clear();
-        cpuCache.clear();
     }
 }

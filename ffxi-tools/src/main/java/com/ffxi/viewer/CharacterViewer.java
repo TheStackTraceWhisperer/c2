@@ -14,11 +14,13 @@ import com.ffxi.model.Vec3f;
 import com.ffxi.tables.CharacterIdToResourceId;
 import com.ffxi.tables.ItemModelSlot;
 import com.ffxi.tables.RaceGenderConfig;
+import com.example.client.desktop.concurrent.TaskSchedulerService;
 import com.ffxi.viewer.renderer.CharacterMeshBuffer;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import com.ffxi.viewer.renderer.ZoneTextureLoader;
 import com.ffxi.viewer.renderer.CharacterShader;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
+import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneShader;
 import com.ffxi.viewer.model.LoadedCharacter;
 import com.ffxi.viewer.model.CharacterModelLoader;
@@ -55,6 +57,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_CURSOR_NORMAL;
 import static org.lwjgl.glfw.GLFW.GLFW_FALSE;
 import static org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT;
 import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_CORE_PROFILE;
+import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_FORWARD_COMPAT;
 import static org.lwjgl.glfw.GLFW.GLFW_OPENGL_PROFILE;
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
 import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
@@ -171,7 +174,7 @@ public final class CharacterViewer {
     private float targetOffsetX = 0.0f;
     private float targetOffsetY = 0.0f;
     private float targetOffsetZ = 0.0f;
-    private final TaskScheduler taskScheduler = new TaskScheduler();
+    private final TaskSchedulerService taskScheduler = new TaskSchedulerService();
     private boolean isLoading = false;
     private String loadingStatus = "";
     private boolean reloadPending = false;
@@ -269,7 +272,7 @@ public final class CharacterViewer {
         ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
         ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
         imGuiGlfw.init(window, true);
-        imGuiGl3.init("#version 330");
+        imGuiGl3.init("#version 460");
 
         this.character = initialCharacter;
 
@@ -768,14 +771,15 @@ public final class CharacterViewer {
                 ImGui.end();
 
                 // 3. Render Game scene with dynamic frameModelMatrix (native FFXI -Y = Up)
+                float effectiveScale = character.effectiveScale() * charScale.get();
                 Matrix4f frameModelMatrix = new Matrix4f()
-                        .translate(charTx.get(), charTy.get() - character.feetLocalY(), charTz.get())
+                        .translate(charTx.get(), charTy.get() - character.feetLocalY() * effectiveScale, charTz.get())
                         .rotateXYZ(
                                 (float) Math.toRadians(charRx.get()),
                                 (float) Math.toRadians(charRy.get()),
                                 (float) Math.toRadians(charRz.get())
                         )
-                        .scale(charScale.get());
+                        .scale(effectiveScale);
                 renderFrame(shader, textureLoader, meshBuffers, animator, frameModelMatrix, animationTime, zoneShader, zoneTextureLoader, zoneRenderChunks);
 
                 // 4. Render ImGui
@@ -804,7 +808,7 @@ public final class CharacterViewer {
             zoneTextureLoader.close();
             shader.close();
             zoneShader.close();
-            taskScheduler.shutdown();
+            taskScheduler.close();
 
         } finally {
             imGuiGlfw.dispose();
@@ -822,9 +826,10 @@ public final class CharacterViewer {
         }
 
         glfwDefaultWindowHints();
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, NULL, NULL);
@@ -1020,7 +1025,7 @@ public final class CharacterViewer {
         charTz.set(worldZ);
         charTy.set(floorWorldY);
 
-        float charCenterY = floorWorldY - character.feetOffsetY();
+        float charCenterY = floorWorldY - character.feetOffsetY() * character.effectiveScale();
         targetOffsetX = worldX;
         targetOffsetY = charCenterY;
         targetOffsetZ = worldZ;
@@ -1041,7 +1046,7 @@ public final class CharacterViewer {
             return;
         }
         charTy.set(y);
-        targetOffsetY = y - character.feetOffsetY();
+        targetOffsetY = y - character.feetOffsetY() * character.effectiveScale();
     }
 
     private static int findZoneOptionIndexById(List<ZoneModelLoader.ZoneSelectionOption> options, int zoneId) {
@@ -1075,13 +1080,5 @@ public final class CharacterViewer {
 
     private static float clamp(float value, float min, float max) {
         return Math.max(min, Math.min(max, value));
-    }
-
-    private record ZoneRenderChunk(
-            ZoneMeshBuffer buffer,
-            Matrix4f modelMatrix,
-            boolean invertCull,
-            float discardThreshold
-    ) {
     }
 }

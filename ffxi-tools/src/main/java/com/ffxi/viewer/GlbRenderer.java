@@ -30,7 +30,7 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 public final class GlbRenderer {
 
     private static final String VERTEX_SHADER_SRC =
-            "#version 330\n" +
+            "#version 460 core\n" +
             "layout(location=0) in vec3 position;\n" +
             "layout(location=1) in vec3 normal;\n" +
             "layout(location=2) in vec2 texCoords;\n" +
@@ -51,7 +51,7 @@ public final class GlbRenderer {
             "}\n";
 
     private static final String FRAGMENT_SHADER_SRC =
-            "#version 330\n" +
+            "#version 460 core\n" +
             "uniform sampler2D uDiffuseTexture;\n" +
             "uniform float uDiscardThreshold;\n" +
             "in vec4 fragColor;\n" +
@@ -172,8 +172,8 @@ public final class GlbRenderer {
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 

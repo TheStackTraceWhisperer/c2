@@ -24,7 +24,7 @@ import static org.lwjgl.opengl.GL33C.*;
 public final class AuthenticSkyDome implements AutoCloseable {
 
     private static final String SKY_VERT_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec4 aColor;
 
@@ -42,7 +42,7 @@ public final class AuthenticSkyDome implements AutoCloseable {
             """;
 
     private static final String SKY_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec4 vColor;
             out vec4 FragColor;
 

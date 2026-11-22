@@ -160,8 +160,7 @@ public final class ScreenshotCapture {
                 int r = buffer.get(index) & 0xFF;
                 int g = buffer.get(index + 1) & 0xFF;
                 int b = buffer.get(index + 2) & 0xFF;
-                int a = buffer.get(index + 3) & 0xFF;
-                int argb = (a << 24) | (r << 16) | (g << 8) | b;
+                int argb = (0xFF << 24) | (r << 16) | (g << 8) | b;
                 image.setRGB(x, y, argb);
             }
         }

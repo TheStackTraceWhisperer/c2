@@ -1,10 +1,13 @@
 package com.ffxi.viewer;
 
+import com.example.client.desktop.concurrent.TaskSchedulerService;
+import com.example.client.desktop.scene.SceneCamera;
 import lombok.extern.slf4j.Slf4j;
 import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.viewer.debug.ZoneObjExporter;
 import com.ffxi.viewer.model.LoadedZone;
 import com.ffxi.viewer.model.ZoneModelLoader;
+import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneTextureLoader;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
 import com.ffxi.viewer.renderer.ZoneShader;
@@ -64,7 +67,8 @@ public final class ZoneViewer {
 
     private ZoneShader zoneShader;
     private ZoneTextureLoader zoneTextureLoader;
-    private final TaskScheduler taskScheduler = new TaskScheduler();
+    private final TaskSchedulerService taskScheduler = new TaskSchedulerService();
+    private final SceneCamera camera = new SceneCamera();
 
     private int zoneTriangleCount = 0;
     private Integer referenceObjTriangleCount = null;
@@ -93,7 +97,10 @@ public final class ZoneViewer {
         ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
         ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
         imGuiGlfw.init(window, true);
-        imGuiGl3.init("#version 330");
+        imGuiGl3.init("#version 460");
+
+        camera.setNearPlane(0.01f);
+        camera.setFarPlane(100000.0f);
 
         zoneShader = new ZoneShader();
         zoneTextureLoader = new ZoneTextureLoader(java.util.Map.of());
@@ -219,11 +226,11 @@ public final class ZoneViewer {
             throw new RuntimeException(ex);
         } finally {
             for (ZoneRenderChunk chunk : zoneRenderChunks) {
-                chunk.buffer().close();
+                chunk.close();
             }
             zoneTextureLoader.close();
             zoneShader.close();
-            taskScheduler.shutdown();
+            taskScheduler.close();
 
             imGuiGlfw.dispose();
             imGuiGl3.dispose();
@@ -243,7 +250,7 @@ public final class ZoneViewer {
     private void applyLoadedZone(LoadedZone loadedZone) {
         try {
             for (ZoneRenderChunk renderChunk : zoneRenderChunks) {
-                renderChunk.buffer().close();
+                renderChunk.close();
             }
             zoneRenderChunks.clear();
 
@@ -306,8 +313,24 @@ public final class ZoneViewer {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
-        Matrix4f projectionMatrix = createProjectionMatrix();
-        Matrix4f viewMatrix = createViewMatrix();
+        Vector3f target = new Vector3f(targetOffsetX, targetOffsetY, targetOffsetZ);
+        Vector3f eye = new Vector3f(
+                (float) (orbitDistance * Math.cos(orbitPitch) * Math.sin(orbitYaw)) + targetOffsetX,
+                (float) (orbitDistance * Math.sin(orbitPitch)) + targetOffsetY,
+                (float) (orbitDistance * Math.cos(orbitPitch) * Math.cos(orbitYaw)) + targetOffsetZ
+        );
+        camera.setCutsceneCamera(eye, target, new Vector3f(0.0f, -1.0f, 0.0f), 50.0f);
+
+        float aspect;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer width = stack.mallocInt(1);
+            IntBuffer height = stack.mallocInt(1);
+            glfwGetFramebufferSize(window, width, height);
+            aspect = Math.max(1, width.get(0)) / (float) Math.max(1, height.get(0));
+        }
+
+        Matrix4f projectionMatrix = camera.getProjectionMatrix(aspect);
+        Matrix4f viewMatrix = camera.getViewMatrix();
 
         zoneShader.bind();
         glActiveTexture(GL_TEXTURE0);
@@ -351,26 +374,6 @@ public final class ZoneViewer {
         glFrontFace(GL_CCW);
     }
 
-    private Matrix4f createProjectionMatrix() {
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            IntBuffer width = stack.mallocInt(1);
-            IntBuffer height = stack.mallocInt(1);
-            glfwGetFramebufferSize(window, width, height);
-            float aspect = Math.max(1, width.get(0)) / (float) Math.max(1, height.get(0));
-            return new Matrix4f().perspective((float) Math.toRadians(50.0), aspect, 0.01f, 100000.0f);
-        }
-    }
-
-    private Matrix4f createViewMatrix() {
-        Vector3f target = new Vector3f(targetOffsetX, targetOffsetY, targetOffsetZ);
-        Vector3f eye = new Vector3f(
-                (float) (orbitDistance * Math.cos(orbitPitch) * Math.sin(orbitYaw)) + targetOffsetX,
-                (float) (orbitDistance * Math.sin(orbitPitch)) + targetOffsetY,
-                (float) (orbitDistance * Math.cos(orbitPitch) * Math.cos(orbitYaw)) + targetOffsetZ
-        );
-        return new Matrix4f().lookAt(eye, target, new Vector3f(0.0f, -1.0f, 0.0f));
-    }
-
     private void initWindow() {
         GLFWErrorCallback.create((error, description) -> log.error("GLFW error {}: {}", error, GLFWErrorCallback.getDescription(description))).set();
         if (!glfwInit()) {
@@ -378,9 +381,10 @@ public final class ZoneViewer {
         }
 
         glfwDefaultWindowHints();
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
         window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, NULL, NULL);
@@ -474,13 +478,5 @@ public final class ZoneViewer {
         } catch (IOException e) {
             return null;
         }
-    }
-
-    private record ZoneRenderChunk(
-            ZoneMeshBuffer buffer,
-            Matrix4f modelMatrix,
-            boolean invertCull,
-            float discardThreshold
-    ) {
     }
 }

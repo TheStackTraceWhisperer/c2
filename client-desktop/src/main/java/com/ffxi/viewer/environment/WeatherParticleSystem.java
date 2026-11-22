@@ -24,7 +24,7 @@ public final class WeatherParticleSystem implements AutoCloseable {
     private static final float EMITTER_HEIGHT = 25.0f;
 
     private static final String PARTICLE_VERT_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec4 aColor;
 
@@ -40,7 +40,7 @@ public final class WeatherParticleSystem implements AutoCloseable {
             """;
 
     private static final String PARTICLE_FRAG_SRC = """
-            #version 330 core
+            #version 460 core
             in vec4 vColor;
             out vec4 FragColor;
 

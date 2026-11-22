@@ -1214,6 +1214,90 @@ class ZoneSimulationEngineTest {
         }
     }
 
+    @Test
+    @DisplayName("ZoneSimulationEngine seeds Zone #230 Glenne sentry patrol from ZonePatrolCatalog when enabled")
+    void testSeedsAuthenticZonePatrolRoutesWhenEnabled() {
+        ZoneServerProperties patrolProps = new ZoneServerProperties();
+        patrolProps.setHost("127.0.0.1");
+        patrolProps.setPort(9000);
+        patrolProps.setZoneId(230);
+        patrolProps.setCollisionEnabled(false);
+        patrolProps.setNpcPatrolsEnabled(true);
+
+        List<NpcRecord> zoneNpcs = List.of(
+                new NpcRecord(
+                        17719340L, "Glenne",
+                        -121.512833f, -2.0f, 14.492509f, (short) 64,
+                        230, "normal", 0, (short) 0, (short) 0, (short) 8,
+                        "equipped", (short) 2, (short) 4,
+                        4096, 8200, 12296, 16392, 20488, 24576, 28672, 0, 0, true
+                )
+        );
+        NpcJdbcRepository npcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> "findByZoneId".equals(method.getName()) ? zoneNpcs : List.of()
+        );
+
+        NpcPatrolSimulation patrolSim = new NpcPatrolSimulation();
+        ZoneSimulationEngine patrolEngine = new ZoneSimulationEngine(
+                patrolProps, new SpatialGrid(), charRepo, zoneLineRepo, dispatcher,
+                new ZoneCollisionService(patrolProps), patrolSim, npcRepo
+        );
+        try {
+            patrolEngine.start();
+
+            assertThat(patrolSim.getAgentCount()).isEqualTo(1);
+            assertThat(patrolSim.getAgent(17719340L)).isNotNull();
+            float startX = patrolEngine.getEntity(17719340L).getX();
+            // Advance past first waypoint dwell (1.0s = 20 ticks) so patrol begins walking West (-X)
+            for (int i = 0; i < 40; i++) {
+                patrolEngine.tick();
+            }
+            assertThat(patrolEngine.getEntity(17719340L).getX()).isLessThan(startX);
+        } finally {
+            patrolEngine.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("ZoneSimulationEngine skips patrol registration when npcPatrolsEnabled is false")
+    void testSkipsZonePatrolSeedingWhenDisabled() {
+        ZoneServerProperties patrolProps = new ZoneServerProperties();
+        patrolProps.setHost("127.0.0.1");
+        patrolProps.setPort(9000);
+        patrolProps.setZoneId(230);
+        patrolProps.setCollisionEnabled(false);
+        patrolProps.setNpcPatrolsEnabled(false);
+
+        List<NpcRecord> zoneNpcs = List.of(
+                new NpcRecord(
+                        17719340L, "Glenne",
+                        -121.512833f, -2.0f, 14.492509f, (short) 64,
+                        230, "normal", 0, (short) 0, (short) 0, (short) 8,
+                        "equipped", (short) 2, (short) 4,
+                        4096, 8200, 12296, 16392, 20488, 24576, 28672, 0, 0, true
+                )
+        );
+        NpcJdbcRepository npcRepo = (NpcJdbcRepository) Proxy.newProxyInstance(
+                NpcJdbcRepository.class.getClassLoader(),
+                new Class<?>[]{NpcJdbcRepository.class},
+                (proxy, method, args) -> "findByZoneId".equals(method.getName()) ? zoneNpcs : List.of()
+        );
+
+        NpcPatrolSimulation patrolSim = new NpcPatrolSimulation();
+        ZoneSimulationEngine patrolEngine = new ZoneSimulationEngine(
+                patrolProps, new SpatialGrid(), charRepo, zoneLineRepo, dispatcher,
+                new ZoneCollisionService(patrolProps), patrolSim, npcRepo
+        );
+        try {
+            patrolEngine.start();
+            assertThat(patrolSim.getAgentCount()).isZero();
+        } finally {
+            patrolEngine.stop();
+        }
+    }
+
     private static CollisionMap buildSyntheticFloorMap(float floorY) {
         List<CollisionTriangle> triangles = List.of(
                 new CollisionTriangle(

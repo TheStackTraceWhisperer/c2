@@ -56,5 +56,5 @@
   - Add eviction/cleanup hooks (or LRU cap) to `CharacterAssetCache` on zone transitions to prevent unbounded VRAM growth.
   - Evaluate consuming parsed `DatParser` metadata: `ZoneSpacePartitionNode` / `ZoneSpacePartitionBounds` for `WorldScene` frustum culling, and `SkeletonBoundingBox` / `SkeletonJointReference` for exact nameplate/attachment anchoring.
 - **Dormant Gameplay & Dual Collision Stacks**:
-  - Seed initial patrol routes into `NpcPatrolSimulation` via `ZoneSimulationEngine` or document/gate until combat/AI milestones.
-  - Plan unification of `game-asset-pipeline`'s dual `com.example.asset.collision.*` (`ZoneDefParser`) and `com.ffxi.model.ZoneCollision*` (`DatParser`) stacks.
+  - Seed initial patrol routes into `NpcPatrolSimulation` via `ZoneSimulationEngine` (`ZonePatrolCatalog`).
+  - Planned Phase 4 unification of `game-asset-pipeline`'s dual `com.example.asset.collision.*` (`ZoneDefParser`) and `com.ffxi.model.ZoneCollision*` (`DatParser`) stacks is captured in [collision-unification-plan.md](file:///home/samuel_l_hyman/c2/specs/006-cleanup-and-polish/collision-unification-plan.md).

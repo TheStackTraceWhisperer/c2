@@ -122,6 +122,58 @@ public final class CharacterModelLoader {
         };
     }
 
+    /**
+     * Loads a standalone character/NPC/monster DAT directly from disk without requiring {@link FfxiModelIndex}.
+     */
+    public static LoadedCharacter loadStandaloneDat(Path datPath) throws IOException {
+        ParsedDat dat = loadDat(datPath);
+        InitSchedulerParser.InitSchedulerResult init = InitSchedulerParser.parse(dat.rawData());
+        int[] sizeInfo = ModelInfoParser.parseSizeInfo(dat.rawData());
+
+        List<SkeletonResource> skeletons = new ArrayList<>();
+        List<SkeletonMeshResource> meshResources = new ArrayList<>();
+        List<SkeletonAnimationResource> slot0Animations = new ArrayList<>();
+        Map<String, CharacterTextureLoader.TextureSource> textureSources = new LinkedHashMap<>();
+
+        collectSkeletons(dat.graph().rootDirectory(), skeletons);
+        collectSkeletonMeshes(dat.graph().rootDirectory(), meshResources);
+        collectAnimations(dat.graph().rootDirectory(), slot0Animations);
+        collectTextureSources(dat.graph().rootDirectory(), dat.rawData(), textureSources);
+
+        SkeletonResource skeleton = skeletons.stream()
+                .filter(candidate -> !candidate.joints().isEmpty())
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No skeleton resource found in " + datPath));
+
+        int effectiveMask = SkeletonMeshOcclusion.DEFAULT_HIDDEN_WEAPON_MASK | init.hiddenWeaponMask();
+        List<SkeletonMeshMesh> meshes = SkeletonMeshOcclusion.filterVisibleMeshes(meshResources, effectiveMask);
+        if (meshes.isEmpty()) {
+            meshes = SkeletonMeshOcclusion.filterVisibleMeshes(meshResources, 0);
+        }
+        if (meshes.isEmpty()) {
+            throw new IllegalStateException("No skeleton meshes found in " + datPath);
+        }
+
+        SkeletonAnimationResource idleLower = findAnimation(slot0Animations, "idl0");
+        CharacterAnimator animator = new CharacterAnimator(skeleton, idleLower, null);
+        Bounds bounds = computeBounds(meshes, animator.computeTPoseMatrices());
+        Vector3f modelOffset = new Vector3f(-bounds.center().x(), -bounds.center().y(), -bounds.center().z());
+        float modelScale = ModelInfoParser.resolveScale(sizeInfo, 1);
+
+        return new LoadedCharacter(
+                skeleton,
+                meshes,
+                textureSources,
+                slot0Animations,
+                List.of(),
+                bounds.radius(),
+                bounds.feetOffsetY(),
+                modelOffset,
+                Map.of(),
+                modelScale
+        );
+    }
+
     private static LoadedCharacter loadEquippedActor(FfxiModelIndex index, ActorAppearance appearance) throws IOException {
         return loadEquippedActor(index, appearance, null);
     }

@@ -49,6 +49,45 @@ public final class ZoneCollisionMap {
         return new ArrayList<>(result);
     }
 
+    /**
+     * Collects unique collision objects along the horizontal segment from {@code (x0, z0)} to {@code (x1, z1)}
+     * by sampling each cell's 3x3 neighborhood.
+     */
+    public List<ZoneCollisionObject> getObjectsAlongSegment(float x0, float z0, float x1, float z1) {
+        if (grid == null || !Float.isFinite(x0) || !Float.isFinite(z0)
+                || !Float.isFinite(x1) || !Float.isFinite(z1)) {
+            return List.of();
+        }
+        float cellW = subBlocksX > 0 ? (float) blockWidth / subBlocksX : 0.0f;
+        float cellL = subBlocksZ > 0 ? (float) blockLength / subBlocksZ : 0.0f;
+        float minCell = (cellW > 0.0f && cellL > 0.0f) ? Math.min(cellW, cellL) : 4.0f;
+        float stepSize = Math.max(1.0f, minCell * 0.5f);
+
+        float dx = x1 - x0;
+        float dz = z1 - z0;
+        float len = (float) Math.hypot(dx, dz);
+        int steps = len > 1e-4f ? Math.max(1, Math.min(128, (int) Math.ceil(len / stepSize))) : 1;
+
+        Set<ZoneCollisionObject> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<ZoneCollisionObject> result = new ArrayList<>();
+        for (int s = 0; s <= steps; s++) {
+            float t = (float) s / (float) steps;
+            float sx = x0 + dx * t;
+            float sz = z0 + dz * t;
+            for (ZoneCollisionObjectGroup group : getGroups(sx, sz)) {
+                if (group == null || group.objects() == null) {
+                    continue;
+                }
+                for (ZoneCollisionObject obj : group.objects()) {
+                    if (obj != null && seen.add(obj)) {
+                        result.add(obj);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
     private int[] positionToBlock(float fx, float fz) {
         int numBlocksWide = numBlocksX / subBlocksX;
         int numBlocksLong = numBlocksZ / subBlocksZ;

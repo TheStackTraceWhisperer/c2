@@ -8,6 +8,7 @@ import com.ffxi.viewer.model.LoadedZone;
 import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
+import com.ffxi.viewer.renderer.ZoneRenderChunk;
 import com.ffxi.viewer.renderer.ZoneTextureLoader;
 import com.ffxi.viewer.shader.NormalMapManager;
 import com.ffxi.viewer.shader.SandboxMapShader;
@@ -159,7 +160,7 @@ public final class MapShaderSandbox {
         ImGuiImplGlfw imGuiGlfw = new ImGuiImplGlfw();
         ImGuiImplGl3 imGuiGl3 = new ImGuiImplGl3();
         imGuiGlfw.init(window, true);
-        imGuiGl3.init("#version 330");
+        imGuiGl3.init("#version 460");
 
         // Initialize Render Pipeline Subsystems
         mapShader = new SandboxMapShader();
@@ -715,9 +716,10 @@ public final class MapShaderSandbox {
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
         window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE, NULL, NULL);
         if (window == NULL) {
@@ -781,11 +783,4 @@ public final class MapShaderSandbox {
             }
         });
     }
-
-    private record ZoneRenderChunk(
-            ZoneMeshBuffer buffer,
-            Matrix4f modelMatrix,
-            boolean invertCull,
-            float discardThreshold
-    ) {}
 }

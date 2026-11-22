@@ -28,7 +28,7 @@ public final class CharacterShader implements AutoCloseable {
     public static final int MAX_JOINTS = 128;
 
     private static final String VERTEX_SHADER = """
-            #version 330 core
+            #version 460 core
 
             layout (std140) uniform JointMatrices {
                 mat4 joints[128];
@@ -76,7 +76,7 @@ public final class CharacterShader implements AutoCloseable {
             """;
 
     private static final String FRAGMENT_SHADER = """
-            #version 330 core
+            #version 460 core
 
             uniform sampler2D diffuseTexture;
             uniform float discardThreshold;

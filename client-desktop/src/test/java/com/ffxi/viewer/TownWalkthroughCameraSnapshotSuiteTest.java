@@ -1,54 +1,45 @@
 package com.ffxi.viewer;
 
 import com.example.asset.config.FfxiPathConfig;
+import com.example.client.desktop.capture.ScreenshotCapture;
+import com.example.client.desktop.scene.CameraMode;
+import com.example.client.desktop.scene.SceneActor;
+import com.example.client.desktop.scene.SceneCamera;
+import com.example.client.desktop.scene.WorldScene;
 import com.example.common.protocol.MovementFlags;
-import com.ffxi.export.TextureDecoder;
-import com.ffxi.model.*;
+import com.example.common.time.VanadielTime;
 import com.ffxi.tables.RaceGenderConfig;
-import com.ffxi.viewer.model.CharacterModelLoader;
-import com.ffxi.viewer.model.LoadedCharacter;
+import com.ffxi.viewer.environment.WeatherPreset;
 import com.ffxi.viewer.model.LoadedZone;
-import com.ffxi.model.ZoneMeshMath;
-import com.ffxi.viewer.model.ZoneModelLoader;
-import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import com.ffxi.viewer.renderer.FontMojiRenderer;
-import com.example.client.desktop.camera.PolarCamera;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Composite Town Walkthrough Snapshot Suite.
- * Directly integrates the authentic game engine character animation system (LoadedCharacter,
- * AuthenticLocomotionController, dual-layer upper/lower body posing, and smooth cross-fade blending)
- * into iconic city maps (Northern & Southern San d'Oria).
- *
- * Simulates active locomotion transitions (IDLE -> WALK -> RUN -> WALK -> IDLE) while PolarCamera
- * follows the player in real-time, capturing multi-aspect screenshots that verify true dual-bone
- * skinning, skeletal interpolation, collision floor contact, and architectural occlusion.
+ * Drives the production {@link WorldScene} OpenGL 4.6 Core pipeline (ZoneShader, CharacterShader,
+ * ShadowMapRenderer, SsaoRenderer, AuthenticSkyDome, AuthenticLocomotionController, SceneCamera)
+ * across Northern & Southern San d'Oria walkthrough sequences.
  */
 public class TownWalkthroughCameraSnapshotSuiteTest {
 
     private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
-    private static final Path OUTPUT_DIR = Path.of("target/snapshots");
 
     private static final int WIDTH = 1920;
     private static final int HEIGHT = 1080;
@@ -59,13 +50,13 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
             String subtitle,
             float worldX,
             float worldZ,
-            float playerYaw,          // Facing heading (0 = North/-Z, 90 = East/+X, 180 = South/+Z, 270 = West/-X)
+            float playerYaw,          // Facing heading (0 = North/+Z, 90 = East/+X, 180 = South/-Z, 270 = West/-X)
             int movementFlags,        // 0 = IDLE, 1 = FORWARD, etc.
             float horizontalSpeed,    // 0.0 = IDLE, 2.5 = WALK, 5.0 = RUN
             float updateDt,           // Delta-time to advance animation/blending
-            float camYaw,             // PolarCamera yaw
-            float camPitch,           // PolarCamera pitch
-            float camDist,            // PolarCamera boom zoom
+            float camYaw,             // SceneCamera yaw
+            float camPitch,           // SceneCamera pitch
+            float camDist,            // SceneCamera boom zoom
             float fovDegrees
     ) {
         public WalkthroughStep(
@@ -78,81 +69,39 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
         }
     }
 
-    private record DecodedTextureBuffer(int width, int height, byte[] rgba) {}
-
-    // Authentic character model and texture caches
-    private static LoadedCharacter playerCharacter;
-    private static Map<String, DecodedTextureBuffer> decodedCharTextures;
-    private static FontMojiRenderer fontMoji;
-
-    // Cache loaded zones across tests
-    private static final Map<Integer, LoadedZone> loadedZoneCache = new HashMap<>();
+    private static HeadlessGlContext glContext;
+    private static WorldScene worldScene;
 
     @BeforeAll
-    static void initSuite() throws Exception {
-        Files.createDirectories(OUTPUT_DIR);
+    static void initSuite() {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required for OpenGL 4.6 Core snapshots (run via scripts/with-xvfb.sh)");
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
 
-        // 1. Initialize Authentic FontMoji typography
-        try {
-            Path rom01 = FFXI_ROOT.resolve("ROM/0/1.DAT");
-            if (Files.exists(rom01)) {
-                fontMoji = FontMojiRenderer.load(FFXI_ROOT);
-            }
-        } catch (Exception e) {
-            System.err.println("[WALKTHROUGH] Could not load authentic FontMojiRenderer: " + e.getMessage());
+        glContext = HeadlessGlContext.create();
+        worldScene = new WorldScene();
+        worldScene.init();
+        assertTrue(worldScene.isInitialized(), "WorldScene must initialize in OpenGL 4.6 Core context");
+        worldScene.setManualTimeOverride(true);
+        worldScene.setManualTimeHour(12.0f);
+        worldScene.setWeatherPreset(WeatherPreset.FINE);
+    }
+
+    @AfterAll
+    static void tearDownSuite() {
+        if (worldScene != null) {
+            worldScene.close();
         }
-
-        // 2. Load authentic Hume Male PC actor using real game engine loader
-        if (!Files.isDirectory(FFXI_ROOT)) {
-            System.err.println("[WALKTHROUGH] FFXI directory not found: " + FFXI_ROOT);
-            return;
+        if (glContext != null) {
+            glContext.close();
         }
-
-        System.out.println("[WALKTHROUGH] Loading authentic Hume Male PC actor via CharacterModelLoader...");
-        playerCharacter = CharacterModelLoader.loadCharacter(FFXI_ROOT, RaceGenderConfig.HumeM);
-        assertNotNull(playerCharacter, "Hume Male character must be loaded");
-        assertNotNull(playerCharacter.skeleton(), "Character skeleton must be present");
-        assertFalse(playerCharacter.meshes().isEmpty(), "Character meshes must be present");
-
-        // Pre-decode all authentic character equipment textures
-        decodedCharTextures = new HashMap<>();
-        for (Map.Entry<String, CharacterTextureLoader.TextureSource> entry : playerCharacter.textures().entrySet()) {
-            String norm = CharacterTextureLoader.normalizeName(entry.getKey());
-            CharacterTextureLoader.TextureSource src = entry.getValue();
-            try {
-                byte[] rgba = TextureDecoder.decode(src.rawData(), src.resource());
-                if (rgba != null && rgba.length > 0) {
-                    DecodedTextureBuffer dtb = new DecodedTextureBuffer(src.resource().width(), src.resource().height(), rgba);
-                    decodedCharTextures.putIfAbsent(norm, dtb);
-                    if (norm.contains(" ")) {
-                        String shortName = norm.substring(norm.lastIndexOf(' ') + 1);
-                        decodedCharTextures.putIfAbsent(shortName, dtb);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        System.out.printf("[WALKTHROUGH] Character loaded: %d meshes, %d textures, %d joints, %d slot0 anims, %d slot1 anims%n",
-                playerCharacter.meshes().size(), decodedCharTextures.size(),
-                playerCharacter.skeleton().joints().size(),
-                playerCharacter.slot0Animations().size(), playerCharacter.slot1Animations().size());
     }
 
     @Test
     @DisplayName("Northern San d'Oria (Zone 231) walkthrough with live locomotion animation blending")
     void testNorthernSanDoriaWalkthrough() throws Exception {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required (run via scripts/with-xvfb.sh)");
         assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
-        assumeTrue(playerCharacter != null, "Character model must be initialized");
 
-        int zoneId = 231;
-        LoadedZone zone = getOrLoadZone(zoneId);
-        assertNotNull(zone, "Northern San d'Oria must be loaded");
-
-        // Build continuous sequence of steps demonstrating locomotion blending:
-        // IDLE (gate) -> Blending to WALK (50%) -> Full WALK (Rue du Bois) -> WALK Stride 2 ->
-        // Blending to IDLE (50%) -> Settled IDLE (Victory Square) -> Blending to RUN (50%) ->
-        // Full RUN (Promenade) -> Blending to WALK (50%) -> Settled IDLE (Cathedral) -> Tactical Overview
         List<WalkthroughStep> steps = List.of(
                 new WalkthroughStep(
                         "walkthrough_231_01_spawn_south_gate",
@@ -164,10 +113,10 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_02_blend_idle_to_walk_50",
-                        "Initiating Forward Stride | 50% IDLE to WALK Blend",
-                        "Player begins walking North along Rue du Bois. Authentic cross-fade smoothly interpolates skeletal joints 50% between IDLE and WALK.",
+                        "Initiating Forward Stride | IDLE to WALK Blend",
+                        "Player begins walking North along Rue du Bois. Authentic cross-fade smoothly interpolates skeletal joints between IDLE and WALK.",
                         0.0f, -22.0f, 0.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.075f, // half transition (0.075s of 0.150s duration)
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
                         0.0f, 21.0f, 5.8f
                 ),
                 new WalkthroughStep(
@@ -175,39 +124,39 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "Striding Down Rue du Bois | Full WALK Locomotion",
                         "Player advances in continuous striding walk along cobblestone boulevard. Dual-layer animation swings legs and arms naturally.",
                         0.0f, -6.0f, 0.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.15f,  // full walk stride
+                        MovementFlags.FORWARD, 2.5f, 0.20f,
                         0.0f, 20.0f, 5.5f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_04_crossroads_shoulder_orbit",
                         "Victory Square Crossroads | 3/4 Shoulder Orbit",
-                        "PolarCamera swung 35° over player's right shoulder, tracking active walk stride against street lamps and building facades.",
+                        "SceneCamera swung 35 deg over player's right shoulder, tracking active walk stride against street lamps and building facades.",
                         0.0f, 16.0f, 0.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.20f,  // advancing walk stride cycle
+                        MovementFlags.FORWARD, 2.5f, 0.20f,
                         35.0f, 18.0f, 6.0f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_05_blend_walk_to_idle_50",
-                        "Arriving at Plaza | 50% WALK to IDLE Deceleration",
-                        "Player halts movement upon entering Victory Square. Controller dynamically cross-fades 50% from active stride back to rest.",
+                        "Arriving at Plaza | WALK to IDLE Deceleration",
+                        "Player halts movement upon entering Victory Square. Controller dynamically cross-fades from active stride back to rest.",
                         5.0f, 32.0f, 0.0f,
-                        0, 0.0f, 0.075f,                    // 50% decelerate cross-fade
+                        0, 0.0f, 0.133f,
                         20.0f, 26.0f, 6.8f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_06_victory_square_pause",
                         "Victory Square Plaza | Settled IDLE Overview",
-                        "Adventurer fully settled in authentic IDLE posture. Camera elevates to 30° pitch for a majestic plaza overview.",
+                        "Adventurer fully settled in authentic IDLE posture. Camera elevates to 30 deg pitch for a majestic plaza overview.",
                         5.0f, 36.0f, 0.0f,
-                        0, 0.0f, 0.15f,                     // fully settled in idle
+                        0, 0.0f, 0.20f,
                         20.0f, 30.0f, 7.5f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_07_turn_idle_to_run_50",
-                        "Turning Toward Cathedral | 50% IDLE to RUN Sprint Blend",
-                        "Player turns heading toward northeastern promenade (facing 45°) and sprints forward. Joints blend 50% into athletic sprint.",
+                        "Turning Toward Cathedral | IDLE to RUN Sprint Blend",
+                        "Player turns heading toward northeastern promenade (facing 45 deg) and sprints forward. Joints blend into athletic sprint.",
                         35.0f, 52.0f, 45.0f,
-                        MovementFlags.FORWARD, 5.0f, 0.075f, // 50% blend to run
+                        MovementFlags.FORWARD, 5.0f, 0.133f,
                         45.0f, 20.0f, 5.5f
                 ),
                 new WalkthroughStep(
@@ -215,63 +164,59 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "Cathedral Promenade Sprint | Full Athletic RUN",
                         "Adventurer at full sprint along royal promenade. High-speed skeletal animation evaluated with authentic dual-bone weights.",
                         70.0f, 70.0f, 45.0f,
-                        MovementFlags.FORWARD, 5.0f, 0.20f,
+                        MovementFlags.FORWARD, 5.0f, 0.25f,
                         45.0f, 18.0f, 5.2f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_09_run_to_walk_50",
-                        "Cathedral Approach Close-Up | 50% RUN to WALK Transition",
-                        "Close third-person action zoom (3.8m) capturing dynamic 50% deceleration blend from sprint into walking gait.",
+                        "Cathedral Approach Close-Up | RUN to WALK Transition",
+                        "Close third-person action zoom (3.8m) capturing dynamic deceleration blend from sprint into walking gait.",
                         86.0f, 80.0f, 45.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.075f, // blend run -> walk
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
                         45.0f, 16.0f, 3.8f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_10_cathedral_steps_hero",
                         "Cathedral Grand Steps | Low Hero Angle",
-                        "Player halted in IDLE at the base of the Cathedral grand steps. Low pitch (8°) looks upward past adventurer to the soaring spires.",
+                        "Player halted in IDLE at the base of the Cathedral grand steps. Low pitch (8 deg) looks upward past adventurer to the soaring spires.",
                         93.0f, 87.0f, 45.0f,
-                        0, 0.0f, 0.20f,                     // settle in idle
+                        0, 0.0f, 0.30f,
                         45.0f, 8.0f, 5.0f
                 ),
                 new WalkthroughStep(
                         "walkthrough_231_11_cathedral_court_tactical",
                         "Grand Cathedral Court | Tactical Overhead View",
-                        "High overhead tactical perspective (50° pitch, 14m distance) validating 3D environment contact and complete scene depth.",
+                        "High overhead tactical perspective (50 deg pitch, 14m distance) validating 3D environment contact and complete scene depth.",
                         93.0f, 87.0f, 45.0f,
                         0, 0.0f, 0.10f,
                         45.0f, 50.0f, 14.0f
                 )
         );
 
-        executeWalkthroughSequence(zone, steps, "Northern San d'Oria (Zone 231)");
+        executeWalkthroughSequence(231, steps, "Northern San d'Oria (Zone 231)");
     }
 
     @Test
     @DisplayName("Southern San d'Oria (Zone 230) walkthrough with live locomotion animation blending")
     void testSouthernSanDoriaWalkthrough() throws Exception {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required (run via scripts/with-xvfb.sh)");
         assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
-        assumeTrue(playerCharacter != null, "Character model must be initialized");
-
-        int zoneId = 230;
-        LoadedZone zone = getOrLoadZone(zoneId);
-        assertNotNull(zone, "Southern San d'Oria must be loaded");
 
         List<WalkthroughStep> steps = List.of(
                 new WalkthroughStep(
                         "walkthrough_230_01_spawn_ronfaure_gate",
                         "Spawn at West Ronfaure Gate | South San d'Oria",
-                        "Player materializes at the city outer ramparts in IDLE posture facing South (180°) down King's Square Avenue.",
+                        "Player materializes at the city outer ramparts in IDLE posture facing South (180 deg) down King's Square Avenue.",
                         0.0f, 42.0f, 180.0f,
                         0, 0.0f, 0.0f,
                         180.0f, 22.0f, 6.0f
                 ),
                 new WalkthroughStep(
                         "walkthrough_230_02_blend_idle_to_walk_50",
-                        "Initiating Southbound Walk | 50% IDLE to WALK Blend",
-                        "Player steps forward down the avenue. Locomotion controller smoothly cross-fades skeletal pose 50% into walk stride.",
+                        "Initiating Southbound Walk | IDLE to WALK Blend",
+                        "Player steps forward down the avenue. Locomotion controller smoothly cross-fades skeletal pose into walk stride.",
                         0.0f, 35.0f, 180.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.075f,
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
                         180.0f, 21.0f, 5.8f
                 ),
                 new WalkthroughStep(
@@ -279,7 +224,7 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "Walking South Along King's Square Avenue",
                         "Advancing southward along high ramparts and shopfronts in full WALK locomotion with standard third-person chase camera.",
                         0.0f, 15.0f, 180.0f,
-                        MovementFlags.FORWARD, 2.5f, 0.20f,
+                        MovementFlags.FORWARD, 2.5f, 0.25f,
                         180.0f, 20.0f, 5.5f
                 ),
                 new WalkthroughStep(
@@ -292,10 +237,10 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                 ),
                 new WalkthroughStep(
                         "walkthrough_230_05_blend_walk_to_idle_50",
-                        "Halting Before Auction House | 50% WALK to IDLE Deceleration",
-                        "Player decelerates along the plaza thoroughfare as the Auction House entrance approaches. Locomotion cross-fades 50% back into resting stance.",
+                        "Halting Before Auction House | WALK to IDLE Deceleration",
+                        "Player decelerates along the plaza thoroughfare as the Auction House entrance approaches. Locomotion cross-fades back into resting stance.",
                         5.0f, -15.0f, 180.0f,
-                        0, 0.0f, 0.075f,
+                        0, 0.0f, 0.133f,
                         180.0f, 16.0f, 5.6f
                 ),
                 new WalkthroughStep(
@@ -303,39 +248,32 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
                         "Southern San d'Oria Auction House | Frontal Resting View",
                         "Player fully halted in authentic IDLE posture before the grand Auction House entrance, viewing the stone masonry and central plaza.",
                         5.0f, -20.0f, 180.0f,
-                        0, 0.0f, 0.15f,
+                        0, 0.0f, 0.25f,
                         0.0f, 14.0f, 5.5f
                 )
         );
 
-        executeWalkthroughSequence(zone, steps, "Southern San d'Oria (Zone 230)");
+        executeWalkthroughSequence(230, steps, "Southern San d'Oria (Zone 230)");
     }
 
-    private static void executeWalkthroughSequence(LoadedZone zone, List<WalkthroughStep> steps, String zoneTitle) throws Exception {
-        Map<String, DecodedTextureBuffer> decodedZoneTextures = decodeAllZoneTextures(zone);
+    private static void executeWalkthroughSequence(int zoneId, List<WalkthroughStep> steps, String zoneTitle) throws Exception {
+        if (worldScene.getCurrentZoneId() != zoneId) {
+            worldScene.loadZone(FFXI_ROOT, zoneId);
+        }
+        LoadedZone zone = worldScene.getLoadedZone();
+        assertNotNull(zone, "Zone must be loaded in WorldScene: " + zoneId);
 
-        // Instantiate live AuthenticLocomotionController with real skeleton and motion DATs
-        AuthenticLocomotionController locomotion = new AuthenticLocomotionController(
-                playerCharacter.skeleton(),
-                playerCharacter.slot0Animations(),
-                playerCharacter.slot1Animations()
-        );
-
-        PolarCamera camera = new PolarCamera();
+        SceneActor localActor = new SceneActor(1L, "Adventurer", SceneActor.ActorType.PLAYER);
+        localActor.setVisualModel(worldScene.createCharacterInstance(FFXI_ROOT, RaceGenderConfig.HumeM));
+        worldScene.setLocalPlayer(localActor);
 
         int stepNum = 1;
         int totalSteps = steps.size();
         float prevFloorY = 0.0f;
 
         for (WalkthroughStep step : steps) {
-            // 1. Advance authentic locomotion controller time and input flags
-            locomotion.update(step.updateDt, step.movementFlags, step.horizontalSpeed);
-
-            // 2. Query authentic floor elevation from zone collision mesh (-Y = Up)
             float floorY = prevFloorY;
             if (zone.collisionSystem() != null) {
-                // Raycast downwards (+Y) from realistic pedestrian height (-4.0m above current floor)
-                // rather than -200m sky, preventing false hits on overhead signs, awnings, or arches
                 float castStartY = Math.min(-3.0f, prevFloorY - 4.0f);
                 float hit = zone.collisionSystem().findFloorY(step.worldX, step.worldZ, castStartY);
                 if (!Float.isFinite(hit)) {
@@ -356,549 +294,64 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
             }
             prevFloorY = floorY;
 
-            // 3. Drive the actual player controller PolarCamera system
+            localActor.setPosition(step.worldX, floorY, step.worldZ);
+            localActor.setRotation(step.playerYaw);
+            localActor.setMovementFlags(step.movementFlags);
+            localActor.setMovementSpeed(step.horizontalSpeed);
+
+            SceneCamera camera = worldScene.getCamera();
+            camera.setMode(CameraMode.FREE_ORBIT);
+            camera.setFov(step.fovDegrees);
+            camera.setNearPlane(0.2f);
+            camera.setFarPlane(2000.0f);
             camera.setTarget(step.worldX, floorY, step.worldZ);
-            camera.setTargetOffsetY(1.0f); // Center focus on character chest/torso
+            camera.setTargetOffsetY(1.0f);
             camera.setYaw(step.camYaw);
             camera.setPitch(step.camPitch);
             camera.setDistance(step.camDist);
 
-            System.out.printf("[WALKTHROUGH] Step %d/%d '%s' @ (%.1f, %.2f, %.1f) | Facing=%.1f° | Locomotion: %s -> %s (Blend=%.1f%%) | Cam: Yaw=%.1f° Pitch=%.1f° Dist=%.1fm%n",
+            worldScene.update(step.updateDt, VanadielTime.ofHour(12.0f));
+
+            AuthenticLocomotionController locomotion = localActor.getVisualModel().getLocomotion();
+            System.out.printf("[WALKTHROUGH] Step %d/%d '%s' @ (%.1f, %.2f, %.1f) | Facing=%.1f deg | Locomotion: %s -> %s (Blend=%.1f%%) | Cam: Yaw=%.1f deg Pitch=%.1f deg Dist=%.1fm%n",
                     stepNum, totalSteps, step.title, step.worldX, floorY, step.worldZ, step.playerYaw,
                     locomotion.getCurrentState(), locomotion.getTargetState(), locomotion.getBlendWeight() * 100.0f,
                     step.camYaw, step.camPitch, step.camDist);
 
-            // 4. Render Composite Frame with live dynamically computed skeletal skinning
-            BufferedImage frame = renderCompositeFrame(
-                    zone, decodedZoneTextures, camera, locomotion,
-                    step.worldX, floorY, step.worldZ, step.playerYaw,
-                    step, stepNum, totalSteps, zoneTitle
-            );
+            BufferedImage frame = worldScene.captureFrame(WIDTH, HEIGHT);
 
-            // 5. Save snapshot to target/snapshots/
-            File outFile = OUTPUT_DIR.resolve(step.id + ".png").toFile();
-            ImageIO.write(frame, "PNG", outFile);
+            Graphics2D g2 = frame.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            FontMojiRenderer fontMoji = worldScene.getFontMojiGlRenderer() != null
+                    ? worldScene.getFontMojiGlRenderer().getFont()
+                    : null;
+            drawTelemetryOverlay(frame, g2, fontMoji, camera, locomotion, step.worldX, floorY, step.worldZ, step.playerYaw, step, stepNum, totalSteps, zoneTitle);
+            g2.dispose();
 
-            assertTrue(outFile.exists() && outFile.length() > 50000, "Walkthrough snapshot must be saved: " + outFile.getName());
-            System.out.printf("[WALKTHROUGH] Saved snapshot -> %s (%,d bytes)%n", outFile.getName(), outFile.length());
+            Path outPath = ScreenshotCapture.saveBufferedImage(frame, step.id);
+            assertTrue(Files.isRegularFile(outPath) && Files.size(outPath) > 50000, "Walkthrough snapshot must be saved: " + outPath.getFileName());
+            System.out.printf("[WALKTHROUGH] Saved GL4.6 snapshot -> %s (%,d bytes)%n", outPath.getFileName(), Files.size(outPath));
             stepNum++;
         }
     }
 
-    private static BufferedImage renderCompositeFrame(
-            LoadedZone zone, Map<String, DecodedTextureBuffer> decodedZoneTextures, PolarCamera camera,
-            AuthenticLocomotionController locomotion,
-            float charX, float charY, float charZ, float charYaw,
-            WalkthroughStep step, int stepNum, int totalSteps, String zoneTitle
-    ) {
-        BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
-        float[] zBuffer = new float[WIDTH * HEIGHT];
-        Arrays.fill(zBuffer, Float.POSITIVE_INFINITY);
-
-        // 1. Draw atmospheric sky gradient
-        Graphics2D g2 = image.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-
-        Color skyZenith = new Color(30, 60, 115);
-        Color skyHorizon = new Color(175, 205, 235);
-        for (int y = 0; y < HEIGHT; y++) {
-            float ratio = (float) y / HEIGHT;
-            int r = (int) (skyZenith.getRed() + ratio * (skyHorizon.getRed() - skyZenith.getRed()));
-            int gr = (int) (skyZenith.getGreen() + ratio * (skyHorizon.getGreen() - skyZenith.getGreen()));
-            int b = (int) (skyZenith.getBlue() + ratio * (skyHorizon.getBlue() - skyZenith.getBlue()));
-            g2.setColor(new Color(Math.max(0, Math.min(255, r)), Math.max(0, Math.min(255, gr)), Math.max(0, Math.min(255, b))));
-            g2.drawLine(0, y, WIDTH, y);
-        }
-
-        // 2. Perspective Projection & View Matrix from PolarCamera
-        Matrix4f proj = new Matrix4f().perspective(
-                (float) Math.toRadians(step.fovDegrees),
-                (float) WIDTH / HEIGHT,
-                0.2f, 2000.0f
-        );
-
-        Matrix4f view = new Matrix4f().lookAt(
-                new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()),
-                new Vector3f(camera.getTargetX(), camera.getTargetY() - camera.getTargetOffsetY(), camera.getTargetZ()),
-                new Vector3f(0.0f, -1.0f, 0.0f)
-        );
-
-        Matrix4f viewProj = new Matrix4f(proj).mul(view);
-
-        int[] pixels = new int[WIDTH * HEIGHT];
-        image.getRGB(0, 0, WIDTH, HEIGHT, pixels, 0, WIDTH);
-
-        // 3. Rasterize Opaque Zone Architecture (pass 0)
-        rasterizeZoneGeometry(zone, decodedZoneTextures, viewProj, pixels, zBuffer, false);
-
-        // 4. Rasterize Player Character with DYNAMIC joint matrices from AuthenticLocomotionController
-        Matrix4f[] jointMatrices = locomotion.computePoseMatrices();
-        rasterizeDynamicCharacter(pixels, zBuffer, viewProj, jointMatrices, charX, charY, charZ, charYaw);
-
-        // 5. Rasterize Alpha-Blended Zone Geometry (pass 1: glass, water, banners)
-        rasterizeZoneGeometry(zone, decodedZoneTextures, viewProj, pixels, zBuffer, true);
-
-        image.setRGB(0, 0, WIDTH, HEIGHT, pixels, 0, WIDTH);
-
-        // 6. Draw Professional HUD Telemetry Overlay with live locomotion blend state
-        drawTelemetryOverlay(image, g2, camera, locomotion, charX, charY, charZ, charYaw, step, stepNum, totalSteps, zoneTitle);
-        g2.dispose();
-
-        return image;
-    }
-
-    private static void rasterizeDynamicCharacter(
-            int[] pixels, float[] zBuffer, Matrix4f viewProj,
-            Matrix4f[] jointMatrices,
-            float charX, float charY, float charZ, float charYaw
-    ) {
-        if (playerCharacter == null || playerCharacter.meshes().isEmpty()) return;
-
-        // Matches AuthenticCharacterInstance charModelMat exactly
-        float scale = playerCharacter.effectiveScale();
-        Matrix4f charModelMat = new Matrix4f()
-                .translate(charX, charY - playerCharacter.feetLocalY() * scale, charZ)
-                .rotateY((float) Math.toRadians(charYaw - 90.0f))
-                .scale(scale);
-
-        Vector4f scratch = new Vector4f();
-        Vector4f accum = new Vector4f();
-        Vector4f worldPos = new Vector4f();
-        Vector4f clipPos = new Vector4f();
-
-        for (SkeletonMeshMesh mesh : playerCharacter.meshes()) {
-            DecodedTextureBuffer tex = decodedCharTextures.get(CharacterTextureLoader.normalizeName(mesh.textureName()));
-            if (tex == null && mesh.textureName() != null && !mesh.textureName().isBlank()) {
-                String norm = CharacterTextureLoader.normalizeName(mesh.textureName());
-                for (Map.Entry<String, DecodedTextureBuffer> e : decodedCharTextures.entrySet()) {
-                    if (e.getKey().endsWith(" " + norm) || e.getKey().startsWith(norm + " ") || e.getKey().contains(norm)) {
-                        tex = e.getValue();
-                        break;
-                    }
-                }
-            }
-
-            ExpandedMesh expanded = expandToTriangleList(mesh);
-            int triVertCount = expanded.count();
-            if (triVertCount < 3) continue;
-
-            List<SkeletonMeshFaceVertex> srcFace = mesh.vertices();
-            List<SkeletonMeshVertex> srcResolved = mesh.resolvedVertices();
-
-            float[] sx = new float[triVertCount];
-            float[] sy = new float[triVertCount];
-            float[] sz = new float[triVertCount];
-            float[] sw = new float[triVertCount];
-            boolean[] valid = new boolean[triVertCount];
-
-            for (int i = 0; i < triVertCount; i++) {
-                SkeletonMeshVertex vertex = srcResolved.get(expanded.resolIdx()[i]);
-                Vector3f modelPos = computeSkinnedPosition(vertex, jointMatrices, accum, scratch);
-
-                worldPos.set(modelPos.x(), modelPos.y(), modelPos.z(), 1.0f);
-                charModelMat.transform(worldPos);
-
-                clipPos.set(worldPos);
-                viewProj.transform(clipPos);
-
-                if (clipPos.w > 0.1f) {
-                    float invW = 1.0f / clipPos.w;
-                    sx[i] = (clipPos.x * invW * 0.5f + 0.5f) * WIDTH;
-                    sy[i] = (0.5f - clipPos.y * invW * 0.5f) * HEIGHT;
-                    sz[i] = clipPos.z * invW;
-                    sw[i] = clipPos.w;
-                    valid[i] = true;
-                } else {
-                    valid[i] = false;
-                }
-            }
-
-            for (int t = 0; t + 2 < triVertCount; t += 3) {
-                if (!valid[t] || !valid[t + 1] || !valid[t + 2]) continue;
-
-                float x0 = sx[t], y0 = sy[t], z0 = sz[t], w0 = sw[t];
-                float x1 = sx[t + 1], y1 = sy[t + 1], z1 = sz[t + 1], w1 = sw[t + 1];
-                float x2 = sx[t + 2], y2 = sy[t + 2], z2 = sz[t + 2], w2 = sw[t + 2];
-
-                float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-                if (!mesh.mirrored() && cross >= 0.0f) continue;
-                if (mesh.mirrored() && cross <= 0.0f) continue;
-
-                SkeletonMeshFaceVertex f0 = srcFace.get(expanded.faceIdx()[t]);
-                SkeletonMeshFaceVertex f1 = srcFace.get(expanded.faceIdx()[t + 1]);
-                SkeletonMeshFaceVertex f2 = srcFace.get(expanded.faceIdx()[t + 2]);
-
-                rasterizeCharTriangle(
-                        pixels, zBuffer, WIDTH, HEIGHT,
-                        x0, y0, z0, w0, f0.u(), f0.v(),
-                        x1, y1, z1, w1, f1.u(), f1.v(),
-                        x2, y2, z2, w2, f2.u(), f2.v(),
-                        tex
-                );
-            }
-        }
-    }
-
-    private static Vector3f computeSkinnedPosition(
-            SkeletonMeshVertex vertex,
-            Matrix4f[] jointMatrices,
-            Vector4f accum,
-            Vector4f scratch
-    ) {
-        float joint0Weight = vertex.joint0Weight();
-        float joint1Weight = vertex.joint1Weight();
-        if (joint1Weight <= 0.0f) {
-            joint0Weight = 1.0f;
-            joint1Weight = 0.0f;
-        } else {
-            float total = joint0Weight + joint1Weight;
-            if (total > 0.0f && Math.abs(total - 1.0f) > 1.0e-6f) {
-                joint0Weight /= total;
-                joint1Weight /= total;
-            }
-        }
-
-        accum.set(0.0f, 0.0f, 0.0f, 0.0f);
-        transformJoint(jointMatrices, vertex.jointIndex0(), vertex.p0(), joint0Weight, scratch);
-        accum.add(scratch);
-        transformJoint(jointMatrices, vertex.jointIndex1(), vertex.p1(), joint1Weight, scratch);
-        accum.add(scratch);
-        return new Vector3f(accum.x, accum.y, accum.z);
-    }
-
-    private static void transformJoint(
-            Matrix4f[] jointMatrices,
-            Integer jointIndex,
-            Vec3f position,
-            float weight,
-            Vector4f dest
-    ) {
-        if (position == null || weight == 0.0f) {
-            dest.set(0.0f, 0.0f, 0.0f, 0.0f);
-            return;
-        }
-        int index = jointIndex == null ? 0 : Math.max(0, Math.min(jointMatrices.length - 1, jointIndex));
-        jointMatrices[index].transform(position.x(), position.y(), position.z(), weight, dest);
-    }
-
-    private static void rasterizeCharTriangle(
-            int[] pixels, float[] zBuffer, int width, int height,
-            float x0, float y0, float z0, float w0, float u0, float v0,
-            float x1, float y1, float z1, float w1, float u1, float v1,
-            float x2, float y2, float z2, float w2, float u2, float v2,
-            DecodedTextureBuffer texture
-    ) {
-        int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
-        int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
-        int minY = Math.max(0, (int) Math.floor(Math.min(y0, Math.min(y1, y2))));
-        int maxY = Math.min(height - 1, (int) Math.ceil(Math.max(y0, Math.max(y1, y2))));
-
-        float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
-        if (Math.abs(denom) < 1e-5f) return;
-
-        float invW0 = 1.0f / w0;
-        float invW1 = 1.0f / w1;
-        float invW2 = 1.0f / w2;
-
-        float u0W = u0 * invW0, v0W = v0 * invW0;
-        float u1W = u1 * invW1, v1W = v1 * invW1;
-        float u2W = u2 * invW2, v2W = v2 * invW2;
-
-        for (int y = minY; y <= maxY; y++) {
-            float py = y + 0.5f;
-            for (int x = minX; x <= maxX; x++) {
-                float px = x + 0.5f;
-
-                float b0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom;
-                float b1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom;
-                float b2 = 1.0f - b0 - b1;
-
-                if (b0 >= 0f && b1 >= 0f && b2 >= 0f) {
-                    float z = b0 * z0 + b1 * z1 + b2 * z2;
-                    int idx = y * width + x;
-
-                    if (z < zBuffer[idx]) {
-                        float interpInvW = b0 * invW0 + b1 * invW1 + b2 * invW2;
-                        float w = 1.0f / interpInvW;
-
-                        float u = (b0 * u0W + b1 * u1W + b2 * u2W) * w;
-                        float v = (b0 * v0W + b1 * v1W + b2 * v2W) * w;
-
-                        int color = sampleCharTexture(texture, u, v);
-                        if ((color >>> 24) > 64) {
-                            pixels[idx] = color;
-                            zBuffer[idx] = z;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static int sampleCharTexture(DecodedTextureBuffer texture, float u, float v) {
-        if (texture == null) return 0xFFCCCCCC;
-
-        int tw = texture.width();
-        int th = texture.height();
-        if (tw <= 0 || th <= 0) return 0xFFCCCCCC;
-
-        float uFrac = u - (float) Math.floor(u);
-        float vFrac = v - (float) Math.floor(v);
-
-        int tx = Math.min(tw - 1, Math.max(0, (int) (uFrac * tw)));
-        int ty = Math.min(th - 1, Math.max(0, (int) (vFrac * th)));
-
-        int byteOffset = (ty * tw + tx) * 4;
-        byte[] rgba = texture.rgba();
-        if (byteOffset + 3 >= rgba.length) return 0xFFCCCCCC;
-
-        int a = rgba[byteOffset + 3] & 0xFF;
-        if (a < 64) return 0;
-
-        int r = rgba[byteOffset] & 0xFF;
-        int g = rgba[byteOffset + 1] & 0xFF;
-        int b = rgba[byteOffset + 2] & 0xFF;
-
-        return (255 << 24) | (r << 16) | (g << 8) | b;
-    }
-
-    private static void rasterizeZoneGeometry(
-            LoadedZone zone, Map<String, DecodedTextureBuffer> decodedTextures, Matrix4f viewProj,
-            int[] pixels, float[] zBuffer, boolean blendPass
-    ) {
-        for (LoadedZone.ZoneChunkInstance inst : zone.chunkInstances()) {
-            ZoneMeshChunk chunk = inst.chunk();
-            if (chunk.renderBlend() != blendPass) continue;
-            if (!ZoneMeshMath.hasValidVertices(chunk)) continue;
-
-            List<Integer> triangles = ZoneMeshMath.expandTriangles(chunk);
-            if (triangles.isEmpty()) continue;
-
-            List<ZoneMeshVertex> verts = chunk.vertices();
-            Matrix4f modelMatrix = inst.modelMatrix();
-            DecodedTextureBuffer tex = decodedTextures.get(normalizeName(chunk.textureName()));
-            if (tex == null && chunk.textureName() != null && !chunk.textureName().isBlank()) {
-                String norm = normalizeName(chunk.textureName());
-                for (Map.Entry<String, DecodedTextureBuffer> e : decodedTextures.entrySet()) {
-                    if (e.getKey().endsWith(" " + norm) || e.getKey().startsWith(norm + " ") || e.getKey().contains(norm)) {
-                        tex = e.getValue();
-                        break;
-                    }
-                }
-            }
-
-            float discardThresh = inst.discardThreshold();
-            boolean invertCull = inst.invertCull();
-            boolean mirrored = modelMatrix.determinant() < 0.0f;
-
-            int numV = verts.size();
-            float[] sx = new float[numV];
-            float[] sy = new float[numV];
-            float[] clipW = new float[numV];
-            float[] clipZ = new float[numV];
-            boolean[] valid = new boolean[numV];
-
-            for (int i = 0; i < numV; i++) {
-                ZoneMeshVertex v = verts.get(i);
-                Vector4f p = new Vector4f(
-                        ZoneMeshMath.sanitizeFinite(v.px()),
-                        ZoneMeshMath.sanitizeFinite(v.py()),
-                        ZoneMeshMath.sanitizeFinite(v.pz()),
-                        1.0f
-                );
-                modelMatrix.transform(p);
-                viewProj.transform(p);
-
-                clipW[i] = p.w;
-                clipZ[i] = p.z / p.w;
-
-                if (p.w > 0.1f) {
-                    sx[i] = (p.x / p.w * 0.5f + 0.5f) * WIDTH;
-                    sy[i] = (0.5f - p.y / p.w * 0.5f) * HEIGHT;
-                    valid[i] = true;
-                } else {
-                    valid[i] = false;
-                }
-            }
-
-            for (int t = 0; t + 2 < triangles.size(); t += 3) {
-                int i0 = triangles.get(t);
-                int i1 = triangles.get(t + 1);
-                int i2 = triangles.get(t + 2);
-
-                if (!valid[i0] || !valid[i1] || !valid[i2]) continue;
-
-                float x0 = sx[i0], y0 = sy[i0], w0 = clipW[i0], z0 = clipZ[i0];
-                float x1 = sx[i1], y1 = sy[i1], w1 = clipW[i1], z1 = clipZ[i1];
-                float x2 = sx[i2], y2 = sy[i2], w2 = clipW[i2], z2 = clipZ[i2];
-
-                float cross = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-                if (!invertCull) {
-                    if (!mirrored && cross >= 0.0f) continue;
-                    if (mirrored && cross <= 0.0f) continue;
-                }
-
-                float minXF = Math.min(x0, Math.min(x1, x2));
-                float maxXF = Math.max(x0, Math.max(x1, x2));
-                float minYF = Math.min(y0, Math.min(y1, y2));
-                float maxYF = Math.max(y0, Math.max(y1, y2));
-
-                if (maxXF < 0f || minXF >= WIDTH || maxYF < 0f || minYF >= HEIGHT) continue;
-
-                ZoneMeshVertex v0 = verts.get(i0);
-                ZoneMeshVertex v1 = verts.get(i1);
-                ZoneMeshVertex v2 = verts.get(i2);
-
-                rasterizeZoneTriangle(
-                        pixels, zBuffer, WIDTH, HEIGHT,
-                        x0, y0, z0, w0, v0.u(), v0.v(), v0.colorR(), v0.colorG(), v0.colorB(), v0.colorA(),
-                        x1, y1, z1, w1, v1.u(), v1.v(), v1.colorR(), v1.colorG(), v1.colorB(), v1.colorA(),
-                        x2, y2, z2, w2, v2.u(), v2.v(), v2.colorR(), v2.colorG(), v2.colorB(), v2.colorA(),
-                        tex, discardThresh, blendPass
-                );
-            }
-        }
-    }
-
-    private static void rasterizeZoneTriangle(
-            int[] pixels, float[] zBuffer, int width, int height,
-            float x0, float y0, float z0, float w0, float u0, float v0, int cr0, int cg0, int cb0, int ca0,
-            float x1, float y1, float z1, float w1, float u1, float v1, int cr1, int cg1, int cb1, int ca1,
-            float x2, float y2, float z2, float w2, float u2, float v2, int cr2, int cg2, int cb2, int ca2,
-            DecodedTextureBuffer tex, float discardThresh, boolean blendPass
-    ) {
-        int minX = Math.max(0, (int) Math.floor(Math.min(x0, Math.min(x1, x2))));
-        int maxX = Math.min(width - 1, (int) Math.ceil(Math.max(x0, Math.max(x1, x2))));
-        int minY = Math.max(0, (int) Math.floor(Math.min(y0, Math.min(y1, y2))));
-        int maxY = Math.min(height - 1, (int) Math.ceil(Math.max(y0, Math.max(y1, y2))));
-
-        float denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2);
-        if (Math.abs(denom) < 1e-5f) return;
-
-        float invW0 = 1.0f / w0;
-        float invW1 = 1.0f / w1;
-        float invW2 = 1.0f / w2;
-
-        float u0W = u0 * invW0, v0W = v0 * invW0;
-        float u1W = u1 * invW1, v1W = v1 * invW1;
-        float u2W = u2 * invW2, v2W = v2 * invW2;
-
-        float r0W = (cr0 / 255.0f) * invW0, g0W = (cg0 / 255.0f) * invW0, b0W = (cb0 / 255.0f) * invW0;
-        float r1W = (cr1 / 255.0f) * invW1, g1W = (cg1 / 255.0f) * invW1, b1W = (cb1 / 255.0f) * invW1;
-        float r2W = (cr2 / 255.0f) * invW2, g2W = (cg2 / 255.0f) * invW2, b2W = (cb2 / 255.0f) * invW2;
-
-        float a0W = (ca0 / 255.0f) * invW0;
-        float a1W = (ca1 / 255.0f) * invW1;
-        float a2W = (ca2 / 255.0f) * invW2;
-
-        boolean useAlphaDiscard = discardThresh > 0.0f;
-        int alphaThresholdByte = Math.max(1, (int) (discardThresh * 255.0f));
-
-        for (int y = minY; y <= maxY; y++) {
-            float py = y + 0.5f;
-            for (int x = minX; x <= maxX; x++) {
-                float px = x + 0.5f;
-
-                float b0 = ((y1 - y2) * (px - x2) + (x2 - x1) * (py - y2)) / denom;
-                float b1 = ((y2 - y0) * (px - x2) + (x0 - x2) * (py - y2)) / denom;
-                float b2 = 1.0f - b0 - b1;
-
-                if (b0 >= 0f && b1 >= 0f && b2 >= 0f) {
-                    float z = b0 * z0 + b1 * z1 + b2 * z2;
-                    int idx = y * width + x;
-
-                    if (z < zBuffer[idx]) {
-                        float interpInvW = b0 * invW0 + b1 * invW1 + b2 * invW2;
-                        float w = 1.0f / interpInvW;
-
-                        float u = (b0 * u0W + b1 * u1W + b2 * u2W) * w;
-                        float v = (b0 * v0W + b1 * v1W + b2 * v2W) * w;
-
-                        float vr = (b0 * r0W + b1 * r1W + b2 * r2W) * w;
-                        float vg = (b0 * g0W + b1 * g1W + b2 * g2W) * w;
-                        float vb = (b0 * b0W + b1 * b1W + b2 * b2W) * w;
-
-                        if (vr < 0.01f && vg < 0.01f && vb < 0.01f) {
-                            vr = 0.5f; vg = 0.5f; vb = 0.5f;
-                        }
-
-                        float va = (b0 * a0W + b1 * a1W + b2 * a2W) * w;
-                        if (va <= 0.001f && ca0 == 0 && ca1 == 0 && ca2 == 0) {
-                            va = 1.0f;
-                        }
-
-                        int r, g, b, a;
-                        if (tex != null && tex.rgba() != null && tex.rgba().length > 0) {
-                            int tw = tex.width();
-                            int th = tex.height();
-                            int tx = Math.floorMod((int) (u * tw), tw);
-                            int ty = Math.floorMod((int) (v * th), th);
-                            int texIdx = (ty * tw + tx) * 4;
-
-                            int tr = tex.rgba()[texIdx] & 0xFF;
-                            int tg = tex.rgba()[texIdx + 1] & 0xFF;
-                            int tb = tex.rgba()[texIdx + 2] & 0xFF;
-                            int ta = tex.rgba()[texIdx + 3] & 0xFF;
-
-                            if (useAlphaDiscard && ta < alphaThresholdByte) {
-                                continue;
-                            }
-
-                            r = Math.min(255, (int) (tr * vr * 2.0f));
-                            g = Math.min(255, (int) (tg * vg * 2.0f));
-                            b = Math.min(255, (int) (tb * vb * 2.0f));
-                            a = (int) (ta * va);
-                        } else {
-                            r = Math.min(255, (int) (vr * 255.0f * 1.5f));
-                            g = Math.min(255, (int) (vg * 255.0f * 1.5f));
-                            b = Math.min(255, (int) (vb * 255.0f * 1.5f));
-                            a = (int) (va * 255.0f);
-                        }
-
-                        if (!blendPass) {
-                            pixels[idx] = (255 << 24) | (r << 16) | (g << 8) | b;
-                            zBuffer[idx] = z;
-                        } else {
-                            if (a > 5) {
-                                float alpha = a / 255.0f;
-                                int bg = pixels[idx];
-                                int bgr = (bg >> 16) & 0xFF;
-                                int bgg = (bg >> 8) & 0xFF;
-                                int bgb = bg & 0xFF;
-
-                                int outR = (int) (r * alpha + bgr * (1.0f - alpha));
-                                int outG = (int) (g * alpha + bgg * (1.0f - alpha));
-                                int outB = (int) (b * alpha + bgb * (1.0f - alpha));
-
-                                pixels[idx] = (255 << 24) | (outR << 16) | (outG << 8) | outB;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private static void drawTelemetryOverlay(
-            BufferedImage dest, Graphics2D g, PolarCamera cam,
+            BufferedImage dest, Graphics2D g, FontMojiRenderer fontMoji, SceneCamera cam,
             AuthenticLocomotionController locomotion,
             float charX, float charY, float charZ, float charYaw,
             WalkthroughStep step, int stepNum, int totalSteps, String zoneTitle
     ) {
-        // Semi-transparent HUD Header Bar
         g.setColor(new Color(14, 20, 30, 225));
         g.fillRect(24, 24, 1020, 130);
         g.setColor(new Color(60, 100, 155));
         g.setStroke(new BasicStroke(1.5f));
         g.drawRect(24, 24, 1020, 130);
 
-        // Header Title & Narrative
         String mainTitle = String.format("Step %d/%d: %s | %s", stepNum, totalSteps, step.title, zoneTitle);
-        drawText(dest, mainTitle, 40, 34, new Color(255, 215, 60), 2);
-        drawText(dest, step.subtitle, 40, 68, new Color(190, 215, 240), 1);
+        drawText(dest, fontMoji, mainTitle, 40, 34, new Color(255, 215, 60), 2);
+        drawText(dest, fontMoji, step.subtitle, 40, 68, new Color(190, 215, 240), 1);
 
-        // Readout Lines
         float relativeAngle = (cam.getYaw() - charYaw) % 360.0f;
         if (relativeAngle < 0.0f) relativeAngle += 360.0f;
         String aspectLabel = resolveAspectLabel(relativeAngle);
@@ -911,21 +364,20 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
             locomotionDesc = String.format("%s (100%% Active)", locomotion.getCurrentState());
         }
 
-        String line1 = String.format("PolarCamera: Yaw=%5.1f° | Pitch=%5.1f° | Boom=%4.1fm | Eye=(%5.2f, %5.2f, %5.2f)",
+        String line1 = String.format("SceneCamera: Yaw=%5.1f deg | Pitch=%5.1f deg | Boom=%4.1fm | Eye=(%5.2f, %5.2f, %5.2f) | OpenGL 4.6",
                 cam.getYaw(), cam.getPitch(), cam.getDistance(),
                 cam.getEyeX(), cam.getEyeY(), cam.getEyeZ());
 
-        String line2 = String.format("Avatar: Pos=(%5.1f, %5.2f, %5.1f) | Facing=%5.1f° [%-5s] | Locomotion: %s | Aspect: %s",
+        String line2 = String.format("Avatar: Pos=(%5.1f, %5.2f, %5.1f) | Facing=%5.1f deg [%-5s] | Locomotion: %s | Aspect: %s",
                 charX, charY, charZ, charYaw, resolveCardinal(charYaw), locomotionDesc, aspectLabel);
 
-        drawText(dest, line1, 40, 92, new Color(225, 235, 250), 1);
-        drawText(dest, line2, 40, 114, new Color(100, 230, 150), 1);
+        drawText(dest, fontMoji, line1, 40, 92, new Color(225, 235, 250), 1);
+        drawText(dest, fontMoji, line2, 40, 114, new Color(100, 230, 150), 1);
 
-        // Compass Rose in top-right corner
-        drawCompassRose(dest, g, WIDTH - 110, 90, cam.getYaw());
+        drawCompassRose(dest, g, fontMoji, WIDTH - 110, 90, cam.getYaw());
     }
 
-    private static void drawCompassRose(BufferedImage dest, Graphics2D g, int cx, int cy, float camYaw) {
+    private static void drawCompassRose(BufferedImage dest, Graphics2D g, FontMojiRenderer fontMoji, int cx, int cy, float camYaw) {
         int r = 45;
         g.setColor(new Color(15, 22, 32, 220));
         g.fillOval(cx - r, cy - r, r * 2, r * 2);
@@ -933,7 +385,6 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
         g.setStroke(new BasicStroke(1.5f));
         g.drawOval(cx - r, cy - r, r * 2, r * 2);
 
-        // Needle pointing to North (+Z world axis) relative to camera yaw
         double needleAngle = Math.toRadians(-camYaw);
         int nx = cx + (int) (r * 0.75 * Math.sin(needleAngle));
         int ny = cy - (int) (r * 0.75 * Math.cos(needleAngle));
@@ -942,13 +393,13 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
         g.setStroke(new BasicStroke(2.8f));
         g.drawLine(cx, cy, nx, ny);
 
-        drawText(dest, "N", nx - 4, ny - 8, Color.YELLOW, 1);
+        drawText(dest, fontMoji, "N", nx - 4, ny - 8, Color.YELLOW, 1);
 
         g.setColor(Color.WHITE);
         g.fillOval(cx - 3, cy - 3, 6, 6);
     }
 
-    private static void drawText(BufferedImage dest, String text, int startX, int startY, Color color, int scale) {
+    private static void drawText(BufferedImage dest, FontMojiRenderer fontMoji, String text, int startX, int startY, Color color, int scale) {
         if (text == null || text.isEmpty()) return;
         if (fontMoji != null) {
             fontMoji.drawString(dest, text, startX, startY, color, scale);
@@ -981,87 +432,5 @@ public class TownWalkthroughCameraSnapshotSuiteTest {
         if (relAngle >= 202.5f && relAngle < 247.5f) return "Front-Left 3/4";
         if (relAngle >= 247.5f && relAngle < 292.5f) return "Left Profile";
         return "Rear-Left 3/4";
-    }
-
-    private static LoadedZone getOrLoadZone(int zoneId) throws IOException {
-        LoadedZone zone = loadedZoneCache.get(zoneId);
-        if (zone == null) {
-            zone = ZoneModelLoader.loadZone(FFXI_ROOT, zoneId);
-            loadedZoneCache.put(zoneId, zone);
-        }
-        return zone;
-    }
-
-    private static Map<String, DecodedTextureBuffer> decodeAllZoneTextures(LoadedZone zone) {
-        Map<String, DecodedTextureBuffer> map = new HashMap<>();
-        for (Map.Entry<String, CharacterTextureLoader.TextureSource> entry : zone.textureSources().entrySet()) {
-            String norm = normalizeName(entry.getKey());
-            CharacterTextureLoader.TextureSource src = entry.getValue();
-            try {
-                byte[] rgba = TextureDecoder.decode(src.rawData(), src.resource());
-                if (rgba != null && rgba.length > 0) {
-                    DecodedTextureBuffer dzt = new DecodedTextureBuffer(src.resource().width(), src.resource().height(), rgba);
-                    map.putIfAbsent(norm, dzt);
-                    if (norm.contains(" ")) {
-                        String shortName = norm.substring(norm.lastIndexOf(' ') + 1);
-                        map.putIfAbsent(shortName, dzt);
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        return map;
-    }
-
-    private static String normalizeName(String name) {
-        if (name == null) return "";
-        return name.trim().toLowerCase();
-    }
-
-    private record ExpandedMesh(int[] faceIdx, int[] resolIdx) {
-        int count() { return faceIdx.length; }
-    }
-
-    private static ExpandedMesh expandToTriangleList(SkeletonMeshMesh mesh) {
-        List<SkeletonMeshFaceVertex> src = mesh.vertices();
-        int n = src.size();
-
-        if (n < 3) {
-            return new ExpandedMesh(new int[0], new int[0]);
-        }
-
-        if (mesh.vertexCount() == mesh.triangleCount() * 3) {
-            int triCount = (n / 3) * 3;
-            int[] fi = new int[triCount];
-            int[] ri = new int[triCount];
-            for (int i = 0; i + 2 < triCount; i += 3) {
-                fi[i]     = i;     ri[i]     = i;
-                fi[i + 1] = i + 2; ri[i + 1] = i + 2;
-                fi[i + 2] = i + 1; ri[i + 2] = i + 1;
-            }
-            return new ExpandedMesh(fi, ri);
-        }
-
-        int maxTris = n - 2;
-        int[] fi = new int[maxTris * 3];
-        int[] ri = new int[maxTris * 3];
-        int out = 0;
-        for (int i = 2; i < n; i++) {
-            int a, b, c;
-            if ((i & 1) == 0) {
-                a = i - 2; b = i; c = i - 1;
-            } else {
-                a = i - 1; b = i; c = i - 2;
-            }
-            if (a == b || b == c || a == c) continue;
-            fi[out] = a; ri[out] = a; out++;
-            fi[out] = b; ri[out] = b; out++;
-            fi[out] = c; ri[out] = c; out++;
-        }
-        int[] trimFi = new int[out];
-        int[] trimRi = new int[out];
-        System.arraycopy(fi, 0, trimFi, 0, out);
-        System.arraycopy(ri, 0, trimRi, 0, out);
-        return new ExpandedMesh(trimFi, trimRi);
     }
 }

@@ -23,7 +23,7 @@ import static org.lwjgl.opengl.GL33C.*;
 public final class SandboxMapShader implements AutoCloseable {
 
     private static final String VERTEX_SHADER_SRC = """
-            #version 330 core
+            #version 460 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec3 aNormal;
             layout (location = 2) in vec2 aTexCoord;
@@ -54,7 +54,7 @@ public final class SandboxMapShader implements AutoCloseable {
             """;
 
     private static final String FRAGMENT_SHADER_SRC = """
-            #version 330 core
+            #version 460 core
             in vec3 vWorldPos;
             in vec3 vNormal;
             in vec2 vTexCoord;
@@ -269,29 +269,7 @@ public final class SandboxMapShader implements AutoCloseable {
     private final int uFogColorLoc;
 
     public SandboxMapShader() {
-        int vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, VERTEX_SHADER_SRC);
-        glCompileShader(vs);
-        if (glGetShaderi(vs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile SandboxMap vertex shader: " + glGetShaderInfoLog(vs));
-        }
-
-        int fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, FRAGMENT_SHADER_SRC);
-        glCompileShader(fs);
-        if (glGetShaderi(fs, GL_COMPILE_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to compile SandboxMap fragment shader: " + glGetShaderInfoLog(fs));
-        }
-
-        programId = glCreateProgram();
-        glAttachShader(programId, vs);
-        glAttachShader(programId, fs);
-        glLinkProgram(programId);
-        if (glGetProgrami(programId, GL_LINK_STATUS) != GL_TRUE) {
-            throw new IllegalStateException("Failed to link SandboxMap program: " + glGetProgramInfoLog(programId));
-        }
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+        programId = GlShaderUtil.createProgram(VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, "SandboxMap");
 
         uProjLoc = glGetUniformLocation(programId, "uProjMatrix");
         uViewLoc = glGetUniformLocation(programId, "uViewMatrix");

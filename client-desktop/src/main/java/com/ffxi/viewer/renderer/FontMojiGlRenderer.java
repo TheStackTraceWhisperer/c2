@@ -58,7 +58,7 @@ import static org.lwjgl.opengl.GL33C.glUseProgram;
 import static org.lwjgl.opengl.GL33C.glVertexAttribPointer;
 
 /**
- * OpenGL 3.3 batched 2D text renderer backed by {@link FontMojiRenderer}'s retail
+ * OpenGL 4.6 Core batched 2D text renderer backed by {@link FontMojiRenderer}'s retail
  * {@code ROM/0/1.DAT} glyph atlas. Used for authentic in-scene nameplates and HUD text.
  */
 public final class FontMojiGlRenderer implements AutoCloseable {
@@ -68,7 +68,7 @@ public final class FontMojiGlRenderer implements AutoCloseable {
     private static final int STRIDE_BYTES = FLOATS_PER_VERTEX * Float.BYTES;
 
     private static final String VERT_SHADER = """
-            #version 330 core
+            #version 460 core
             layout(location=0) in vec2 aPos;
             layout(location=1) in vec2 aUv;
             layout(location=2) in vec4 aColor;
@@ -90,7 +90,7 @@ public final class FontMojiGlRenderer implements AutoCloseable {
             """;
 
     private static final String FRAG_SHADER = """
-            #version 330 core
+            #version 460 core
             in vec2 vUv;
             in vec4 vColor;
 

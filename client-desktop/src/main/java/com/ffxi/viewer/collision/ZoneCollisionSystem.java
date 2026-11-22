@@ -11,7 +11,9 @@ import java.util.List;
 public final class ZoneCollisionSystem {
 
     private static final float FLOOR_NORMAL_Y_MIN = 0.5f;
+    private static final float WALL_NORMAL_Y_MAX = 0.5f;
     private static final float RAY_EPSILON = 1.0e-10f;
+    private static final float SEGMENT_EPSILON = 1.0e-8f;
     private static final int MAX_FIND_ANY_FLOOR_TESTS = 1000;
 
     private final ZoneCollisionMap collisionMap;
@@ -142,6 +144,122 @@ public final class ZoneCollisionSystem {
             }
         }
         return result;
+    }
+
+    /**
+     * Casts a 3D segment from {@code (x0, y0, z0)} to {@code (x1, y1, z1)} and returns the distance
+     * to the closest intersecting collision triangle {@code >= minT}, or {@link Float#NaN} if clear.
+     */
+    public float raycastSegmentDistance(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float minT
+    ) {
+        return raycastSegment(x0, y0, z0, x1, y1, z1, minT, false);
+    }
+
+    /**
+     * Casts a 3D segment from {@code (x0, y0, z0)} to {@code (x1, y1, z1)} against steep wall triangles
+     * ({@code |ny| < WALL_NORMAL_Y_MAX}) and returns the closest hit distance {@code >= minT}, or
+     * {@link Float#NaN} if clear.
+     */
+    public float raycastWallDistance(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float minT
+    ) {
+        return raycastSegment(x0, y0, z0, x1, y1, z1, minT, true);
+    }
+
+    private float raycastSegment(
+            float x0, float y0, float z0,
+            float x1, float y1, float z1,
+            float minT,
+            boolean wallsOnly
+    ) {
+        if (collisionMap == null
+                || !Float.isFinite(x0) || !Float.isFinite(y0) || !Float.isFinite(z0)
+                || !Float.isFinite(x1) || !Float.isFinite(y1) || !Float.isFinite(z1)
+                || !Float.isFinite(minT)) {
+            return Float.NaN;
+        }
+
+        float dx = x1 - x0;
+        float dy = y1 - y0;
+        float dz = z1 - z0;
+        float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len < 1.0e-5f) {
+            return Float.NaN;
+        }
+
+        float invLen = 1.0f / len;
+        float dirX = dx * invLen;
+        float dirY = dy * invLen;
+        float dirZ = dz * invLen;
+
+        List<ZoneCollisionObject> objects = collisionMap.getObjectsAlongSegment(x0, z0, x1, z1);
+        float bestT = Float.POSITIVE_INFINITY;
+        boolean hit = false;
+
+        for (ZoneCollisionObject obj : objects) {
+            float[] matrix = obj.toWorldSpace();
+            for (ZoneCollisionTriangle tri : obj.triangles()) {
+                float[] v0 = transformVertex(matrix, tri.x0(), tri.y0(), tri.z0());
+                float[] v1 = transformVertex(matrix, tri.x1(), tri.y1(), tri.z1());
+                float[] v2 = transformVertex(matrix, tri.x2(), tri.y2(), tri.z2());
+
+                float e1x = v1[0] - v0[0];
+                float e1y = v1[1] - v0[1];
+                float e1z = v1[2] - v0[2];
+                float e2x = v2[0] - v0[0];
+                float e2y = v2[1] - v0[1];
+                float e2z = v2[2] - v0[2];
+
+                if (wallsOnly) {
+                    float nx = e1y * e2z - e1z * e2y;
+                    float ny = e1z * e2x - e1x * e2z;
+                    float nz = e1x * e2y - e1y * e2x;
+                    float normalLength = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+                    if (normalLength < RAY_EPSILON || Math.abs(ny / normalLength) >= WALL_NORMAL_Y_MAX) {
+                        continue;
+                    }
+                }
+
+                // Double-sided Möller-Trumbore ray-triangle intersection
+                float hx = dirY * e2z - dirZ * e2y;
+                float hy = dirZ * e2x - dirX * e2z;
+                float hz = dirX * e2y - dirY * e2x;
+                float a = e1x * hx + e1y * hy + e1z * hz;
+                if (Math.abs(a) < SEGMENT_EPSILON) {
+                    continue;
+                }
+
+                float f = 1.0f / a;
+                float sx = x0 - v0[0];
+                float sy = y0 - v0[1];
+                float sz = z0 - v0[2];
+                float u = f * (sx * hx + sy * hy + sz * hz);
+                if (u < 0.0f || u > 1.0f) {
+                    continue;
+                }
+
+                float qx = sy * e1z - sz * e1y;
+                float qy = sz * e1x - sx * e1z;
+                float qz = sx * e1y - sy * e1x;
+                float v = f * (dirX * qx + dirY * qy + dirZ * qz);
+                if (v < 0.0f || u + v > 1.0f) {
+                    continue;
+                }
+
+                float t = f * (e2x * qx + e2y * qy + e2z * qz);
+                if (t >= minT && t <= len && t < bestT) {
+                    bestT = t;
+                    hit = true;
+                }
+            }
+        }
+
+        return hit ? bestT : Float.NaN;
     }
 
     private float raycastDownward(ZoneCollisionObject object, float worldX, float startY, float worldZ) {

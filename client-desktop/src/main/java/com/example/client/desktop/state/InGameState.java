@@ -13,6 +13,7 @@ import com.example.client.desktop.input.MovementInputHandler;
 import com.example.client.desktop.net.DesktopKeepAliveService;
 import com.example.client.desktop.net.DesktopNetworkAdapter;
 import com.example.client.desktop.scene.SceneActor;
+import com.example.client.desktop.scene.SceneCamera;
 import com.example.client.desktop.scene.WorldScene;
 import com.example.client.desktop.ui.DebugLogPanel;
 import com.example.client.desktop.ui.InGamePanel;
@@ -28,12 +29,13 @@ import com.example.common.time.WeatherType;
 import com.example.world.dto.ZoneTransferNotification;
 import com.example.zone.dto.PlayerMovementResponse;
 import com.ffxi.viewer.AuthenticCharacterInstance;
+import com.ffxi.viewer.collision.ZoneCollisionSystem;
 import com.ffxi.viewer.environment.WeatherPreset;
 import imgui.ImGui;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
+import jakarta.inject.Inject;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.glfw.GLFW;
 
@@ -48,7 +50,6 @@ import java.util.List;
  */
 @Slf4j
 @Prototype
-@RequiredArgsConstructor
 public class InGameState implements ApplicationState {
 
     private final InGamePanel panel;
@@ -73,8 +74,48 @@ public class InGameState implements ApplicationState {
     private long keepaliveIntervalMs;
 
     @Getter private final ScreenFader screenFader = new ScreenFader();
-    private final WorldScene worldScene = new WorldScene();
+    private final WorldScene worldScene;
     private final InGameHudOverlay hudOverlay = new InGameHudOverlay();
+
+    @Inject
+    public InGameState(
+            InGamePanel panel,
+            WorldRadarPanel radarPanel,
+            DebugLogPanel debugLog,
+            DesktopKeepAliveService keepAlive,
+            ClientState clientState,
+            DesktopNetworkAdapter networkAdapter,
+            ApplicationStateService stateService,
+            WindowService windowService,
+            MovementInputHandler movementHandler,
+            Camera camera,
+            BeanProvider<UnauthenticatedState> unauthProvider,
+            BeanProvider<AuthenticatedState> authProvider,
+            BeanProvider<CharacterSelectedState> selectedProvider,
+            InGameMapPanel inGameMapPanel
+    ) {
+        this.panel = panel;
+        this.radarPanel = radarPanel;
+        this.debugLog = debugLog;
+        this.keepAlive = keepAlive;
+        this.clientState = clientState;
+        this.networkAdapter = networkAdapter;
+        this.stateService = stateService;
+        this.windowService = windowService;
+        this.movementHandler = movementHandler;
+        this.camera = camera;
+        this.unauthProvider = unauthProvider;
+        this.authProvider = authProvider;
+        this.selectedProvider = selectedProvider;
+        this.inGameMapPanel = inGameMapPanel;
+        this.worldScene = (camera instanceof SceneCamera sceneCam)
+                ? new WorldScene(sceneCam)
+                : new WorldScene();
+    }
+
+    WorldScene getWorldScene() {
+        return worldScene;
+    }
 
     private boolean f1Pressed = false;
     private boolean f2Pressed = false;
@@ -181,6 +222,9 @@ public class InGameState implements ApplicationState {
             );
         } else {
             long movementHandle = uiWantsKeyboard ? 0L : handle;
+            ZoneCollisionSystem collisionSystem = (worldScene.getLoadedZone() != null)
+                    ? worldScene.getLoadedZone().collisionSystem()
+                    : null;
             var moveResult = movementHandler.pollAndCompute(
                     movementHandle,
                     camera,
@@ -190,7 +234,8 @@ public class InGameState implements ApplicationState {
                     clientState.getYaw(),
                     clientState.getPitch(),
                     dt,
-                    now
+                    now,
+                    collisionSystem
             );
 
             clientState.updatePosition(
@@ -325,10 +370,12 @@ public class InGameState implements ApplicationState {
         worldScene.setShowCollisionMesh(wireframe);
         worldScene.setShowCollisionMarkers(showCollisionCylinders);
 
-        worldScene.getCamera().setTarget(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ());
-        worldScene.getCamera().setYaw(camera.getYaw());
-        worldScene.getCamera().setPitch(camera.getPitch());
-        worldScene.getCamera().setDistance(camera.getDistance());
+        if (worldScene.getCamera() != camera) {
+            worldScene.getCamera().setTarget(camera.getTargetX(), camera.getTargetY(), camera.getTargetZ());
+            worldScene.getCamera().setYaw(camera.getYaw());
+            worldScene.getCamera().setPitch(camera.getPitch());
+            worldScene.getCamera().setDistance(camera.getDistance());
+        }
 
         if (pendingRenderDocCapture) {
             pendingRenderDocCapture = false;

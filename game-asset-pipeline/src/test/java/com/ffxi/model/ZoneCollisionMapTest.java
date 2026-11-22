@@ -69,7 +69,24 @@ class ZoneCollisionMapTest {
         assertThatCode(() -> {
             assertThat(empty.allObjects()).isEmpty();
             assertThat(empty.getGroups(0f, 0f)).isEmpty();
+            assertThat(empty.getObjectsAlongSegment(0f, 0f, 10f, 10f)).isEmpty();
             assertThat(empty.getBlockCenterXZ(0, 0)).isNull();
         }).doesNotThrowAnyException();
+    }
+
+    @Test
+    void getObjectsAlongSegmentCollectsObjectsAcrossMultipleCellsWithoutDuplicates() {
+        ZoneCollisionObject shared = obj(1f);
+        ZoneCollisionObject endOnly = obj(2f);
+        ZoneCollisionObjectGroup cellStart = new ZoneCollisionObjectGroup(List.of(shared));
+        ZoneCollisionObjectGroup cellEnd = new ZoneCollisionObjectGroup(List.of(shared, endOnly));
+        ZoneCollisionObjectGroup[][] grid = new ZoneCollisionObjectGroup[1][8];
+        grid[0][0] = cellStart;
+        grid[0][7] = cellEnd;
+
+        ZoneCollisionMap map = new ZoneCollisionMap(8, 1, 10, 10, 1, 1, grid);
+
+        List<ZoneCollisionObject> collected = map.getObjectsAlongSegment(-35f, 0f, 35f, 0f);
+        assertThat(collected).containsExactly(shared, endOnly);
     }
 }

@@ -1,15 +1,21 @@
 package com.example.zone;
 
+import com.example.common.codec.ForySerializationProvider;
 import com.example.common.protocol.MessageType;
 import com.example.config.ZoneServerProperties;
 import com.example.server.AbstractBackendServer;
 import com.example.server.handler.SessionDisconnectedHandler;
+import com.example.zone.dto.PlayerMovementRequest;
+import com.example.zone.dto.PlayerMovementResponse;
+import com.example.zone.dto.ZoneStateDeltaMessage;
 import com.example.zone.engine.ZoneSimulationEngine;
 import com.example.zone.handler.PlayerMovementRequestHandler;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
 
 @Slf4j
 @Context
@@ -42,5 +48,14 @@ public class ZoneServer extends AbstractBackendServer {
     });
 
     start();
+  }
+
+  @Override
+  protected void warmupCodecs() {
+    super.warmupCodecs();
+    var fory = ForySerializationProvider.get();
+    fory.deserialize(fory.serialize(new PlayerMovementRequest(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0, 0L)));
+    fory.deserialize(fory.serialize(new PlayerMovementResponse(0L, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0, 0L, 0L, false)));
+    fory.deserialize(fory.serialize(new ZoneStateDeltaMessage(0L, List.of(), List.of(), List.of())));
   }
 }

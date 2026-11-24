@@ -54,6 +54,13 @@ spec:
               value: "operator"
             - name: FLYWAY_DATASOURCES_DEFAULT_ENABLED
               value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            failureThreshold: 30
 ---
 # 3. Login Service
 apiVersion: v1
@@ -98,6 +105,13 @@ spec:
               value: "0.0.0.0"
             - name: APP_LOGIN_PORT
               value: "9998"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            failureThreshold: 30
           ports:
             - containerPort: 9998
               protocol: UDP
@@ -154,6 +168,13 @@ spec:
               value: "0.0.0.0"
             - name: APP_LOBBY_PORT
               value: "9999"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            failureThreshold: 30
           ports:
             - containerPort: 9999
               protocol: UDP

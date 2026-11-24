@@ -9,13 +9,13 @@ CERTS_DIR="${CERTS_DIR:-${ROOT_DIR}/target/certs}"
 
 build_modulith_image() {
   echo "[build] Packaging platform-modulith with Micronaut docker plugin..."
-  ./mvnw clean package -DskipTests -Dpackaging=docker
+  ./mvnw clean package -pl platform-modulith -am -DskipTests -Dpackaging=docker
 }
 
 ensure_k8s_tools() {
   if ! command -v k3d &> /dev/null; then
     echo "[prereq] Installing k3d..."
-    curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.6.0 bash
+    curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.9.0 bash
   fi
 
   if ! command -v kubectl &> /dev/null; then
@@ -92,8 +92,25 @@ ensure_jwt_secret() {
 }
 
 import_modulith_image() {
-  echo "[k3d] Importing platform-modulith:latest into cluster..."
-  k3d image import platform-modulith:latest -c "${CLUSTER_NAME}"
+  echo "[k3d] Importing platform-modulith:latest into cluster '${CLUSTER_NAME}'..."
+  local nodes
+  nodes=$(docker ps --filter "label=k3d.cluster=${CLUSTER_NAME}" --format '{{.Names}}' | grep -E -- '-(server|agent)-[0-9]+$' || true)
+  if [ -z "${nodes}" ]; then
+    echo "[k3d] ERROR: No k3d server/agent nodes found for cluster '${CLUSTER_NAME}'." >&2
+    return 1
+  fi
+
+  local node
+  for node in ${nodes}; do
+    echo "[k3d] Loading platform-modulith:latest into node '${node}'..."
+    docker save platform-modulith:latest | docker exec -i "${node}" ctr -n k8s.io images import -
+    if ! docker exec "${node}" ctr -n k8s.io images ls -q | grep -q "platform-modulith:latest"; then
+      echo "[k3d] ERROR: Image platform-modulith:latest not found in node '${node}' after import." >&2
+      return 1
+    fi
+  done
+
+  echo "[k3d] Image imported and verified on all cluster nodes."
 }
 
 deploy_platform_manifests() {
@@ -103,24 +120,29 @@ deploy_platform_manifests() {
   kubectl apply -f k8s/03-services.yaml
   kubectl apply -f k8s/04-gateway.yaml
 
-  echo "[k8s] Triggering rolling restart of static deployments..."
-  kubectl rollout restart deployment/postgres \
+  echo "[k8s] Restarting PostgreSQL and waiting for it to be ready..."
+  kubectl rollout restart deployment/postgres
+  kubectl rollout status deployment/postgres --timeout=90s
+
+  echo "[k8s] Cleaning up stale dynamic world/zone pods (if any)..."
+  kubectl delete pod -l 'app.mmo/component in (world,zone)' --ignore-not-found=true --wait=true
+
+  echo "[k8s] Triggering rolling restart of static platform deployments..."
+  kubectl rollout restart deployment/mmo-operator \
     deployment/login-service \
     deployment/lobby-service \
-    deployment/mmo-operator \
     deployment/gateway
 
   echo "[k8s] Waiting for static cluster deployments to be ready..."
-  kubectl rollout status deployment/postgres --timeout=90s
+  kubectl rollout status deployment/mmo-operator --timeout=90s
   kubectl rollout status deployment/login-service --timeout=90s
   kubectl rollout status deployment/lobby-service --timeout=90s
-  kubectl rollout status deployment/mmo-operator --timeout=90s
   kubectl rollout status deployment/gateway --timeout=90s
 }
 
 wait_for_pod() {
   local pod_name="$1"
-  local retries=30
+  local retries=45
   echo -n "Waiting for pod ${pod_name} to appear and become Ready..."
   until kubectl get pod "${pod_name}" >/dev/null 2>&1; do
     sleep 1
@@ -130,7 +152,7 @@ wait_for_pod() {
       return 1
     fi
   done
-  kubectl wait --for=condition=Ready "pod/${pod_name}" --timeout=60s
+  kubectl wait --for=condition=Ready "pod/${pod_name}" --timeout=90s
   echo " READY."
 }
 

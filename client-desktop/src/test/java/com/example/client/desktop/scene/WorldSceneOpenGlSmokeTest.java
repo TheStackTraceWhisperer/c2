@@ -1,11 +1,13 @@
 package com.example.client.desktop.scene;
 
+import com.example.asset.config.FfxiPathConfig;
 import com.ffxi.viewer.HeadlessGlContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.opengl.GL11;
 
 import java.awt.image.BufferedImage;
+import java.nio.file.Files;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -28,6 +30,11 @@ class WorldSceneOpenGlSmokeTest {
             assertNotNull(scene.getCharacterShader(), "CharacterShader must compile and link");
             assertNotNull(scene.getShadowRenderer(), "ShadowMapRenderer must initialize");
             assertNotNull(scene.getSsaoRenderer(), "SsaoRenderer must initialize");
+            assertNotNull(scene.getActorShadowRenderer(), "RetailActorShadowRenderer must initialize");
+            if (Files.isDirectory(FfxiPathConfig.resolveFfxiInstallDirectory())) {
+                assertTrue(scene.getActorShadowRenderer().isRetailKageTextureLoaded(),
+                        "Retail system kage_tex must load from file ID 0x1b8c");
+            }
             assertNotNull(scene.getSkyDome(), "AuthenticSkyDome must initialize");
             assertNotNull(scene.getWeatherParticleSystem(), "WeatherParticleSystem must initialize");
             assertNotNull(scene.getCollisionRenderer(), "CollisionMeshRenderer must initialize");

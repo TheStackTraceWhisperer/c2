@@ -16,7 +16,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,17 +49,11 @@ public class ZoneRenderingSnapshotSuiteTest {
             Vector3f target,
             Vector3f up,
             float fovDegrees,
-            Color skyZenith,
-            Color skyHorizon,
             ProjectionMode projectionMode,
             float orthoSize
     ) {
-        public ZoneCamera(String id, String label, int zoneId, Vector3f eye, Vector3f target, float fovDegrees, Color zenith, Color horizon) {
-            this(id, label, zoneId, eye, target, new Vector3f(0.0f, -1.0f, 0.0f), fovDegrees, zenith, horizon, ProjectionMode.PERSPECTIVE, 0.0f);
-        }
-
         public ZoneCamera(String id, String label, int zoneId, Vector3f eye, Vector3f target, float fovDegrees) {
-            this(id, label, zoneId, eye, target, new Vector3f(0.0f, -1.0f, 0.0f), fovDegrees, new Color(45, 80, 150), new Color(175, 205, 230), ProjectionMode.PERSPECTIVE, 0.0f);
+            this(id, label, zoneId, eye, target, new Vector3f(0.0f, -1.0f, 0.0f), fovDegrees, ProjectionMode.PERSPECTIVE, 0.0f);
         }
 
         public static ZoneCamera topDownOrtho(String id, String label, int zoneId) {
@@ -70,7 +63,6 @@ public class ZoneRenderingSnapshotSuiteTest {
                     new Vector3f(0.0f, 100.0f, 0.0f),
                     new Vector3f(0.0f, 0.0f, 1.0f),
                     0.0f,
-                    new Color(22, 26, 32), new Color(22, 26, 32),
                     ProjectionMode.ORTHOGRAPHIC,
                     0.0f
             );
@@ -83,7 +75,6 @@ public class ZoneRenderingSnapshotSuiteTest {
                     new Vector3f(centerX, 100.0f, centerZ),
                     new Vector3f(0.0f, 0.0f, 1.0f),
                     0.0f,
-                    new Color(22, 26, 32), new Color(22, 26, 32),
                     ProjectionMode.ORTHOGRAPHIC,
                     orthoSize
             );
@@ -131,9 +122,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         230,
                         new Vector3f(-120.0f, -65.0f, -80.0f),
                         new Vector3f(0.0f, 0.0f, -20.0f),
-                        52.0f,
-                        new Color(40, 75, 140),
-                        new Color(170, 200, 230)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_230_south_san_doria_fountain",
@@ -141,9 +130,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         230,
                         new Vector3f(20.0f, -15.0f, -90.0f),
                         new Vector3f(5.0f, 0.0f, -20.0f),
-                        58.0f,
-                        new Color(45, 80, 145),
-                        new Color(175, 205, 235)
+                        58.0f
                 ),
                 new ZoneCamera(
                         "zone_231_north_san_doria_cathedral",
@@ -151,9 +138,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         231,
                         new Vector3f(-65.0f, -36.0f, 105.0f),
                         new Vector3f(110.0f, -14.0f, 120.0f),
-                        52.0f,
-                        new Color(35, 70, 135),
-                        new Color(165, 195, 225)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_232_port_san_doria_airship",
@@ -161,9 +146,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         232,
                         new Vector3f(-90.0f, -50.0f, -90.0f),
                         new Vector3f(0.0f, 5.0f, 0.0f),
-                        52.0f,
-                        new Color(40, 80, 150),
-                        new Color(175, 205, 235)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_233_chateau_d_oraguille",
@@ -171,9 +154,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         233,
                         new Vector3f(0.0f, -25.0f, 80.0f),
                         new Vector3f(0.0f, -5.0f, -20.0f),
-                        55.0f,
-                        new Color(30, 45, 80),
-                        new Color(120, 140, 175)
+                        55.0f
                 ),
 
                 // 2. Bastok Republic
@@ -183,9 +164,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         234,
                         new Vector3f(70.0f, -45.0f, 90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        52.0f,
-                        new Color(55, 70, 105),
-                        new Color(190, 185, 180)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_235_bastok_markets_plaza",
@@ -193,9 +172,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         235,
                         new Vector3f(-80.0f, -40.0f, 80.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        52.0f,
-                        new Color(50, 70, 115),
-                        new Color(185, 185, 185)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_236_port_bastok_wharf",
@@ -203,9 +180,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         236,
                         new Vector3f(-90.0f, -45.0f, -90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        52.0f,
-                        new Color(45, 75, 130),
-                        new Color(180, 195, 215)
+                        52.0f
                 ),
 
                 // 3. Windurst Federation
@@ -215,9 +190,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         238,
                         new Vector3f(-90.0f, -45.0f, -100.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        52.0f,
-                        new Color(35, 90, 145),
-                        new Color(175, 215, 215)
+                        52.0f
                 ),
                 new ZoneCamera(
                         "zone_241_windurst_woods_tree",
@@ -225,9 +198,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         241,
                         new Vector3f(-120.0f, -50.0f, 100.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        54.0f,
-                        new Color(30, 85, 140),
-                        new Color(170, 210, 210)
+                        54.0f
                 ),
 
                 // 4. Jeuno Grand Duchy
@@ -237,9 +208,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         244,
                         new Vector3f(-80.0f, -45.0f, 90.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        50.0f,
-                        new Color(45, 70, 130),
-                        new Color(180, 195, 220)
+                        50.0f
                 ),
                 new ZoneCamera(
                         "zone_245_lower_jeuno_bazaar",
@@ -247,9 +216,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         245,
                         new Vector3f(-80.0f, -40.0f, 80.0f),
                         new Vector3f(0.0f, 0.0f, 0.0f),
-                        52.0f,
-                        new Color(45, 75, 135),
-                        new Color(180, 200, 225)
+                        52.0f
                 ),
 
                 // 5. Coastal Ports & Outposts
@@ -259,9 +226,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         248,
                         new Vector3f(-70.0f, -35.0f, 80.0f),
                         new Vector3f(0.0f, 5.0f, 0.0f),
-                        54.0f,
-                        new Color(35, 80, 145),
-                        new Color(170, 205, 230)
+                        54.0f
                 ),
                 new ZoneCamera(
                         "zone_249_mhaura_port_pier",
@@ -269,9 +234,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         249,
                         new Vector3f(-80.0f, -40.0f, -70.0f),
                         new Vector3f(0.0f, 2.0f, 0.0f),
-                        52.0f,
-                        new Color(40, 85, 150),
-                        new Color(180, 215, 240)
+                        52.0f
                 ),
 
                 // 6. Vast Outdoor Field Areas
@@ -281,9 +244,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         100,
                         new Vector3f(-260.0f, -95.0f, -140.0f),
                         new Vector3f(-60.0f, -20.0f, 10.0f),
-                        54.0f,
-                        new Color(35, 75, 145),
-                        new Color(180, 210, 240)
+                        54.0f
                 ),
                 new ZoneCamera(
                         "zone_102_la_theine_crag_plateau",
@@ -291,9 +252,7 @@ public class ZoneRenderingSnapshotSuiteTest {
                         102,
                         new Vector3f(-320.0f, -120.0f, -220.0f),
                         new Vector3f(-40.0f, -10.0f, -20.0f),
-                        55.0f,
-                        new Color(30, 75, 155),
-                        new Color(185, 215, 245)
+                        55.0f
                 )
         );
 
@@ -334,6 +293,68 @@ public class ZoneRenderingSnapshotSuiteTest {
         );
 
         renderSnapshotBatch(orthoScenarios);
+    }
+
+    @Test
+    @DisplayName("Render and snapshot retail S2F diurnal cycles (Dawn 06:00, Noon 12:00, Dusk 18:30, Midnight 00:00)")
+    void testRenderAndSnapshotDiurnalCycles() throws Exception {
+        assumeTrue(HeadlessGlContext.isDisplayAvailable(), "DISPLAY required (run via scripts/with-xvfb.sh)");
+        assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
+
+        record DiurnalStop(String suffix, float hour) {}
+        List<DiurnalStop> stops = List.of(
+                new DiurnalStop("dawn", 6.0f),
+                new DiurnalStop("noon", 12.0f),
+                new DiurnalStop("dusk", 18.5f),
+                new DiurnalStop("midnight", 0.0f)
+        );
+        List<ZoneCamera> anchors = List.of(
+                new ZoneCamera(
+                        "diurnal_231_cathedral_moat",
+                        "Northern San d'Oria - Cathedral Moat & Lamps",
+                        231,
+                        new Vector3f(-65.0f, -36.0f, 105.0f),
+                        new Vector3f(110.0f, -14.0f, 120.0f),
+                        52.0f
+                ),
+                new ZoneCamera(
+                        "diurnal_238_windurst_waters",
+                        "Windurst Waters - Canals & Night Lights",
+                        238,
+                        new Vector3f(-90.0f, -45.0f, -100.0f),
+                        new Vector3f(0.0f, 0.0f, 0.0f),
+                        52.0f
+                ),
+                new ZoneCamera(
+                        "diurnal_100_west_ronfaure",
+                        "West Ronfaure - Open Sky, Horizon & Celestial Cycle",
+                        100,
+                        new Vector3f(-260.0f, -95.0f, -140.0f),
+                        new Vector3f(-60.0f, -45.0f, 10.0f),
+                        54.0f
+                )
+        );
+
+        try {
+            worldScene.setManualTimeOverride(true);
+            worldScene.setWeatherPreset(WeatherPreset.FINE);
+            for (ZoneCamera anchor : anchors) {
+                for (DiurnalStop stop : stops) {
+                    ZoneCamera shot = new ZoneCamera(
+                            anchor.id() + "_" + stop.suffix(),
+                            anchor.label() + " [" + stop.suffix() + "]",
+                            anchor.zoneId(),
+                            anchor.eye(),
+                            anchor.target(),
+                            anchor.fovDegrees()
+                    );
+                    worldScene.setManualTimeHour(stop.hour());
+                    renderSnapshotBatch(List.of(shot));
+                }
+            }
+        } finally {
+            worldScene.setManualTimeHour(12.0f);
+        }
     }
 
     private static void renderSnapshotBatch(List<ZoneCamera> scenarios) throws Exception {
@@ -420,6 +441,7 @@ public class ZoneRenderingSnapshotSuiteTest {
             worldScene.setShowSkyDome(false);
             worldScene.setEnableShadows(false);
             worldScene.setEnableSsao(false);
+            worldScene.setEnableActorShadows(false);
             worldScene.setEnableFog(false);
             worldScene.setClearColor(22.0f / 255.0f, 26.0f / 255.0f, 32.0f / 255.0f);
 
@@ -436,8 +458,9 @@ public class ZoneRenderingSnapshotSuiteTest {
         }
 
         worldScene.setShowSkyDome(true);
-        worldScene.setEnableShadows(true);
-        worldScene.setEnableSsao(true);
+        worldScene.setEnableShadows(false);
+        worldScene.setEnableSsao(false);
+        worldScene.setEnableActorShadows(true);
         worldScene.setEnableFog(true);
         worldScene.setClearColor(0.08f, 0.10f, 0.14f);
 

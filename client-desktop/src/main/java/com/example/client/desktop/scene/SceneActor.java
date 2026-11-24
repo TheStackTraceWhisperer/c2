@@ -3,6 +3,7 @@ package com.example.client.desktop.scene;
 import com.example.common.protocol.MovementFlags;
 import com.ffxi.viewer.AuthenticCharacterInstance;
 import com.ffxi.viewer.renderer.CharacterShader;
+import com.ffxi.viewer.renderer.RetailActorShadowRenderer;
 import lombok.Getter;
 import lombok.Setter;
 import org.joml.Matrix4f;
@@ -13,7 +14,7 @@ import org.joml.Matrix4f;
  */
 @Getter
 @Setter
-public class SceneActor implements AutoCloseable {
+public class SceneActor implements RetailActorShadowRenderer.ActorShadowSource, AutoCloseable {
 
     public enum ActorType {
         PLAYER,

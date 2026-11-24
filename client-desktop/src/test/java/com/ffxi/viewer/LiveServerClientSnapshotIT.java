@@ -3,6 +3,7 @@ package com.ffxi.viewer;
 import com.example.asset.config.FfxiPathConfig;
 import com.example.client.desktop.capture.ScreenshotCapture;
 import com.example.client.desktop.scene.CameraMode;
+import com.example.client.desktop.scene.SceneActor;
 import com.example.client.desktop.scene.SceneCamera;
 import com.example.client.desktop.scene.WorldScene;
 import com.example.client.desktop.state.InGameHudOverlay;
@@ -28,7 +29,6 @@ import com.example.zone.engine.ZoneSimulationEngine;
 import com.example.zone.patrol.NpcPatrolSimulation;
 import com.example.zone.spatial.SpatialGrid;
 import com.ffxi.viewer.environment.WeatherPreset;
-import com.ffxi.viewer.renderer.FontMojiRenderer;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.AfterAll;
@@ -36,11 +36,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Font;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,9 +44,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,6 +63,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 /**
  * Live Server-Client E2E Integration Snapshot Suite.
  *
@@ -79,9 +75,34 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * 3. Client session connects, receives authoritative spawn and AoI spatial delta streams with full ActorAppearance.
  * 4. ClientState and RemoteActorSynchronizer synchronize the player ("Adventurer") and nearby authentic town NPCs into WorldScene.
  * 5. Real headless OpenGL 4.6 Core pipeline (WorldScene + ZoneShader + CharacterShader + ShadowMap + SSAO + SkyDome + InGameHudOverlay + FontMojiGlRenderer)
- *    captures live composite 1080p in-engine screenshots across Southern San d'Oria (Zone 230) and Lower Jeuno (Zone 245).
+ *    captures live composite 1080p in-engine screenshots across Northern San d'Oria (Zone 231), Southern San d'Oria (Zone 230), and Lower Jeuno (Zone 245).
  */
 public class LiveServerClientSnapshotIT {
+
+    private record WalkthroughStep(
+            String id,
+            String title,
+            String subtitle,
+            float worldX,
+            float worldZ,
+            float playerYaw,
+            int movementFlags,
+            float horizontalSpeed,
+            float updateDt,
+            float camYaw,
+            float camPitch,
+            float camDist,
+            float fovDegrees
+    ) {
+        WalkthroughStep(
+                String id, String title, String subtitle,
+                float worldX, float worldZ, float playerYaw,
+                int movementFlags, float horizontalSpeed, float updateDt,
+                float camYaw, float camPitch, float camDist
+        ) {
+            this(id, title, subtitle, worldX, worldZ, playerYaw, movementFlags, horizontalSpeed, updateDt, camYaw, camPitch, camDist, 48.0f);
+        }
+    }
 
     private static final Path FFXI_ROOT = FfxiPathConfig.resolveFfxiInstallDirectory();
 
@@ -476,6 +497,492 @@ public class LiveServerClientSnapshotIT {
         }
     }
 
+    @Test
+    @DisplayName("E2E Walkthrough Scenario 5: Northern San d'Oria (Zone 231) live server-client city walkthrough")
+    void testE2ENorthernSanDoriaCityWalkthrough() throws Exception {
+        List<WalkthroughStep> steps = List.of(
+                new WalkthroughStep(
+                        "walkthrough_231_01_spawn_south_gate",
+                        "Spawn at South San d'Oria Gate Portal",
+                        "Adventurer materializes at the city archway. Locomotion controller initialized in authentic IDLE breathing posture.",
+                        0.0f, -26.0f, 0.0f,
+                        0, 0.0f, 0.0f,
+                        0.0f, 22.0f, 6.0f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_02_blend_idle_to_walk_50",
+                        "Initiating Forward Stride | IDLE to WALK Blend",
+                        "Player begins walking North along Rue du Bois. Authentic cross-fade smoothly interpolates skeletal joints between IDLE and WALK.",
+                        0.0f, -22.0f, 0.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
+                        0.0f, 21.0f, 5.8f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_03_walk_rue_du_bois",
+                        "Striding Down Rue du Bois | Full WALK Locomotion",
+                        "Player advances in continuous striding walk along cobblestone boulevard. Dual-layer animation swings legs and arms naturally.",
+                        0.0f, -6.0f, 0.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.20f,
+                        0.0f, 20.0f, 5.5f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_04_crossroads_shoulder_orbit",
+                        "Victory Square Crossroads | 3/4 Shoulder Orbit",
+                        "SceneCamera swung 35 deg over player's right shoulder, tracking active walk stride against street lamps and building facades.",
+                        0.0f, 16.0f, 0.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.20f,
+                        35.0f, 18.0f, 6.0f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_05_blend_walk_to_idle_50",
+                        "Arriving at Plaza | WALK to IDLE Deceleration",
+                        "Player halts movement upon entering Victory Square. Controller dynamically cross-fades from active stride back to rest.",
+                        5.0f, 32.0f, 0.0f,
+                        0, 0.0f, 0.133f,
+                        20.0f, 26.0f, 6.8f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_06_victory_square_pause",
+                        "Victory Square Plaza | Settled IDLE Overview",
+                        "Adventurer fully settled in authentic IDLE posture. Camera elevates to 30 deg pitch for a majestic plaza overview.",
+                        5.0f, 36.0f, 0.0f,
+                        0, 0.0f, 0.20f,
+                        20.0f, 30.0f, 7.5f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_07_turn_idle_to_run_50",
+                        "Turning Toward Cathedral | IDLE to RUN Sprint Blend",
+                        "Player turns heading toward northeastern promenade (facing 45 deg) and sprints forward. Joints blend into athletic sprint.",
+                        35.0f, 52.0f, 45.0f,
+                        MovementFlags.FORWARD, 5.0f, 0.133f,
+                        45.0f, 20.0f, 5.5f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_08_run_cathedral_promenade",
+                        "Cathedral Promenade Sprint | Full Athletic RUN",
+                        "Adventurer at full sprint along royal promenade. High-speed skeletal animation evaluated with authentic dual-bone weights.",
+                        70.0f, 70.0f, 45.0f,
+                        MovementFlags.FORWARD, 5.0f, 0.25f,
+                        45.0f, 18.0f, 5.2f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_09_run_to_walk_50",
+                        "Cathedral Approach Close-Up | RUN to WALK Transition",
+                        "Close third-person action zoom (3.8m) capturing dynamic deceleration blend from sprint into walking gait.",
+                        86.0f, 80.0f, 45.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
+                        45.0f, 16.0f, 3.8f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_10_cathedral_steps_hero",
+                        "Cathedral Grand Steps | Low Hero Angle",
+                        "Player halted in IDLE at the base of the Cathedral grand steps. Low pitch (8 deg) looks upward past adventurer to the soaring spires.",
+                        93.0f, 87.0f, 45.0f,
+                        0, 0.0f, 0.30f,
+                        45.0f, 8.0f, 5.0f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_231_11_cathedral_court_tactical",
+                        "Grand Cathedral Court | Tactical Overhead View",
+                        "High overhead tactical perspective (50 deg pitch, 14m distance) validating 3D environment contact and complete scene depth.",
+                        93.0f, 87.0f, 45.0f,
+                        0, 0.0f, 0.10f,
+                        45.0f, 50.0f, 14.0f
+                )
+        );
+
+        List<NpcRecord> zone231Npcs = loadNpcRecordsFromMigrationSql(231);
+        TestCharacterRepo charRepo231 = new TestCharacterRepo();
+        ZoneSimulationEngine engine231 = createAndStartZoneEngine(231, 9002, zone231Npcs, charRepo231);
+        try {
+            executeLiveWalkthroughSequence(231, engine231, charRepo231, 1005L, 99005L, steps);
+        } finally {
+            engine231.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("E2E Walkthrough Scenario 6: Southern San d'Oria (Zone 230) live server-client city walkthrough")
+    void testE2ESouthernSanDoriaCityWalkthrough() throws Exception {
+        List<WalkthroughStep> steps = List.of(
+                new WalkthroughStep(
+                        "walkthrough_230_01_spawn_ronfaure_gate",
+                        "Spawn at West Ronfaure Gate | South San d'Oria",
+                        "Player materializes at the city outer ramparts in IDLE posture facing South (180 deg) down King's Square Avenue.",
+                        0.0f, 42.0f, 180.0f,
+                        0, 0.0f, 0.0f,
+                        180.0f, 22.0f, 6.0f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_230_02_blend_idle_to_walk_50",
+                        "Initiating Southbound Walk | IDLE to WALK Blend",
+                        "Player steps forward down the avenue. Locomotion controller smoothly cross-fades skeletal pose into walk stride.",
+                        0.0f, 35.0f, 180.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.133f,
+                        180.0f, 21.0f, 5.8f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_230_03_walk_commercial_avenue",
+                        "Walking South Along King's Square Avenue",
+                        "Advancing southward along high ramparts and shopfronts in full WALK locomotion with standard third-person chase camera.",
+                        0.0f, 15.0f, 180.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.25f,
+                        180.0f, 20.0f, 5.5f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_230_04_fountain_square_approach",
+                        "Approaching Auction House Plaza | 3/4 Shoulder View",
+                        "Player strides toward Place de Saint d'Oraguille and the central Auction House in full WALK locomotion.",
+                        3.0f, -5.0f, 180.0f,
+                        MovementFlags.FORWARD, 2.5f, 0.20f,
+                        215.0f, 18.0f, 6.0f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_230_05_blend_walk_to_idle_50",
+                        "Halting Before Auction House | WALK to IDLE Deceleration",
+                        "Player decelerates along the plaza thoroughfare as the Auction House entrance approaches. Locomotion cross-fades back into resting stance.",
+                        5.0f, -15.0f, 180.0f,
+                        0, 0.0f, 0.133f,
+                        180.0f, 16.0f, 5.6f
+                ),
+                new WalkthroughStep(
+                        "walkthrough_230_06_grand_fountain_pause",
+                        "Southern San d'Oria Auction House | Frontal Resting View",
+                        "Player fully halted in authentic IDLE posture before the grand Auction House entrance, viewing the stone masonry and central plaza.",
+                        5.0f, -20.0f, 180.0f,
+                        0, 0.0f, 0.25f,
+                        0.0f, 14.0f, 5.5f
+                )
+        );
+
+        executeLiveWalkthroughSequence(230, serverEngine230, testCharRepo230, 1006L, 99006L, steps);
+    }
+
+    @Test
+    @DisplayName("E2E Diurnal Scenario 7: Northern San d'Oria Victory Square across Dawn, Noon, Dusk & Midnight with live NPCs and shadows")
+    void testNorthernSanDoriaDiurnalCycleWithLiveNpcsAndShadows() throws Exception {
+        List<NpcRecord> zone231Npcs = loadNpcRecordsFromMigrationSql(231);
+        TestCharacterRepo charRepo231 = new TestCharacterRepo();
+        ZoneSimulationEngine engine231 = createAndStartZoneEngine(231, 9003, zone231Npcs, charRepo231);
+        long charId = 1007L;
+        long sessionId = 99007L;
+        ClientSessionHarness harness = ClientSessionHarness.create();
+
+        try {
+            if (worldScene.getCurrentZoneId() != 231) {
+                worldScene.loadZone(FFXI_ROOT, 231);
+            }
+            var zone = worldScene.getLoadedZone();
+            assertNotNull(zone, "Zone 231 must load in WorldScene");
+
+            float px = 5.0f;
+            float pz = 30.0f;
+            float py = resolveFloorY(zone, px, pz, 0.0f);
+
+            SceneActor localPlayer = new SceneActor(charId, PLAYER_NAME, SceneActor.ActorType.PLAYER);
+            localPlayer.setVisualModel(worldScene.createCharacterInstance(FFXI_ROOT, PLAYER_APPEARANCE));
+            worldScene.setLocalPlayer(localPlayer);
+
+            charRepo231.records.put(charId, createAdventurerRecord(charId, 231, px, py, pz, 0.0f));
+            engine231.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(engine231.getEntity(charId)).isNotNull();
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).isNotEmpty();
+            });
+
+            long now = System.currentTimeMillis();
+            ClientState clientState = harness.clientState();
+            clientState.updatePosition(px, py, pz, 0.0f, 0.0f, 1L);
+            RemoteActorSynchronizer.syncActors(worldScene, clientState, FFXI_ROOT, 0.0f, 0, now);
+
+            SceneCamera camera = worldScene.getCamera();
+            camera.setMode(CameraMode.FREE_ORBIT);
+            camera.setFov(50.0f);
+            camera.setNearPlane(0.2f);
+            camera.setFarPlane(2000.0f);
+            camera.setTarget(px, py, pz);
+            camera.setTargetOffsetY(1.0f);
+            camera.setYaw(15.0f);
+            camera.setPitch(20.0f);
+            camera.setDistance(8.5f);
+
+            record DiurnalStop(String suffix, float hour) {}
+            List<DiurnalStop> stops = List.of(
+                    new DiurnalStop("dawn", 6.0f),
+                    new DiurnalStop("noon", 12.0f),
+                    new DiurnalStop("dusk", 18.5f),
+                    new DiurnalStop("midnight", 0.0f)
+            );
+
+            worldScene.setManualTimeOverride(true);
+            worldScene.setWeatherPreset(WeatherPreset.FINE);
+            worldScene.setEnableShadows(false);
+            worldScene.setEnableSsao(false);
+            worldScene.setEnableActorShadows(true);
+
+            float aspect = (float) WIDTH / (float) HEIGHT;
+            float[] proj = new float[16];
+            float[] view = new float[16];
+            camera.getProjectionMatrix(aspect).get(proj);
+            camera.getViewMatrix().get(view);
+
+            for (DiurnalStop stop : stops) {
+                worldScene.setManualTimeHour(stop.hour());
+                worldScene.update(0.05f, VanadielTime.ofHour(stop.hour()));
+
+                BufferedImage snapshot = worldScene.captureFrame(WIDTH, HEIGHT, () ->
+                        hudOverlay.renderNameplates(
+                                clientState,
+                                PLAYER_NAME,
+                                proj,
+                                view,
+                                WIDTH,
+                                HEIGHT,
+                                now,
+                                worldScene,
+                                worldScene.getFontMojiGlRenderer(),
+                                null
+                        )
+                );
+                Path outPath = ScreenshotCapture.saveBufferedImage(snapshot, "diurnal_231_victory_square_" + stop.suffix());
+                assertTrue(Files.isRegularFile(outPath) && Files.size(outPath) > 50000,
+                        "Diurnal snapshot must be saved: " + outPath.getFileName());
+            }
+        } finally {
+            worldScene.setManualTimeHour(12.0f);
+            engine231.removeEntityBySession(sessionId);
+            engine231.stop();
+        }
+    }
+
+    private static void executeLiveWalkthroughSequence(
+            int zoneId,
+            ZoneSimulationEngine engine,
+            TestCharacterRepo charRepo,
+            long charId,
+            long sessionId,
+            List<WalkthroughStep> steps
+    ) throws Exception {
+        if (worldScene.getCurrentZoneId() != zoneId) {
+            worldScene.loadZone(FFXI_ROOT, zoneId);
+        }
+        var zone = worldScene.getLoadedZone();
+        assertNotNull(zone, "Zone must be loaded in WorldScene: " + zoneId);
+
+        SceneActor localPlayer = new SceneActor(charId, PLAYER_NAME, SceneActor.ActorType.PLAYER);
+        localPlayer.setVisualModel(worldScene.createCharacterInstance(FFXI_ROOT, PLAYER_APPEARANCE));
+        worldScene.setLocalPlayer(localPlayer);
+
+        ClientSessionHarness harness = ClientSessionHarness.create();
+        float prevFloorY = 0.0f;
+        try {
+            WalkthroughStep first = steps.getFirst();
+            float startFloorY = resolveFloorY(zone, first.worldX(), first.worldZ(), prevFloorY);
+            prevFloorY = startFloorY;
+
+            charRepo.records.put(charId, createAdventurerRecord(charId, zoneId, first.worldX(), startFloorY, first.worldZ(), first.playerYaw()));
+            engine.registerSessionEntity(sessionId, charId, harness.ctx());
+
+            await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(engine.getEntity(charId)).isNotNull();
+                harness.drainDeltas();
+                assertThat(harness.clientState().getRemoteEntities()).isNotEmpty();
+            });
+
+            int stepNum = 1;
+            int totalSteps = steps.size();
+            long clientTick = 1L;
+            for (WalkthroughStep step : steps) {
+                float targetFloorY = resolveFloorY(zone, step.worldX(), step.worldZ(), prevFloorY);
+                prevFloorY = targetFloorY;
+
+                clientTick = advanceServerEntityToStep(
+                        zoneId, engine, charRepo, harness, zone, charId, sessionId,
+                        step.worldX(), targetFloorY, step.worldZ(), step.playerYaw(),
+                        step.movementFlags(), clientTick
+                );
+
+                long settleTargetTick = engine.getCurrentTick().get() + 2L;
+                await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
+                    assertThat(engine.getCurrentTick().get()).isGreaterThanOrEqualTo(settleTargetTick);
+                    harness.drainDeltas();
+                    assertThat(harness.clientState().getRemoteEntities()).isNotEmpty();
+                });
+
+                var serverEntity = engine.getEntity(charId);
+                assertNotNull(serverEntity, "Server entity must exist at step " + step.id());
+                float px = serverEntity.getX();
+                float py = serverEntity.getY();
+                float pz = serverEntity.getZ();
+
+                long now = System.currentTimeMillis();
+                ClientState clientState = harness.clientState();
+                clientState.updatePosition(px, py, pz, step.playerYaw(), 0.0f, clientTick);
+                RemoteActorSynchronizer.syncActors(worldScene, clientState, FFXI_ROOT, step.horizontalSpeed(), step.movementFlags(), now);
+
+                SceneCamera camera = worldScene.getCamera();
+                camera.setMode(CameraMode.FREE_ORBIT);
+                camera.setFov(step.fovDegrees());
+                camera.setNearPlane(0.2f);
+                camera.setFarPlane(2000.0f);
+                camera.setTarget(px, py, pz);
+                camera.setTargetOffsetY(1.0f);
+                camera.setYaw(step.camYaw());
+                camera.setPitch(step.camPitch());
+                camera.setDistance(step.camDist());
+
+                worldScene.update(step.updateDt(), VanadielTime.ofHour(12.0f));
+
+                float aspect = (float) WIDTH / (float) HEIGHT;
+                float[] proj = new float[16];
+                float[] view = new float[16];
+                camera.getProjectionMatrix(aspect).get(proj);
+                camera.getViewMatrix().get(view);
+
+                BufferedImage snapshot = worldScene.captureFrame(WIDTH, HEIGHT, () ->
+                        hudOverlay.renderNameplates(
+                                clientState,
+                                PLAYER_NAME,
+                                proj,
+                                view,
+                                WIDTH,
+                                HEIGHT,
+                                now,
+                                worldScene,
+                                worldScene.getFontMojiGlRenderer(),
+                                null
+                        )
+                );
+                Path outPath = ScreenshotCapture.saveBufferedImage(snapshot, step.id());
+                assertTrue(Files.isRegularFile(outPath) && Files.size(outPath) > 50000,
+                        "Walkthrough snapshot must be saved: " + outPath.getFileName());
+                System.out.printf("[E2E-WALKTHROUGH] Step %d/%d '%s' @ (%.2f, %.2f, %.2f) | AoI NPCs=%d | Saved -> %s (%,d bytes)%n",
+                        stepNum, totalSteps, step.title(), px, py, pz, clientState.getRemoteEntities().size(),
+                        outPath.getFileName(), Files.size(outPath));
+                stepNum++;
+            }
+        } finally {
+            engine.removeEntityBySession(sessionId);
+        }
+    }
+
+    private static long advanceServerEntityToStep(
+            int zoneId,
+            ZoneSimulationEngine engine,
+            TestCharacterRepo charRepo,
+            ClientSessionHarness harness,
+            com.ffxi.viewer.model.LoadedZone zone,
+            long charId,
+            long sessionId,
+            float targetX,
+            float targetFloorY,
+            float targetZ,
+            float targetYaw,
+            int moveFlags,
+            long clientTick
+    ) {
+        final float maxHop = 1.8f;
+        int stalledTicks = 0;
+        for (int iter = 0; iter < 120; iter++) {
+            var ent = engine.getEntity(charId);
+            if (ent == null) {
+                break;
+            }
+            float curX = ent.getX();
+            float curZ = ent.getZ();
+            float dx = targetX - curX;
+            float dz = targetZ - curZ;
+            float dist = (float) Math.hypot(dx, dz);
+            if (dist <= 0.15f) {
+                break;
+            }
+
+            float stepDist = Math.min(maxHop, dist);
+            float nextX = curX + (dx / dist) * stepDist;
+            float nextZ = curZ + (dz / dist) * stepDist;
+            float nextY = resolveFloorY(zone, nextX, nextZ, ent.getY());
+
+            PlayerMovementRequest moveReq = new PlayerMovementRequest(
+                    nextX, nextY, nextZ,
+                    0.0f, 0.0f, 0.0f,
+                    targetYaw, 0.0f,
+                    moveFlags,
+                    clientTick++
+            );
+            engine.enqueueMovement(harness.ctx(), sessionId, charId, moveReq);
+
+            long waitTick = engine.getCurrentTick().get() + 1L;
+            await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                assertThat(engine.getCurrentTick().get()).isGreaterThanOrEqualTo(waitTick);
+            });
+            harness.drainDeltas();
+
+            var after = engine.getEntity(charId);
+            if (after != null) {
+                double progressed = Math.hypot(after.getX() - curX, after.getZ() - curZ);
+                if (progressed < 0.05) {
+                    stalledTicks++;
+                    if (stalledTicks >= 2) {
+                        // Obstacle encountered between waypoints: re-register near destination and perform final live hop
+                        float wpOffset = Math.min(0.8f, dist);
+                        float wpX = targetX - (dx / dist) * wpOffset;
+                        float wpZ = targetZ - (dz / dist) * wpOffset;
+                        float wpY = resolveFloorY(zone, wpX, wpZ, targetFloorY);
+
+                        engine.removeEntityBySession(sessionId);
+                        charRepo.records.put(charId, createAdventurerRecord(charId, zoneId, wpX, wpY, wpZ, targetYaw));
+                        engine.registerSessionEntity(sessionId, charId, harness.ctx());
+                        await().atMost(4, TimeUnit.SECONDS).untilAsserted(() -> {
+                            assertThat(engine.getEntity(charId)).isNotNull();
+                        });
+
+                        PlayerMovementRequest finalHop = new PlayerMovementRequest(
+                                targetX, targetFloorY, targetZ,
+                                0.0f, 0.0f, 0.0f,
+                                targetYaw, 0.0f,
+                                moveFlags,
+                                clientTick++
+                        );
+                        engine.enqueueMovement(harness.ctx(), sessionId, charId, finalHop);
+                        long hopWait = engine.getCurrentTick().get() + 2L;
+                        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+                            assertThat(engine.getCurrentTick().get()).isGreaterThanOrEqualTo(hopWait);
+                        });
+                        harness.drainDeltas();
+                        break;
+                    }
+                } else {
+                    stalledTicks = 0;
+                }
+            }
+        }
+        return clientTick;
+    }
+
+    private static float resolveFloorY(com.ffxi.viewer.model.LoadedZone zone, float x, float z, float fallbackY) {
+        if (zone.collisionSystem() == null) {
+            return fallbackY;
+        }
+        float castStartY = Math.min(-3.0f, fallbackY - 4.0f);
+        float hit = zone.collisionSystem().findFloorY(x, z, castStartY);
+        if (!Float.isFinite(hit)) {
+            hit = zone.collisionSystem().findFloorY(x, z, -20.0f);
+        }
+        if (Float.isFinite(hit)) {
+            return hit;
+        }
+        float[] offsets = {-1.0f, 1.0f, -2.0f, 2.0f};
+        for (float ox : offsets) {
+            float h = zone.collisionSystem().findFloorY(x + ox, z, -20.0f);
+            if (Float.isFinite(h)) {
+                return h;
+            }
+        }
+        return fallbackY;
+    }
+
     private static Path renderAndSaveLiveE2EFrame(
             int zoneId,
             long sessionId,
@@ -552,24 +1059,6 @@ public class LiveServerClientSnapshotIT {
                         null
                 )
         );
-
-        List<String> nearbyNames = new ArrayList<>();
-        clientState.getRemoteEntities().values().stream()
-                .sorted(Comparator.comparingDouble(e -> Math.hypot(e.x() - targetX, e.z() - targetZ)))
-                .limit(6)
-                .forEach(e -> nearbyNames.add(e.name()));
-        String npcSummary = nearbyNames.isEmpty() ? "none nearby" : String.join(", ", nearbyNames);
-
-        Graphics2D g2 = snapshot.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-        renderLiveIntegrationHud(
-                snapshot, g2, worldScene.getFontMojiGlRenderer().getFont(), camera,
-                zoneId, sessionId, PLAYER_NAME,
-                playerX, playerY, playerZ, playerYaw,
-                title, subtitle, clientState.getRemoteEntities().size(), npcSummary
-        );
-        g2.dispose();
 
         return ScreenshotCapture.saveBufferedImage(snapshot, outputFilename);
     }
@@ -712,85 +1201,5 @@ public class LiveServerClientSnapshotIT {
             }
         }
         throw new IOException("Unable to locate " + resourcePath + " on classpath or relative paths");
-    }
-
-    private static void renderLiveIntegrationHud(
-            BufferedImage dest, Graphics2D g, FontMojiRenderer fontMoji, SceneCamera cam,
-            int zoneId, long sessionId, String playerName,
-            float charX, float charY, float charZ, float charYaw,
-            String title, String subtitle, int activeNpcCount, String nearbyNpcSummary
-    ) {
-        g.setColor(new Color(10, 16, 26, 230));
-        g.fillRoundRect(24, 20, WIDTH - 48, 120, 12, 12);
-        g.setColor(new Color(40, 75, 120));
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawRoundRect(24, 20, WIDTH - 48, 120, 12, 12);
-
-        drawText(dest, fontMoji, title, 40, 32, new Color(255, 215, 80), 2);
-        drawText(dest, fontMoji, subtitle, 40, 64, new Color(200, 220, 240), 1);
-
-        String tele1 = String.format(
-                "SERVER: Authoritative 20 Hz ZoneSimulationEngine #%d | QUIC State: IN_ZONE | Session #%d | OpenGL 4.6 Core",
-                zoneId, sessionId
-        );
-        String tele2 = String.format(
-                "SPATIAL AoI: %d Authentic LSB NPCs Streamed to ClientState (Nearby: %s)",
-                activeNpcCount, nearbyNpcSummary
-        );
-        String tele3 = String.format(
-                "AVATAR: %s @ (%5.1f, %5.2f, %5.1f) | Facing=%5.1f deg [%s] | Cam: Yaw=%5.1f deg Pitch=%5.1f deg Dist=%4.1fm",
-                playerName, charX, charY, charZ, charYaw, resolveCardinal(charYaw), cam.getYaw(), cam.getPitch(), cam.getDistance()
-        );
-
-        drawText(dest, fontMoji, tele1, 40, 84, new Color(130, 210, 255), 1);
-        drawText(dest, fontMoji, tele2, 40, 102, new Color(120, 240, 160), 1);
-        drawText(dest, fontMoji, tele3, 40, 120, new Color(225, 235, 250), 1);
-
-        drawCompassRose(dest, g, fontMoji, WIDTH - 80, 80, cam.getYaw());
-    }
-
-    private static void drawCompassRose(BufferedImage dest, Graphics2D g, FontMojiRenderer fontMoji, int cx, int cy, float camYaw) {
-        int r = 36;
-        g.setColor(new Color(15, 22, 32, 220));
-        g.fillOval(cx - r, cy - r, r * 2, r * 2);
-        g.setColor(new Color(70, 110, 160));
-        g.setStroke(new BasicStroke(1.5f));
-        g.drawOval(cx - r, cy - r, r * 2, r * 2);
-
-        double needleAngle = Math.toRadians(-camYaw);
-        int nx = cx + (int) (r * 0.75 * Math.sin(needleAngle));
-        int ny = cy - (int) (r * 0.75 * Math.cos(needleAngle));
-
-        g.setColor(new Color(255, 60, 60));
-        g.setStroke(new BasicStroke(2.5f));
-        g.drawLine(cx, cy, nx, ny);
-
-        drawText(dest, fontMoji, "N", nx - 4, ny - 6, Color.YELLOW, 1);
-        g.setColor(Color.WHITE);
-        g.fillOval(cx - 3, cy - 3, 6, 6);
-    }
-
-    private static void drawText(BufferedImage dest, FontMojiRenderer fontMoji, String text, int startX, int startY, Color color, int scale) {
-        if (text == null || text.isEmpty()) return;
-        if (fontMoji != null) {
-            fontMoji.drawString(dest, text, startX, startY, color, scale);
-        } else {
-            Graphics2D g = dest.createGraphics();
-            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12 * scale));
-            g.setColor(Color.BLACK);
-            g.drawString(text, startX + 1, startY + 12 * scale + 1);
-            g.setColor(color);
-            g.drawString(text, startX, startY + 12 * scale);
-            g.dispose();
-        }
-    }
-
-    private static String resolveCardinal(float yaw) {
-        float y = (yaw % 360.0f + 360.0f) % 360.0f;
-        if (y >= 315.0f || y < 45.0f) return "NORTH";
-        if (y >= 45.0f && y < 135.0f) return "EAST";
-        if (y >= 135.0f && y < 225.0f) return "SOUTH";
-        return "WEST";
     }
 }

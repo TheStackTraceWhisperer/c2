@@ -1,6 +1,7 @@
 package com.ffxi.viewer.collision;
 
 import com.example.asset.collision.CollisionMap;
+import com.example.asset.collision.CollisionTransform;
 import com.example.asset.geometry.CollisionTriangle;
 import com.example.asset.geometry.RayHit;
 import com.example.asset.geometry.Vector3f;
@@ -36,6 +37,18 @@ public final class ZoneCollisionSystem {
         return collisionMap.raycastFloor(new Vector3f(worldX, startY, worldZ), 0.0f, Float.POSITIVE_INFINITY, true)
                 .map(hit -> hit.point().y())
                 .orElse(Float.NaN);
+    }
+
+    /**
+     * Returns the floor {@link CollisionTransform} beneath {@code (worldX, worldY, worldZ)}
+     * (containing retail floor point-light indices and sub-area environment ID), or {@code null}.
+     */
+    public CollisionTransform findFloorTransform(float worldX, float worldY, float worldZ) {
+        if (collisionMap == null || !Float.isFinite(worldX) || !Float.isFinite(worldY) || !Float.isFinite(worldZ)) {
+            return null;
+        }
+        return collisionMap.findFloorTransform(new Vector3f(worldX, worldY, worldZ), 0.5f, 4.0f)
+                .orElse(null);
     }
 
     public float findSpawnFloorY() {

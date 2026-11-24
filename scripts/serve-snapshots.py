@@ -42,7 +42,7 @@ CATEGORIES = {
     "walkthrough": {
         "title": "City Walkthrough & Player Controller",
         "icon": "🚶‍♂️",
-        "desc": "Composite live walkthrough: player character spawned into San d'Oria city maps, striding along cobblestone thoroughfares with real-time PolarCamera controller tracking, proving 3D rendering accuracy, collision floor contact, and architectural occlusion.",
+        "desc": "Live server-client city walkthrough driven by LiveServerClientSnapshotIT: authoritative 20 Hz ZoneSimulationEngine streaming LandSandBoat NPCs into Northern & Southern San d'Oria (Zones 231 & 230), live server movement validation, locomotion cross-fading, and production WorldScene + InGameHudOverlay rendering.",
         "pattern": "walkthrough_*.png",
         "subsections": [
             ("Northern San d'Oria (Zone 231) - South Gate to Cathedral with Locomotion Blending", [
@@ -123,6 +123,38 @@ CATEGORIES = {
                 "zone_245_lower_jeuno_topdown_ortho.png", "zone_248_selbina_topdown_ortho.png",
                 "zone_249_mhaura_topdown_ortho.png", "zone_100_west_ronfaure_topdown_ortho.png",
                 "zone_102_la_theine_crag_topdown_ortho.png"
+            ])
+        ]
+    },
+    "diurnal": {
+        "title": "Diurnal Cycle (Dawn / Noon / Dusk / Midnight)",
+        "icon": "🌅",
+        "desc": "Authentic retail S2F_Environment diurnal cycle at 06:00, 12:00, 18:30, and 00:00 Vana'diel time: sun/moon illumination, 8-ring sky dome & celestial meshes, nighttime S05 point lights & streetlamp cones, and retail actor ground shadows.",
+        "pattern": "diurnal_*.png",
+        "subsections": [
+            ("Northern San d'Oria Victory Square - Live NPCs, Fountain, Lamps & Shadows (Zone 231)", [
+                "diurnal_231_victory_square_dawn.png",
+                "diurnal_231_victory_square_noon.png",
+                "diurnal_231_victory_square_dusk.png",
+                "diurnal_231_victory_square_midnight.png"
+            ]),
+            ("Northern San d'Oria Cathedral Moat & Point Lights (Zone 231)", [
+                "diurnal_231_cathedral_moat_dawn.png",
+                "diurnal_231_cathedral_moat_noon.png",
+                "diurnal_231_cathedral_moat_dusk.png",
+                "diurnal_231_cathedral_moat_midnight.png"
+            ]),
+            ("Windurst Waters Canals & Night Glow (Zone 238)", [
+                "diurnal_238_windurst_waters_dawn.png",
+                "diurnal_238_windurst_waters_noon.png",
+                "diurnal_238_windurst_waters_dusk.png",
+                "diurnal_238_windurst_waters_midnight.png"
+            ]),
+            ("West Ronfaure Sky Dome, Horizon & Stars (Zone 100)", [
+                "diurnal_100_west_ronfaure_dawn.png",
+                "diurnal_100_west_ronfaure_noon.png",
+                "diurnal_100_west_ronfaure_dusk.png",
+                "diurnal_100_west_ronfaure_midnight.png"
             ])
         ]
     },
@@ -215,15 +247,14 @@ CATEGORIES = {
         ]
     },
     "ui": {
-        "title": "UI Systems & Font Moji",
+        "title": "Desktop UI Panels & FontMoji GPU HUD",
         "icon": "💬",
-        "desc": "Retail UI mockups: Shift-JIS / ASCII FontMojiRenderer with 2x color modulation, retail window frames, radar compass, status icons, and elemental wheel.",
+        "desc": "Production OpenGL 4.6 Core UI: Dear ImGui Login, Character Select, In-Game Session, World Radar & Debug Log panels plus GPU FontMojiGlRenderer HUD overlays.",
         "pattern": "ui_*.png",
         "subsections": [
-            ("Retail UI Framework", [
-                "ui_dialog_window_mockup.png", "ui_menu_frame_styles.png",
-                "ui_menu_system_elements.png", "ui_status_and_action_icons.png",
-                "ui_elemental_icons.png", "ui_radar_compass.png"
+            ("Production Desktop UI & HUD", [
+                "ui_login_panel.png", "ui_character_select_panel.png",
+                "ui_ingame_hud_and_radar.png", "ui_font_moji_gpu_overlay.png"
             ])
         ]
     }

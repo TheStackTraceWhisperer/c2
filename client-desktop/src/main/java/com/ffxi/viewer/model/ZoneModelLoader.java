@@ -10,9 +10,12 @@ import com.ffxi.io.FileUtil;
 import com.ffxi.model.DatResourceGraph;
 import com.ffxi.model.ZoneMeshMath;
 import com.ffxi.model.DirectoryResource;
+import com.ffxi.model.ParticleKeyFrameResource;
 import com.ffxi.model.ResourceNode;
 import com.ffxi.model.TextureResource;
+import com.ffxi.model.Vec3f;
 import com.ffxi.model.ZoneDefResource;
+import com.ffxi.model.ZoneEffectGeneratorResource;
 import com.ffxi.model.ZoneMeshChunk;
 import com.ffxi.model.ZoneMeshResource;
 import com.ffxi.model.ZoneMeshVertex;
@@ -23,15 +26,20 @@ import com.ffxi.tables.ZoneConfig;
 import com.ffxi.tables.ZoneIdToResourceId;
 import com.ffxi.tables.ZoneNameTable;
 import com.ffxi.viewer.collision.ZoneCollisionSystem;
+import com.ffxi.viewer.environment.ZoneEnvironmentTable;
+import com.ffxi.viewer.environment.ZonePointLight;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
+import com.ffxi.viewer.renderer.ZoneEffectParams;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,29 +81,11 @@ public final class ZoneModelLoader {
         List<ZoneMeshResource> allMeshes = new ArrayList<>();
         collectZoneMeshes(zoneDat.graph().rootDirectory(), allMeshes);
 
-        Map<String, List<ZoneObject>> objectsByMeshName = new LinkedHashMap<>();
-        collectZoneObjects(zoneDat.graph().rootDirectory(), objectsByMeshName);
-
-        Map<String, List<ZoneObject>> objectsByExactName = new LinkedHashMap<>();
-        Map<String, List<ZoneObject>> objectsByBaseName = new LinkedHashMap<>();
-        for (Map.Entry<String, List<ZoneObject>> entry : objectsByMeshName.entrySet()) {
-            String id = entry.getKey().toLowerCase(Locale.ROOT);
-            objectsByExactName.put(id, entry.getValue());
-            String base = stripLodSuffix(id);
-            objectsByBaseName.putIfAbsent(base, entry.getValue());
-        }
+        List<ZoneObject> zoneObjects = new ArrayList<>();
+        collectZoneObjectsInOrder(zoneDat.graph().rootDirectory(), zoneObjects);
 
         Map<String, CharacterTextureLoader.TextureSource> textureSources = new LinkedHashMap<>();
         collectTextureSources(zoneDat.graph().rootDirectory(), zoneDat.rawData(), textureSources);
-        if (!hasWaterTexture(textureSources)) {
-            loadFallbackWaterTexture(ffxiRoot, textureSources);
-        }
-
-        List<LoadedZone.ZoneChunkInstance> chunkInstances = new ArrayList<>();
-        int meshesWithObjects = 0;
-        int meshesWithoutObjects = 0;
-        int totalChunkInstances = 0;
-        Set<String> processedMeshNames = new HashSet<>();
 
         Map<String, ZoneMeshResource> meshesByName = new LinkedHashMap<>();
         for (ZoneMeshResource m : allMeshes) {
@@ -108,140 +98,74 @@ public final class ZoneModelLoader {
             }
         }
 
-        for (ZoneMeshResource mesh : allMeshes) {
-            String rawMeshName = sanitizeId(mesh.meshName());
-            String meshName = rawMeshName.toLowerCase(Locale.ROOT);
-            if (meshName.isBlank() || processedMeshNames.contains(meshName)) {
+        List<LoadedZone.ZoneChunkInstance> chunkInstances = new ArrayList<>();
+        int sceneryObjectCount = 0;
+        int sceneryChunkCount = 0;
+
+        for (ZoneObject object : zoneObjects) {
+            String effectLink = sanitizeId(object.effectLink());
+            if (!effectLink.isEmpty() && !effectLink.startsWith("_") && !effectLink.startsWith("@")) {
                 continue;
             }
-            if (mesh.meshChunks().isEmpty() && meshesByName.get(meshName) != null && !meshesByName.get(meshName).meshChunks().isEmpty()) {
-                continue; // Defer until the non-empty duplicate mesh is reached
+            String objId = sanitizeId(object.id()).toLowerCase(Locale.ROOT);
+            if (objId.isBlank() || isSkyMesh(objId)) {
+                continue;
             }
-            processedMeshNames.add(meshName);
-
-            if (isSkyMesh(meshName)) {
+            ZoneMeshResource mesh = resolveLodMesh(objId, meshesByName);
+            if (mesh == null || mesh.meshChunks().isEmpty()) {
                 continue;
             }
 
-            List<ZoneObject> objects = objectsByExactName.get(meshName);
-            if (objects == null || objects.isEmpty()) {
-                String base = stripLodSuffix(meshName);
-                objects = objectsByBaseName.get(base);
-            }
+            sceneryObjectCount++;
+            Matrix4f modelMatrix = buildObjectTransform(object);
+            String meshName = sanitizeId(mesh.meshName()).toLowerCase(Locale.ROOT);
+            float cutoutThreshold = (objId.startsWith("_") || meshName.startsWith("_")) ? MASK_DISCARD_THRESHOLD : 0.0f;
+            int[] pointLightIndices = new int[]{
+                    object.pointLight0(),
+                    object.pointLight1(),
+                    object.pointLight2(),
+                    object.pointLight3()
+            };
+            String environmentLink = sanitizeId(object.environmentLink()).toLowerCase(Locale.ROOT);
 
-            boolean isWater = isWaterMesh(meshName);
-            float discardThreshold = meshName.startsWith("_") ? MASK_DISCARD_THRESHOLD : 0.0f;
-
-            if (objects != null && !objects.isEmpty()) {
-                meshesWithObjects++;
-
-                // Procedural water volume: If mesh is empty, generate planar water tile instances
-                if (mesh.meshChunks().isEmpty() && isWater) {
-                    for (ZoneObject object : objects) {
-                        Matrix4f modelMatrix = buildObjectTransform(object);
-                        ZoneMeshChunk quadChunk = createProceduralWaterQuadChunk(modelMatrix, textureSources);
-                        chunkInstances.add(new LoadedZone.ZoneChunkInstance(
-                                quadChunk,
-                                modelMatrix,
-                                false,
-                                0.0f,
-                                object.index()
-                        ));
-                        totalChunkInstances++;
-                    }
+            for (ZoneMeshChunk chunk : mesh.meshChunks()) {
+                if (isCollisionMesh(objId, chunk)) {
                     continue;
                 }
-
-                for (ZoneObject object : objects) {
-                    Matrix4f modelMatrix = buildObjectTransform(object);
-                    for (ZoneMeshChunk chunk : mesh.meshChunks()) {
-                        if (isCollisionMesh(meshName, chunk)) {
-                            continue;
-                        }
-                        boolean chunkWater = isWater || isWaterChunk(meshName, chunk);
-                        boolean blend = chunk.renderBlend() || chunkWater;
-                        ZoneMeshChunk preparedChunk = chunkWater ? prepareWaterChunk(chunk, modelMatrix, textureSources) : chunk;
-                        chunkInstances.add(new LoadedZone.ZoneChunkInstance(
-                                preparedChunk,
-                                modelMatrix,
-                                chunk.invertCull(),
-                                blend ? 0.0f : discardThreshold,
-                                object.index()
-                        ));
-                        totalChunkInstances++;
-                    }
-
-                    // Attach associated dynamic fountain water / spout meshes to fountain basin objects
-                    if (meshName.contains("funsui")) {
-                        String[] fountainParts = {"funmizu", "mizutw", "mizutw2"};
-                        for (String partName : fountainParts) {
-                            ZoneMeshResource partMesh = meshesByName.get(partName);
-                            if (partMesh != null) {
-                                for (ZoneMeshChunk partChunk : partMesh.meshChunks()) {
-                                    ZoneMeshChunk prep = prepareWaterChunk(partChunk, modelMatrix, textureSources);
-                                    chunkInstances.add(new LoadedZone.ZoneChunkInstance(
-                                            prep,
-                                            modelMatrix,
-                                            partChunk.invertCull(),
-                                            0.0f,
-                                            object.index()
-                                    ));
-                                    totalChunkInstances++;
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Standalone unplaced geometry: In retail FFXI, only world-space water sheets (wt00..wt99 in suim)
-                // are modeled directly in world coordinates without ZoneObject instances.
-                // Dynamic effect routines, light cones (ltlanp, ltbfg), cutter volumes (lcut, ltcube),
-                // and proxy volumes must NOT be dumped at origin (0, 0, 0).
-                if (!isStandaloneWorldWaterMesh(meshName)) {
-                    continue;
-                }
-                meshesWithoutObjects++;
-                Matrix4f identity = new Matrix4f();
-                for (ZoneMeshChunk chunk : mesh.meshChunks()) {
-                    if (isCollisionMesh(meshName, chunk)) {
-                        continue;
-                    }
-                    boolean chunkWater = true;
-                    boolean blend = chunk.renderBlend() || chunkWater;
-                    ZoneMeshChunk preparedChunk = prepareWaterChunk(chunk, identity, textureSources);
-                    chunkInstances.add(new LoadedZone.ZoneChunkInstance(
-                            preparedChunk,
-                            identity,
-                            chunk.invertCull(),
-                            blend ? 0.0f : discardThreshold
-                    ));
-                    totalChunkInstances++;
-                }
+                boolean blend = chunk.renderBlend();
+                chunkInstances.add(new LoadedZone.ZoneChunkInstance(
+                        chunk,
+                        modelMatrix,
+                        chunk.invertCull(),
+                        blend ? 0.0f : cutoutThreshold,
+                        object.index(),
+                        null,
+                        pointLightIndices,
+                        environmentLink
+                ));
+                sceneryChunkCount++;
             }
         }
 
-        // Procedural water volume fallback: instantiate any water objects not covered by meshes
-        for (Map.Entry<String, List<ZoneObject>> entry : objectsByExactName.entrySet()) {
-            String objName = entry.getKey();
-            if (isWaterMesh(objName) && !processedMeshNames.contains(objName)) {
-                processedMeshNames.add(objName);
-                meshesWithObjects++;
-                for (ZoneObject object : entry.getValue()) {
-                    Matrix4f modelMatrix = buildObjectTransform(object);
-                    ZoneMeshChunk quadChunk = createProceduralWaterQuadChunk(modelMatrix, textureSources);
-                    chunkInstances.add(new LoadedZone.ZoneChunkInstance(
-                            quadChunk,
-                            modelMatrix,
-                            false,
-                            0.0f,
-                            object.index()
-                    ));
-                    totalChunkInstances++;
-                }
-            }
-        }
+        ZoneEnvironmentTable environmentTable = ZoneEnvironmentTable.fromDirectory(zoneDat.graph().rootDirectory());
+        List<ZonePointLight> pointLights = loadZonePointLights(zoneDat.graph().rootDirectory());
 
-        log.info(String.format("[LOADER] Zone %d: %d meshes total, %d with objects, %d standalone, %d chunk instances", zoneId, allMeshes.size(), meshesWithObjects, meshesWithoutObjects, totalChunkInstances));
+        List<EffeGeneratorEntry> effeGenerators = new ArrayList<>();
+        collectEffeGenerators(zoneDat.graph().rootDirectory(), false, effeGenerators);
+        int effectChunkCount = loadAmbientZoneEffects(
+                zoneDat.graph().rootDirectory(),
+                effeGenerators,
+                meshesByName,
+                chunkInstances
+        );
+        Map<String, List<LoadedZone.ZoneChunkInstance>> weatherSkyEffectsByTag = loadWeatherSkyEffects(
+                zoneDat.graph().rootDirectory(),
+                meshesByName
+        );
+
+        log.info(String.format("[LOADER] Zone %d: %d meshes total, %d scenery objects -> %d scenery chunks, %d S05 effect chunks, %d point lights, %d weather sky tags",
+                zoneId, allMeshes.size(), sceneryObjectCount, sceneryChunkCount, effectChunkCount,
+                pointLights.size(), weatherSkyEffectsByTag.size()));
 
         ZoneCollisionSystem collisionSystem = null;
         CollisionMap collisionMap = findCollisionMap(zoneDat.graph().rootDirectory());
@@ -253,7 +177,17 @@ public final class ZoneModelLoader {
         }
 
         ZoneSpacePartitionNode spacePartitioningTreeRoot = findSpacePartitioningTreeRoot(zoneDat.graph().rootDirectory());
-        return new LoadedZone(zoneId, zoneName, chunkInstances, textureSources, collisionSystem, spacePartitioningTreeRoot);
+        return new LoadedZone(
+                zoneId,
+                zoneName,
+                chunkInstances,
+                textureSources,
+                collisionSystem,
+                spacePartitioningTreeRoot,
+                environmentTable,
+                pointLights,
+                weatherSkyEffectsByTag
+        );
     }
 
     public static List<ZoneSelectionOption> loadZoneOptions(Path ffxiRoot) throws IOException {
@@ -389,30 +323,455 @@ public final class ZoneModelLoader {
         }
     }
 
-    private static boolean hasWaterTexture(Map<String, CharacterTextureLoader.TextureSource> textureSources) {
-        for (String k : textureSources.keySet()) {
-            if (k.contains("umi02") || k.contains("riv01")) {
-                return true;
-            }
-        }
-        return false;
+    private record EffeGeneratorEntry(DirectoryResource dir, ZoneEffectGeneratorResource generator) {
     }
 
-    private static void loadFallbackWaterTexture(Path ffxiRoot, Map<String, CharacterTextureLoader.TextureSource> textureSources) {
-        String[] fallbackDats = {"ROM/0/81.DAT", "ROM/1/32.DAT", "ROM/1/31.DAT"};
-        for (String datRel : fallbackDats) {
-            Path p = ffxiRoot.resolve(datRel);
-            if (Files.exists(p)) {
-                try {
-                    ParsedDat fallbackDat = loadDat(p);
-                    collectTextureSources(fallbackDat.graph().rootDirectory(), fallbackDat.rawData(), textureSources);
-                    if (hasWaterTexture(textureSources)) {
-                        break;
-                    }
-                } catch (Exception ignored) {
+    private static void collectZoneObjectsInOrder(ResourceNode node, List<ZoneObject> zoneObjects) {
+        if (node instanceof ZoneDefResource zoneDef) {
+            zoneObjects.addAll(zoneDef.zoneObjects());
+            return;
+        }
+        if (node instanceof DirectoryResource directory) {
+            for (ResourceNode child : directory.children()) {
+                collectZoneObjectsInOrder(child, zoneObjects);
+            }
+        }
+    }
+
+    private static ZoneMeshResource resolveLodMesh(String objId, Map<String, ZoneMeshResource> meshesByName) {
+        if (objId.endsWith("_h") || objId.endsWith("_m") || objId.endsWith("_l")) {
+            String base = objId.substring(0, objId.length() - 2);
+            return firstNonEmptyMesh(meshesByName, base + "_h", base + "_m", base + "_l", objId);
+        }
+        return firstNonEmptyMesh(meshesByName, objId, objId + "_h", objId + "_m", objId + "_l");
+    }
+
+    private static ZoneMeshResource firstNonEmptyMesh(Map<String, ZoneMeshResource> meshesByName, String... candidates) {
+        for (String key : candidates) {
+            ZoneMeshResource candidate = meshesByName.get(key);
+            if (candidate != null && !candidate.meshChunks().isEmpty()) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static List<ZonePointLight> loadZonePointLights(DirectoryResource rootDir) {
+        List<String> pointLightLinks = new ArrayList<>();
+        collectPointLightLinks(rootDir, pointLightLinks);
+        if (pointLightLinks.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, EffeGeneratorEntry> pointLightGenerators = new LinkedHashMap<>();
+        collectPointLightGenerators(rootDir, false, pointLightGenerators);
+        if (pointLightGenerators.size() < pointLightLinks.size()) {
+            // Fall back to anywhere in the DAT if a point-light S05 sits outside an 'effe' directory
+            collectPointLightGenerators(rootDir, true, pointLightGenerators);
+        }
+
+        List<ZonePointLight> resolved = new ArrayList<>(pointLightLinks.size());
+        for (String linkId : pointLightLinks) {
+            String key = sanitizeId(linkId).toLowerCase(Locale.ROOT);
+            EffeGeneratorEntry entry = pointLightGenerators.get(key);
+            if (entry == null) {
+                resolved.add(new ZonePointLight(sanitizeId(linkId), new Vector3f(), new Vector3f(), 0.0f, 0.0f, 0.0f, null));
+                continue;
+            }
+            ZoneEffectGeneratorResource gen = entry.generator();
+            Vec3f pos = gen.basePosition();
+            Vector3f worldPos = new Vector3f(
+                    ZoneMeshMath.sanitizeFinite(pos.x()),
+                    ZoneMeshMath.sanitizeFinite(pos.y()),
+                    ZoneMeshMath.sanitizeFinite(pos.z())
+            );
+            float r = (gen.hasColor() ? gen.colorR() : 128) / 128.0f;
+            float g = (gen.hasColor() ? gen.colorG() : 128) / 128.0f;
+            float b = (gen.hasColor() ? gen.colorB() : 128) / 128.0f;
+            float range = gen.hasPointLightParams()
+                    ? Math.max(0.0f, gen.pointLightRange() * gen.pointLightRangeMultiplier())
+                    : 0.0f;
+            float baseTheta = gen.hasPointLightParams() ? gen.pointLightTheta() : 0.0f;
+            float thetaMult = gen.hasPointLightParams() ? gen.pointLightThetaMultiplier() : 1.0f;
+            ParticleKeyFrameResource todTheta = findKeyFrameResource(entry.dir(), rootDir, gen.todPointLightThetaKeyFrameId());
+            resolved.add(new ZonePointLight(
+                    sanitizeId(linkId),
+                    worldPos,
+                    new Vector3f(r, g, b),
+                    range,
+                    baseTheta,
+                    thetaMult,
+                    todTheta
+            ));
+        }
+        return Collections.unmodifiableList(resolved);
+    }
+
+    private static void collectPointLightLinks(ResourceNode node, List<String> out) {
+        if (node instanceof ZoneDefResource zoneDef) {
+            out.addAll(zoneDef.pointLightLinks());
+            return;
+        }
+        if (node instanceof DirectoryResource directory) {
+            for (ResourceNode child : directory.children()) {
+                collectPointLightLinks(child, out);
+            }
+        }
+    }
+
+    private static void collectPointLightGenerators(
+            DirectoryResource dir,
+            boolean acceptAnyDirectory,
+            Map<String, EffeGeneratorEntry> out
+    ) {
+        if (dir == null) {
+            return;
+        }
+        boolean insideEffe = acceptAnyDirectory || "effe".equalsIgnoreCase(sanitizeId(dir.sectionId()));
+        for (ResourceNode child : dir.children()) {
+            if (insideEffe && child instanceof ZoneEffectGeneratorResource gen && gen.isPointLight()) {
+                String key = sanitizeId(gen.sectionId()).toLowerCase(Locale.ROOT);
+                if (!key.isEmpty()) {
+                    out.putIfAbsent(key, new EffeGeneratorEntry(dir, gen));
+                }
+            } else if (child instanceof DirectoryResource subDir) {
+                collectPointLightGenerators(subDir, insideEffe, out);
+            }
+        }
+    }
+
+    private static void collectEffeGenerators(DirectoryResource dir, boolean insideEffe, List<EffeGeneratorEntry> out) {
+        if (dir == null) {
+            return;
+        }
+        boolean nowInsideEffe = insideEffe || "effe".equalsIgnoreCase(sanitizeId(dir.sectionId()));
+        for (ResourceNode child : dir.children()) {
+            if (nowInsideEffe && child instanceof ZoneEffectGeneratorResource gen
+                    && (gen.isAmbientSingletonMesh() || gen.isStationaryLampConeMesh())) {
+                out.add(new EffeGeneratorEntry(dir, gen));
+            } else if (child instanceof DirectoryResource subDir) {
+                collectEffeGenerators(subDir, nowInsideEffe, out);
+            }
+        }
+    }
+
+    private static int loadAmbientZoneEffects(
+            DirectoryResource rootDir,
+            List<EffeGeneratorEntry> effeGenerators,
+            Map<String, ZoneMeshResource> meshesByName,
+            List<LoadedZone.ZoneChunkInstance> chunkInstances
+    ) {
+        int count = 0;
+        for (EffeGeneratorEntry entry : effeGenerators) {
+            ZoneEffectGeneratorResource gen = entry.generator();
+            ZoneEffectParams params = buildEffectParams(entry.dir(), rootDir, gen, false);
+            if (params == null) {
+                continue;
+            }
+
+            ZoneMeshResource effectMesh = findEffectMeshResource(entry.dir(), rootDir, gen.linkedDataId(), meshesByName);
+            if (effectMesh == null || effectMesh.meshChunks().isEmpty()) {
+                continue;
+            }
+
+            Matrix4f effectMatrix = buildEffectTransform(gen);
+            String effectMeshName = sanitizeId(effectMesh.meshName()).toLowerCase(Locale.ROOT);
+            float effDiscard = (params.blendMode() == ZoneEffectParams.BlendMode.OPAQUE)
+                    ? 0.0f
+                    : (effectMeshName.startsWith("_")
+                            ? MASK_DISCARD_THRESHOLD
+                            : (gen.depthWrite() ? 0.01f : 0.0f));
+
+            for (ZoneMeshChunk chunk : effectMesh.meshChunks()) {
+                chunkInstances.add(new LoadedZone.ZoneChunkInstance(
+                        chunk,
+                        effectMatrix,
+                        chunk.invertCull(),
+                        effDiscard,
+                        -1,
+                        params
+                ));
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static Map<String, List<LoadedZone.ZoneChunkInstance>> loadWeatherSkyEffects(
+            DirectoryResource rootDir,
+            Map<String, ZoneMeshResource> meshesByName
+    ) {
+        Map<String, List<EffeGeneratorEntry>> byTag = new LinkedHashMap<>();
+        List<String> dirStack = new ArrayList<>();
+        collectWeatherSkyGenerators(rootDir, true, dirStack, byTag);
+        if (byTag.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, List<LoadedZone.ZoneChunkInstance>> result = new LinkedHashMap<>();
+        for (var tagEntry : byTag.entrySet()) {
+            List<LoadedZone.ZoneChunkInstance> tagChunks = new ArrayList<>();
+            for (EffeGeneratorEntry entry : tagEntry.getValue()) {
+                ZoneEffectGeneratorResource gen = entry.generator();
+                ZoneEffectParams params = buildEffectParams(entry.dir(), rootDir, gen, true);
+                if (params == null) {
+                    continue;
+                }
+                ZoneMeshResource effectMesh = findEffectMeshResource(entry.dir(), rootDir, gen.linkedDataId(), meshesByName);
+                if (effectMesh == null || effectMesh.meshChunks().isEmpty()) {
+                    continue;
+                }
+                Matrix4f effectMatrix = buildEffectTransform(gen);
+                for (ZoneMeshChunk chunk : effectMesh.meshChunks()) {
+                    tagChunks.add(new LoadedZone.ZoneChunkInstance(
+                            chunk,
+                            effectMatrix,
+                            chunk.invertCull(),
+                            0.0f,
+                            -1,
+                            params
+                    ));
+                }
+            }
+            if (!tagChunks.isEmpty()) {
+                result.put(tagEntry.getKey(), java.util.Collections.unmodifiableList(tagChunks));
+            }
+        }
+        return java.util.Collections.unmodifiableMap(result);
+    }
+
+    private static void collectWeatherSkyGenerators(
+            DirectoryResource dir,
+            boolean isRootWrapper,
+            List<String> stack,
+            Map<String, List<EffeGeneratorEntry>> outByTag
+    ) {
+        if (dir == null) {
+            return;
+        }
+        String id = sanitizeId(dir.sectionId()).toLowerCase(Locale.ROOT);
+        boolean pushed = !isRootWrapper && !"__root__".equals(id) && !id.isEmpty();
+        if (pushed) {
+            stack.add(id);
+        }
+        int n = stack.size();
+        boolean insideAreaWeat = n >= 4 && "weat".equals(stack.get(2)) && !"weat".equals(stack.get(1));
+        String weatherTag = null;
+        if (!insideAreaWeat) {
+            if (n >= 2 && "weat".equals(stack.get(n - 2))) {
+                weatherTag = stack.get(n - 1);
+            } else if (n >= 3 && "weat".equals(stack.get(n - 3))) {
+                weatherTag = stack.get(n - 2);
+            }
+        }
+        for (ResourceNode child : dir.children()) {
+            if (weatherTag != null && child instanceof ZoneEffectGeneratorResource gen
+                    && gen.isAmbientSingletonMesh()) {
+                outByTag.computeIfAbsent(weatherTag, ignored -> new ArrayList<>())
+                        .add(new EffeGeneratorEntry(dir, gen));
+            } else if (child instanceof DirectoryResource subDir) {
+                collectWeatherSkyGenerators(subDir, false, stack, outByTag);
+            }
+        }
+        if (pushed) {
+            stack.remove(stack.size() - 1);
+        }
+    }
+
+    private static ZoneEffectParams buildEffectParams(
+            DirectoryResource dir,
+            DirectoryResource rootDir,
+            ZoneEffectGeneratorResource gen,
+            boolean skyLayer
+    ) {
+        float colorR = (gen.hasColor() ? gen.colorR() : 128) / 255.0f;
+        float colorG = (gen.hasColor() ? gen.colorG() : 128) / 255.0f;
+        float colorB = (gen.hasColor() ? gen.colorB() : 128) / 255.0f;
+        float colorA = (gen.hasColor() ? gen.colorA() : 128) / 255.0f;
+        if (gen.alphaOverride() >= 0) {
+            colorA = gen.alphaOverride() / 255.0f;
+        }
+
+        if (!skyLayer && gen.isStationaryLampConeMesh()) {
+            ParticleKeyFrameResource lifeKf = findKeyFrameResource(dir, rootDir, gen.lifeAlphaKeyFrameId());
+            if (lifeKf != null) {
+                float steadyAlpha = Math.max(
+                        lifeKf.sampleNormalized(0.25f),
+                        Math.max(lifeKf.sampleNormalized(0.5f), lifeKf.sampleNormalized(0.75f))
+                );
+                // 0x2D/0x1B sets initial particle alpha (replacing op 0x16's colorA=0), before optm scales it.
+                if (gen.alphaOverride() < 0) {
+                    colorA = steadyAlpha;
+                } else {
+                    colorA *= steadyAlpha;
                 }
             }
         }
+
+        ParticleKeyFrameResource kfR = findKeyFrameResource(dir, rootDir, gen.todRKeyFrameId());
+        ParticleKeyFrameResource kfG = findKeyFrameResource(dir, rootDir, gen.todGKeyFrameId());
+        ParticleKeyFrameResource kfB = findKeyFrameResource(dir, rootDir, gen.todBKeyFrameId());
+        ParticleKeyFrameResource kfA = findKeyFrameResource(dir, rootDir, gen.todAKeyFrameId());
+        if (colorA <= 0.001f && kfA == null) {
+            return null;
+        }
+
+        ZoneEffectParams.BlendMode blendMode = ZoneEffectParams.blendModeFromByte(gen.blendFuncByte());
+        ZoneEffectParams.BillboardMode billboardMode;
+        if (gen.billboardCamera()) {
+            billboardMode = ZoneEffectParams.BillboardMode.CAMERA;
+        } else if (gen.billboardXZ()) {
+            billboardMode = ZoneEffectParams.BillboardMode.XZ;
+        } else if (gen.billboardXYZ()) {
+            billboardMode = ZoneEffectParams.BillboardMode.XYZ;
+        } else {
+            billboardMode = ZoneEffectParams.BillboardMode.NONE;
+        }
+
+        float specR = gen.hasSpecularParams() ? gen.specularR() / 255.0f : 0.0f;
+        float specG = gen.hasSpecularParams() ? gen.specularG() / 255.0f : 0.0f;
+        float specB = gen.hasSpecularParams() ? gen.specularB() / 255.0f : 0.0f;
+        float specA = gen.hasSpecularParams() ? gen.specularA() / 255.0f : 0.0f;
+
+        return new ZoneEffectParams(
+                sanitizeId(gen.sectionId()),
+                blendMode,
+                billboardMode,
+                skyLayer ? false : gen.depthWrite(),
+                skyLayer ? false : gen.specularEnabled(),
+                skyLayer ? false : gen.fogEnabled(),
+                gen.ignoreTextureAlpha(),
+                colorR, colorG, colorB, colorA,
+                specR, specG, specB, specA,
+                gen.uvScrollU(),
+                gen.uvScrollV(),
+                kfR, kfG, kfB, kfA,
+                gen.attachType(),
+                gen.followCamera(),
+                skyLayer
+        );
+    }
+
+    private static Matrix4f buildEffectTransform(ZoneEffectGeneratorResource gen) {
+        Vec3f pos = gen.basePosition();
+        Vec3f rot = gen.baseRotation();
+        Vec3f scl = gen.baseScale();
+        Matrix4f m = new Matrix4f().translate(
+                ZoneMeshMath.sanitizeFinite(pos.x()),
+                ZoneMeshMath.sanitizeFinite(pos.y()),
+                ZoneMeshMath.sanitizeFinite(pos.z())
+        );
+        float rx = ZoneMeshMath.sanitizeFinite(rot.x());
+        float ry = ZoneMeshMath.sanitizeFinite(rot.y());
+        float rz = ZoneMeshMath.sanitizeFinite(rot.z());
+        float sx = ZoneMeshMath.sanitizeFinite(scl.x());
+        float sy = ZoneMeshMath.sanitizeFinite(scl.y());
+        float sz = ZoneMeshMath.sanitizeFinite(scl.z());
+        boolean scaleBeforeRotate = (gen.billboardFlags() & 0x0002) != 0;
+        boolean orderZYX = (gen.billboardFlags() & 0x0200) != 0;
+        if (scaleBeforeRotate) {
+            m.scale(sx, sy, sz);
+        }
+        if (orderZYX) {
+            m.rotateZ(rz).rotateY(ry).rotateX(rx);
+        } else {
+            m.rotateX(rx).rotateY(ry).rotateZ(rz);
+        }
+        if (!scaleBeforeRotate) {
+            m.scale(sx, sy, sz);
+        }
+        return m;
+    }
+
+    private static ParticleKeyFrameResource findKeyFrameResource(
+            DirectoryResource startDir,
+            DirectoryResource rootDir,
+            String sectionId
+    ) {
+        if (sectionId == null || sectionId.isBlank()) {
+            return null;
+        }
+        String target = sanitizeId(sectionId);
+        return findInDirectoryHierarchy(
+                startDir,
+                rootDir,
+                ParticleKeyFrameResource.class,
+                kf -> sanitizeId(kf.sectionId()).equalsIgnoreCase(target)
+        );
+    }
+
+    private static ZoneMeshResource findEffectMeshResource(
+            DirectoryResource startDir,
+            DirectoryResource rootDir,
+            String linkedDataId,
+            Map<String, ZoneMeshResource> meshesByName
+    ) {
+        String target = sanitizeId(linkedDataId);
+        if (target.isEmpty()) {
+            return null;
+        }
+        ZoneMeshResource bySectionId = findInDirectoryHierarchy(
+                startDir,
+                rootDir,
+                ZoneMeshResource.class,
+                mesh -> sanitizeId(mesh.sectionId()).equalsIgnoreCase(target) && !mesh.meshChunks().isEmpty()
+        );
+        if (bySectionId != null) {
+            return bySectionId;
+        }
+        ZoneMeshResource byMeshName = meshesByName.get(target.toLowerCase(Locale.ROOT));
+        return (byMeshName != null && !byMeshName.meshChunks().isEmpty()) ? byMeshName : null;
+    }
+
+    private static <T extends ResourceNode> T findInDirectoryHierarchy(
+            DirectoryResource startDir,
+            DirectoryResource rootDir,
+            Class<T> type,
+            java.util.function.Predicate<T> predicate
+    ) {
+        DirectoryResource cursor = startDir;
+        while (cursor != null) {
+            for (ResourceNode child : cursor.children()) {
+                if (type.isInstance(child)) {
+                    T typed = type.cast(child);
+                    if (predicate.test(typed)) {
+                        return typed;
+                    }
+                }
+            }
+            cursor = cursor.parent();
+        }
+        if (startDir != null && startDir.parent() != null) {
+            T inParentSubtree = findRecursive(startDir.parent(), type, predicate);
+            if (inParentSubtree != null) {
+                return inParentSubtree;
+            }
+        }
+        return findRecursive(rootDir, type, predicate);
+    }
+
+    private static <T extends ResourceNode> T findRecursive(
+            DirectoryResource dir,
+            Class<T> type,
+            java.util.function.Predicate<T> predicate
+    ) {
+        if (dir == null) {
+            return null;
+        }
+        for (ResourceNode child : dir.children()) {
+            if (type.isInstance(child)) {
+                T typed = type.cast(child);
+                if (predicate.test(typed)) {
+                    return typed;
+                }
+            } else if (child instanceof DirectoryResource subDir) {
+                T found = findRecursive(subDir, type, predicate);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     public static boolean isSkyMesh(String name) {
@@ -447,120 +806,6 @@ public final class ZoneModelLoader {
         return false;
     }
 
-    public static boolean isStandaloneWorldWaterMesh(String meshName) {
-        if (meshName == null) return false;
-        String n = meshName.trim().toLowerCase(Locale.ROOT);
-        if (n.contains("col") || n.contains("cube") || n.contains("cut") || n.contains("warp") || n.contains("lanp")
-                || n.contains("saku") || n.contains("kigumi") || n.contains("takibi") || n.contains("mon_")
-                || n.contains("gesui") || n.contains("haisui")) {
-            return false;
-        }
-        if (n.equals("funmizu") || n.equals("mizutw") || n.equals("mizutw2") || n.equals("funsui")) {
-            return false;
-        }
-        if (n.contains("sea") || n.contains("umi") || n.contains("mizu") || n.contains("taki")
-                || n.contains("suimen") || n.contains("suimwn") || n.contains("wave") || n.equals("wthand")) {
-            return true;
-        }
-        if (n.contains("wt") || n.contains("hunsui")) {
-            return true;
-        }
-        return false;
-    }
-
-    public static boolean isWaterMesh(String meshName) {
-        if (meshName == null) return false;
-        String n = meshName.trim().toLowerCase(Locale.ROOT);
-        return n.contains("wt")
-                || n.contains("sea")
-                || n.contains("mizu")
-                || n.contains("taki")
-                || n.contains("funsui")
-                || n.contains("hunsui")
-                || n.contains("wave")
-                || n.contains("river")
-                || n.contains("water")
-                || n.contains("dam")
-                || n.contains("suimen")
-                || n.contains("suimwn")
-                || n.contains("umi")
-                || n.equals("wthand");
-    }
-
-    public static ZoneMeshChunk createProceduralWaterQuadChunk(
-            Matrix4f modelMatrix,
-            Map<String, CharacterTextureLoader.TextureSource> textureSources
-    ) {
-        String texName = resolveWaterTexture(textureSources);
-
-        // Planar water tile centered at (0, 0, 0) with extents [-20, 20] x [-20, 20]
-        float[][] localCoords = {
-                {-20.0f, 0.0f, -20.0f},
-                { 20.0f, 0.0f, -20.0f},
-                { 20.0f, 0.0f,  20.0f},
-                {-20.0f, 0.0f,  20.0f}
-        };
-
-        List<ZoneMeshVertex> verts = new ArrayList<>(4);
-        for (float[] pt : localCoords) {
-            float lx = pt[0];
-            float ly = pt[1];
-            float lz = pt[2];
-
-            // Transform local point to world space to calculate continuous planar UVs
-            float wx = modelMatrix != null ? (modelMatrix.m00() * lx + modelMatrix.m10() * ly + modelMatrix.m20() * lz + modelMatrix.m30()) : lx;
-            float wz = modelMatrix != null ? (modelMatrix.m02() * lx + modelMatrix.m12() * ly + modelMatrix.m22() * lz + modelMatrix.m32()) : lz;
-
-            // Map continuous world coordinates to repeating water texture
-            float u = wx * 0.125f;
-            float v = wz * 0.125f;
-
-            verts.add(new ZoneMeshVertex(
-                    lx, ly, lz,
-                    lx, ly, lz,
-                    0.0f, -1.0f, 0.0f,
-                    128, 128, 128, 160,
-                    u, v
-            ));
-        }
-
-        // Two triangles forming horizontal quad with normal (0, -1, 0) pointing UP (expandTriangles swaps i1/i2)
-        List<Integer> indices = List.of(0, 2, 1, 0, 3, 2);
-
-        return new ZoneMeshChunk(
-                texName,
-                true,  // renderBlend = true
-                false, // invertCull = false
-                false, // isTriStrip = false
-                verts,
-                indices
-        );
-    }
-
-    public static boolean isWaterChunk(String meshName, ZoneMeshChunk chunk) {
-        if (isWaterMesh(meshName)) {
-            return true;
-        }
-        if (chunk.textureName() == null || chunk.textureName().isBlank()) {
-            List<ZoneMeshVertex> verts = chunk.vertices();
-            if (verts.size() >= 3 && isPlanarHorizontal(verts) && isDegenerateUv(verts)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean isPlanarHorizontal(List<ZoneMeshVertex> verts) {
-        if (verts.size() < 3) return false;
-        float minY = Float.MAX_VALUE;
-        float maxY = -Float.MAX_VALUE;
-        for (ZoneMeshVertex v : verts) {
-            minY = Math.min(minY, v.py());
-            maxY = Math.max(maxY, v.py());
-        }
-        return (maxY - minY) <= 0.25f;
-    }
-
     private static boolean isDegenerateUv(List<ZoneMeshVertex> verts) {
         if (verts.isEmpty()) return false;
         float u0 = verts.get(0).u();
@@ -571,87 +816,6 @@ public final class ZoneModelLoader {
             }
         }
         return true;
-    }
-
-    public static String stripLodSuffix(String id) {
-        if (id == null) return "";
-        String s = id.trim().toLowerCase(Locale.ROOT);
-        if (s.endsWith("_h") || s.endsWith("_m") || s.endsWith("_l")) {
-            return s.substring(0, s.length() - 2);
-        }
-        if (s.length() > 4 && (s.endsWith("h") || s.endsWith("m") || s.endsWith("l"))) {
-            return s.substring(0, s.length() - 1);
-        }
-        return s;
-    }
-
-    private static ZoneMeshChunk prepareWaterChunk(
-            ZoneMeshChunk chunk,
-            Matrix4f modelMatrix,
-            Map<String, CharacterTextureLoader.TextureSource> textureSources
-    ) {
-        String texName = chunk.textureName() != null ? chunk.textureName().trim().toLowerCase(Locale.ROOT) : "";
-        if (texName.isBlank() || texName.equals("none")) {
-            texName = resolveWaterTexture(textureSources);
-        }
-
-        List<ZoneMeshVertex> verts = chunk.vertices();
-        boolean degenerate = isDegenerateUv(verts);
-
-        List<ZoneMeshVertex> newVerts = verts;
-        if (degenerate && !verts.isEmpty()) {
-            newVerts = new ArrayList<>(verts.size());
-            for (ZoneMeshVertex v : verts) {
-                // Compute world coordinates for continuous tiling across terrain chips and meshes
-                float wx = modelMatrix != null ? (modelMatrix.m00() * v.px() + modelMatrix.m10() * v.py() + modelMatrix.m20() * v.pz() + modelMatrix.m30()) : v.px();
-                float wz = modelMatrix != null ? (modelMatrix.m02() * v.px() + modelMatrix.m12() * v.py() + modelMatrix.m22() * v.pz() + modelMatrix.m32()) : v.pz();
-
-                // World coordinates: X = wx, Z = wz
-                // Map to repeating water texture with 8.0m tile period
-                float u = wx * 0.125f;
-                float vCoord = wz * 0.125f;
-                int alpha = v.colorA();
-                if (alpha == 0 && verts.stream().allMatch(x -> x.colorA() == 0)) {
-                    alpha = 128;
-                }
-                int cr = v.colorR();
-                int cg = v.colorG();
-                int cb = v.colorB();
-                if (cr == 0 && cg == 0 && cb == 0) {
-                    cr = 128;
-                    cg = 128;
-                    cb = 128;
-                }
-                newVerts.add(new ZoneMeshVertex(
-                        v.px(), v.py(), v.pz(),
-                        v.p1x(), v.p1y(), v.p1z(),
-                        v.nx(), v.ny(), v.nz(),
-                        cb, cg, cr, alpha,
-                        u, vCoord
-                ));
-            }
-        }
-
-        return new ZoneMeshChunk(
-                texName,
-                true, // renderBlend = true for water
-                chunk.invertCull(),
-                chunk.isTriStrip(),
-                newVerts,
-                chunk.indices()
-        );
-    }
-
-    private static String resolveWaterTexture(Map<String, CharacterTextureLoader.TextureSource> textureSources) {
-        for (String key : textureSources.keySet()) {
-            String k = key.toLowerCase(Locale.ROOT);
-            if (k.contains("umi02")) return key;
-        }
-        for (String key : textureSources.keySet()) {
-            String k = key.toLowerCase(Locale.ROOT);
-            if (k.contains("riv") || k.contains("mz01") || k.contains("mz02") || k.contains("mz03") || k.contains("sea")) return key;
-        }
-        return "umi02";
     }
 
     public static ParsedDat loadDat(Path path) throws IOException {

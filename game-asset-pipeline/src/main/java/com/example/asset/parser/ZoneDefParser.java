@@ -259,9 +259,10 @@ public final class ZoneDefParser {
 
         int miscFlags = reader.nextI32();
         int cullingGroupOffset = reader.nextI32();
-        reader.nextI32(); // 4 light indices bytes
+        int lightIndicesPacked = reader.nextI32();
 
         int envId = reader.nextI32();
+        String environmentId = decodeFourCc(envId);
         float unkFloat0 = reader.nextFloat();
         float unkFloat1 = reader.nextFloat();
 
@@ -270,7 +271,24 @@ public final class ZoneDefParser {
 
         int mapId = 0x8 * ((miscFlags >>> 26) & 0x3) + ((miscFlags >>> 3) & 0x7);
 
-        return new CollisionTransform(offset, toWorldSpace, toCollisionSpace, mapId, miscFlags, subAreaLinkId);
+        return new CollisionTransform(offset, toWorldSpace, toCollisionSpace, mapId, miscFlags, subAreaLinkId,
+                lightIndicesPacked, environmentId);
+    }
+
+    private static String decodeFourCc(int raw) {
+        if (raw == 0) {
+            return "";
+        }
+        char[] chars = new char[4];
+        int len = 0;
+        for (int i = 0; i < 4; i++) {
+            int b = (raw >>> (8 * i)) & 0xFF;
+            if (b == 0) {
+                break;
+            }
+            chars[len++] = (char) b;
+        }
+        return len == 0 ? "" : new String(chars, 0, len).trim();
     }
 
     private static CollisionMesh parseCollisionMesh(DatByteReader reader, int offset, int dataStartPosition) {

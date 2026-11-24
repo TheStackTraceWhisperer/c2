@@ -3,23 +3,23 @@ package com.ffxi.viewer;
 import com.example.asset.config.FfxiPathConfig;
 import com.example.client.desktop.capture.ScreenshotCapture;
 import com.example.client.desktop.scene.CameraMode;
+import com.example.client.desktop.scene.SceneActor;
 import com.example.client.desktop.scene.SceneCamera;
+import com.example.client.desktop.scene.WorldScene;
+import com.example.common.time.VanadielTime;
 import com.ffxi.model.SkeletonAnimationResource;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.viewer.model.LoadedCharacter;
-import com.ffxi.viewer.renderer.CharacterShader;
 import org.joml.Matrix4f;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.lwjgl.opengl.GL11;
 
+import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,8 +28,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * Suite that evaluates skeletal animation playback, multi-slot layering,
  * dual-animation cross-fade blending, and dual-bone linear blend skinning across
- * authentic retail FFXI character rigs through the real OpenGL 4.6 Core GPU
- * {@link CharacterShader} and {@link AuthenticCharacterInstance} pipeline.
+ * authentic retail FFXI character rigs strictly through the production OpenGL 4.6 Core
+ * {@link WorldScene} rendering pipeline.
  */
 public class CharacterAnimationSnapshotSuiteTest {
 
@@ -56,9 +56,7 @@ public class CharacterAnimationSnapshotSuiteTest {
     }
 
     private static HeadlessGlContext glContext;
-    private static CharacterAssetCache assetCache;
-    private static CharacterShader characterShader;
-    private static final Map<RaceGenderConfig, AuthenticCharacterInstance> instances = new EnumMap<>(RaceGenderConfig.class);
+    private static WorldScene worldScene;
 
     @BeforeAll
     static void initSuite() {
@@ -66,24 +64,20 @@ public class CharacterAnimationSnapshotSuiteTest {
         assumeTrue(Files.isDirectory(FFXI_ROOT), "FFXI retail installation directory required at: " + FFXI_ROOT);
 
         glContext = HeadlessGlContext.create();
-        assetCache = new CharacterAssetCache();
-        characterShader = new CharacterShader();
+        worldScene = new WorldScene();
+        worldScene.init();
+        assertTrue(worldScene.isInitialized(), "WorldScene must initialize in OpenGL 4.6 Core context");
+
+        worldScene.setShowSkyDome(false);
+        worldScene.setEnableShadows(false);
+        worldScene.setEnableSsao(false);
+        worldScene.setClearColor(22.0f / 255.0f, 26.0f / 255.0f, 38.0f / 255.0f);
     }
 
     @AfterAll
     static void tearDownSuite() {
-        for (AuthenticCharacterInstance inst : instances.values()) {
-            try {
-                inst.close();
-            } catch (Exception ignored) {
-            }
-        }
-        instances.clear();
-        if (characterShader != null) {
-            characterShader.close();
-        }
-        if (assetCache != null) {
-            assetCache.close();
+        if (worldScene != null) {
+            worldScene.close();
         }
         if (glContext != null) {
             glContext.close();
@@ -141,11 +135,7 @@ public class CharacterAnimationSnapshotSuiteTest {
 
         for (AnimCapture cap : captures) {
             System.out.printf("[ANIM-SUITE] Capturing GL4.6 '%s' for %s...%n", cap.label, cap.race.name());
-            AuthenticCharacterInstance instance = instances.get(cap.race);
-            if (instance == null) {
-                instance = assetCache.acquireInstance(FFXI_ROOT, cap.race);
-                instances.put(cap.race, instance);
-            }
+            AuthenticCharacterInstance instance = worldScene.createCharacterInstance(FFXI_ROOT, cap.race);
             LoadedCharacter character = instance.getCharacter();
             assertNotNull(character.skeleton(), "Skeleton must exist for " + cap.race.name());
 
@@ -159,8 +149,15 @@ public class CharacterAnimationSnapshotSuiteTest {
                 jomlMatrices = anim.computePoseMatrices(cap.time);
             }
 
+            instance.setPoseOverride(jomlMatrices);
+            SceneActor actor = new SceneActor(1L, cap.race.name(), SceneActor.ActorType.PLAYER);
+            actor.setVisualModel(instance);
+            actor.setPosition(0.0f, 0.0f, 0.0f);
+            actor.setRotation(0.0f);
+            worldScene.setLocalPlayer(actor);
+
             float charHeight = Math.max(1.2f, character.feetOffsetY() * 2.0f * character.effectiveScale());
-            SceneCamera camera = new SceneCamera();
+            SceneCamera camera = worldScene.getCamera();
             camera.setMode(CameraMode.FREE_ORBIT);
             camera.setFov(38.0f);
             camera.setNearPlane(0.1f);
@@ -171,15 +168,9 @@ public class CharacterAnimationSnapshotSuiteTest {
             camera.setPitch(6.0f);
             camera.setDistance(charHeight * 1.75f);
 
-            Matrix4f proj = camera.getProjectionMatrix((float) WIDTH / (float) HEIGHT);
-            Matrix4f view = camera.getViewMatrix();
-
-            AuthenticCharacterInstance renderInstance = instance;
-            Path outPath = ScreenshotCapture.captureOffscreen(WIDTH, HEIGHT, "character_anim_" + cap.id, () -> {
-                GL11.glClearColor(22.0f / 255.0f, 26.0f / 255.0f, 38.0f / 255.0f, 1.0f);
-                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-                renderInstance.renderPose(characterShader, proj, view, jomlMatrices, 0.0f, 0.0f, 0.0f, 0.0f);
-            });
+            worldScene.update(0.0f, VanadielTime.ofHour(12.0f));
+            BufferedImage snapshot = worldScene.captureFrame(WIDTH, HEIGHT);
+            Path outPath = ScreenshotCapture.saveBufferedImage(snapshot, "character_anim_" + cap.id);
 
             assertTrue(Files.isRegularFile(outPath) && Files.size(outPath) > 0, "Snapshot must be saved");
             System.out.printf("[ANIM-SUITE] Successfully saved %s (%,d bytes)%n",

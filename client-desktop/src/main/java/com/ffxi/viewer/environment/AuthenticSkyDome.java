@@ -1,5 +1,6 @@
 package com.ffxi.viewer.environment;
 
+import com.ffxi.model.ZoneEnvironmentResource;
 import com.ffxi.viewer.shader.GlShaderUtil;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -14,12 +15,10 @@ import java.util.List;
 import static org.lwjgl.opengl.GL33C.*;
 
 /**
- * Authentic retail FFXI & XIM hemispherical sky dome renderer.
- * Instead of a generic cube map, retail FFXI renders a dome composed of 8 elevation rings/slices
- * and N radial spokes (default 24). Ring vertices are positioned along concentric latitude circles:
- *   phi = -0.5 * PI * elevation
- * and rendered as dynamic GL_TRIANGLE_STRIP ribbons carrying smooth vertex colors.
- * Rendered with glDepthMask(false) so it always serves as the atmospheric backdrop for map geometry.
+ * Authentic retail FFXI &amp; XIM hemispherical sky dome renderer.
+ * Renders a dome composed of 8 elevation rings/slices (plus horizon-to-nadir skirt)
+ * and N radial spokes (default 24) using dynamic {@code GL_TRIANGLE_STRIP} ribbons carrying
+ * smooth vertex colors from {@code S2F_Environment}.
  */
 public final class AuthenticSkyDome implements AutoCloseable {
 
@@ -53,8 +52,8 @@ public final class AuthenticSkyDome implements AutoCloseable {
             }
             """;
 
-    private final int spokeCount;
-    private final float radius;
+    private final int defaultSpokeCount;
+    private final float defaultRadius;
     private final int shaderProgram;
     private final int uProjLoc;
     private final int uViewLoc;
@@ -64,10 +63,13 @@ public final class AuthenticSkyDome implements AutoCloseable {
     private int vaoId = 0;
     private int vboId = 0;
     private int totalVertices = 0;
+    private int activeSpokeCount;
+    private int activeBandCount = 7;
 
     public AuthenticSkyDome(float radius, int spokeCount) {
-        this.radius = Math.max(100.0f, radius);
-        this.spokeCount = Math.max(8, spokeCount);
+        this.defaultRadius = Math.max(100.0f, radius);
+        this.defaultSpokeCount = Math.max(8, spokeCount);
+        this.activeSpokeCount = this.defaultSpokeCount;
 
         shaderProgram = GlShaderUtil.createProgram(SKY_VERT_SRC, SKY_FRAG_SRC, "AuthenticSkyDome");
 
@@ -85,24 +87,56 @@ public final class AuthenticSkyDome implements AutoCloseable {
     }
 
     /**
-     * Builds and uploads the 8-slice hemispherical triangle strip vertex mesh from the given weather preset.
+     * Builds and uploads the 8-slice hemispherical triangle strip vertex mesh from a fallback weather preset.
      */
     public void updateMesh(WeatherPreset preset) {
         if (preset == null || preset.skySlices().size() < 8) {
             return;
         }
+        List<WeatherPreset.SkySlice> slices = new ArrayList<>(9);
+        slices.add(new WeatherPreset.SkySlice(-1.0f, preset.skySlices().get(0).color()));
+        slices.addAll(preset.skySlices().subList(0, 8));
+        uploadSlices(slices, defaultRadius, defaultSpokeCount);
+    }
 
-        List<WeatherPreset.SkySlice> slices = preset.skySlices();
-        float thetaStep = (float) (2.0 * Math.PI / spokeCount);
+    /**
+     * Builds and uploads the authentic 8-slice + nadir sky dome from a resolved retail {@code S2F_Environment}.
+     */
+    public void updateFromEnvironment(ZoneEnvironmentTable.ResolvedEnvironment env) {
+        if (env == null || !env.hasDome() || env.skyColors() == null || env.skyStops() == null) {
+            return;
+        }
+        Vector3f[] colors = env.skyColors();
+        float[] stops = env.skyStops();
+        int count = Math.min(ZoneEnvironmentResource.SKY_SLICE_COUNT, Math.min(colors.length, stops.length));
+        if (count < 2) {
+            return;
+        }
+        List<WeatherPreset.SkySlice> slices = new ArrayList<>(count + 1);
+        slices.add(new WeatherPreset.SkySlice(-1.0f, new Vector4f(colors[0].x, colors[0].y, colors[0].z, 1.0f)));
+        for (int i = 0; i < count; i++) {
+            slices.add(new WeatherPreset.SkySlice(stops[i], new Vector4f(colors[i].x, colors[i].y, colors[i].z, 1.0f)));
+        }
+        float useRadius = env.skyRadius() > 100.0f ? env.skyRadius() : defaultRadius;
+        int useSpokes = env.spokeCount() >= 8 ? env.spokeCount() : defaultSpokeCount;
+        uploadSlices(slices, useRadius, useSpokes);
+    }
 
-        List<List<Vector3f>> layers = new ArrayList<>(8);
-        for (int i = 0; i < 8; i++) {
-            float phi = (float) (0.5 * Math.PI * slices.get(i).elevation());
-            float layerRadius = radius * (float) Math.cos(phi);
-            float layerY = -radius * (float) Math.sin(phi);
+    private void uploadSlices(List<WeatherPreset.SkySlice> slices, float meshRadius, int spokes) {
+        int bands = slices.size() - 1;
+        if (bands <= 0) {
+            return;
+        }
+        float thetaStep = (float) (2.0 * Math.PI / spokes);
 
-            List<Vector3f> layer = new ArrayList<>(spokeCount);
-            for (int j = 0; j < spokeCount; j++) {
+        List<List<Vector3f>> layers = new ArrayList<>(slices.size());
+        for (WeatherPreset.SkySlice slice : slices) {
+            float phi = (float) (0.5 * Math.PI * slice.elevation());
+            float layerRadius = meshRadius * (float) Math.cos(phi);
+            float layerY = -meshRadius * (float) Math.sin(phi);
+
+            List<Vector3f> layer = new ArrayList<>(spokes);
+            for (int j = 0; j < spokes; j++) {
                 float theta = j * thetaStep;
                 float x = layerRadius * (float) Math.sin(theta);
                 float z = layerRadius * (float) Math.cos(theta);
@@ -111,15 +145,15 @@ public final class AuthenticSkyDome implements AutoCloseable {
             layers.add(layer);
         }
 
-        int verticesPerBand = (spokeCount + 1) * 2;
-        int totalVerts = 7 * verticesPerBand;
+        int verticesPerBand = (spokes + 1) * 2;
+        int totalVerts = bands * verticesPerBand;
         ByteBuffer buffer = BufferUtils.createByteBuffer(totalVerts * 28);
 
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < bands; i++) {
             Vector4f c0 = slices.get(i).color();
             Vector4f c1 = slices.get(i + 1).color();
 
-            for (int j = 0; j < spokeCount; j++) {
+            for (int j = 0; j < spokes; j++) {
                 Vector3f p0 = layers.get(i).get(j);
                 Vector3f p1 = layers.get(i + 1).get(j);
 
@@ -150,17 +184,20 @@ public final class AuthenticSkyDome implements AutoCloseable {
         glEnableVertexAttribArray(1);
 
         glBindVertexArray(0);
+        this.activeSpokeCount = spokes;
+        this.activeBandCount = bands;
         this.totalVertices = totalVerts;
     }
 
     /**
-     * Renders the authentic sky dome backdrop.
+     * Renders the authentic sky dome backdrop behind all world geometry.
      */
     public void render(Matrix4f projMatrix, Matrix4f viewMatrix, Vector3f cameraPos, float brightness) {
         if (vaoId == 0 || totalVertices == 0) {
             return;
         }
 
+        glDisable(GL_DEPTH_TEST);
         glDepthMask(false);
         glDisable(GL_CULL_FACE);
         glUseProgram(shaderProgram);
@@ -175,23 +212,24 @@ public final class AuthenticSkyDome implements AutoCloseable {
 
         glBindVertexArray(vaoId);
 
-        int verticesPerBand = (spokeCount + 1) * 2;
-        for (int i = 0; i < 7; i++) {
+        int verticesPerBand = (activeSpokeCount + 1) * 2;
+        for (int i = 0; i < activeBandCount; i++) {
             glDrawArrays(GL_TRIANGLE_STRIP, i * verticesPerBand, verticesPerBand);
         }
 
         glBindVertexArray(0);
         glUseProgram(0);
         glDepthMask(true);
+        glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
     }
 
     public int getSpokeCount() {
-        return spokeCount;
+        return activeSpokeCount;
     }
 
     public float getRadius() {
-        return radius;
+        return defaultRadius;
     }
 
     public int getTotalVertices() {
@@ -203,5 +241,7 @@ public final class AuthenticSkyDome implements AutoCloseable {
         if (vboId != 0) glDeleteBuffers(vboId);
         if (vaoId != 0) glDeleteVertexArrays(vaoId);
         if (shaderProgram != 0) glDeleteProgram(shaderProgram);
+        vboId = 0;
+        vaoId = 0;
     }
 }

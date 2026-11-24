@@ -39,6 +39,10 @@ public final class HeadlessGlContext implements AutoCloseable {
     }
 
     public static HeadlessGlContext create() {
+        return create(1, 1);
+    }
+
+    public static HeadlessGlContext create(int width, int height) {
         ensureGlfwInitialized();
 
         GLFW.glfwDefaultWindowHints();
@@ -49,7 +53,7 @@ public final class HeadlessGlContext implements AutoCloseable {
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_FORWARD_COMPAT, GLFW.GLFW_TRUE);
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
 
-        long window = GLFW.glfwCreateWindow(1, 1, "c2-headless-gl46", 0L, 0L);
+        long window = GLFW.glfwCreateWindow(Math.max(1, width), Math.max(1, height), "c2-headless-gl46", 0L, 0L);
         if (window == 0L) {
             throw new IllegalStateException(
                     "Failed to create hidden OpenGL 4.6 Core GLFW window (ensure Xvfb + MESA_GL_VERSION_OVERRIDE=4.6 via scripts/with-xvfb.sh)"

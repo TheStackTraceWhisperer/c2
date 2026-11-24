@@ -1,5 +1,6 @@
 package com.example.client.desktop.scene;
 
+import com.example.asset.collision.CollisionTransform;
 import com.example.asset.config.FfxiPathConfig;
 import com.example.asset.interaction.ZoneInteraction;
 import com.example.asset.interaction.ZoneInteractionParser;
@@ -7,6 +8,7 @@ import com.example.client.desktop.renderer.CollisionMeshRenderer;
 import com.example.common.time.VanadielTime;
 import com.example.zone.dto.ActorAppearance;
 import com.ffxi.io.FileTableManager;
+import com.ffxi.model.ZoneEffectGeneratorResource;
 import com.ffxi.model.ZoneSpacePartitionNode;
 import com.ffxi.tables.RaceGenderConfig;
 import com.ffxi.tables.ZoneConfig;
@@ -16,11 +18,15 @@ import com.ffxi.viewer.CharacterAssetCache;
 import com.ffxi.viewer.environment.AuthenticSkyDome;
 import com.ffxi.viewer.environment.WeatherParticleSystem;
 import com.ffxi.viewer.environment.WeatherPreset;
+import com.ffxi.viewer.environment.ZoneEnvironmentTable;
+import com.ffxi.viewer.environment.ZonePointLight;
 import com.ffxi.viewer.model.LoadedZone;
 import com.ffxi.viewer.model.ZoneModelLoader;
 import com.ffxi.viewer.renderer.CharacterShader;
 import com.ffxi.viewer.renderer.FontMojiGlRenderer;
 import com.ffxi.viewer.renderer.FontMojiRenderer;
+import com.ffxi.viewer.renderer.RetailActorShadowRenderer;
+import com.ffxi.viewer.renderer.ZoneEffectParams;
 import com.ffxi.viewer.renderer.ZoneFrustumCuller;
 import com.ffxi.viewer.renderer.ZoneMeshBuffer;
 import com.ffxi.viewer.renderer.ZoneRenderChunk;
@@ -33,9 +39,11 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
 import java.awt.image.BufferedImage;
@@ -47,7 +55,9 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -73,27 +83,38 @@ public class WorldScene implements AutoCloseable {
     private ZoneShader zoneShader;
     private ZoneTextureLoader zoneTextureLoader;
     private final List<ZoneRenderChunk> zoneRenderChunks = new ArrayList<>();
+    private final Map<String, List<ZoneRenderChunk>> weatherSkyRenderChunks = new HashMap<>();
     private List<ZoneInteraction> zoneInteractions = List.of();
     private ZoneSpacePartitionNode zoneSpaceTreeRoot;
     private BitSet indexedZoneObjectIds;
     private int lastDrawnZoneChunkCount = 0;
     private int lastCulledZoneChunkCount = 0;
+    private float elapsedSeconds = 0.0f;
+    private final float[] chunkPlPosRange = new float[16];
+    private final float[] chunkPlColorIntensity = new float[16];
+    private final Vector4f liveEffectRgba = new Vector4f();
 
     // Character Rendering & Shared Asset Cache
     private CharacterShader characterShader;
     private final CharacterAssetCache characterAssetCache = new CharacterAssetCache();
 
-    // Advanced Lighting & Shadow Systems
+    // Retail Actor Ground Shadows & Optional Enhanced Passes
+    private RetailActorShadowRenderer actorShadowRenderer;
+    @Setter private boolean enableActorShadows = true;
+    @Setter private RetailActorShadowRenderer.ShadowMode actorShadowMode = RetailActorShadowRenderer.ShadowMode.HIGH;
     private ShadowMapRenderer shadowRenderer;
     private SsaoRenderer ssaoRenderer;
-    @Setter private boolean enableShadows = true;
-    @Setter private boolean enableSsao = true;
+    @Setter private boolean enableShadows = false;
+    @Setter private boolean enableSsao = false;
 
     // Atmospheric & Weather Systems
     private AuthenticSkyDome skyDome;
     private WeatherParticleSystem weatherParticleSystem;
     private WeatherPreset weatherPreset = WeatherPreset.SUNNY;
     private WeatherPreset lastSkyDomePreset;
+    private float lastSkyUpdateMinute = Float.NaN;
+    private String lastSkyWeatherTag = "";
+    private int lastSkyZoneId = -1;
     @Setter private boolean manualTimeOverride = false;
     @Setter private float manualTimeHour = 12.0f;
 
@@ -157,6 +178,15 @@ public class WorldScene implements AutoCloseable {
             }
 
             try {
+                this.actorShadowRenderer = new RetailActorShadowRenderer(
+                        FfxiPathConfig.resolveFfxiInstallDirectory(),
+                        this.fileTableManager
+                );
+            } catch (Exception e) {
+                log.warn("RetailActorShadowRenderer unavailable in current GL context: {}", e.getMessage());
+            }
+
+            try {
                 this.skyDome = new AuthenticSkyDome();
                 if (this.weatherPreset != null) {
                     this.skyDome.updateMesh(this.weatherPreset);
@@ -188,7 +218,9 @@ public class WorldScene implements AutoCloseable {
             return;
         }
         this.weatherPreset = preset;
-        if (this.skyDome != null && preset != this.lastSkyDomePreset) {
+        this.lastSkyWeatherTag = "";
+        this.lastSkyUpdateMinute = Float.NaN;
+        if (this.skyDome != null && this.loadedZone == null && preset != this.lastSkyDomePreset) {
             this.skyDome.updateMesh(preset);
             this.lastSkyDomePreset = preset;
         }
@@ -243,15 +275,11 @@ public class WorldScene implements AutoCloseable {
         this.indexedZoneObjectIds = null;
         this.lastDrawnZoneChunkCount = 0;
         this.lastCulledZoneChunkCount = 0;
+        this.lastSkyZoneId = -1;
+        this.lastSkyWeatherTag = "";
+        this.lastSkyUpdateMinute = Float.NaN;
 
-        for (ZoneRenderChunk chunk : zoneRenderChunks) {
-            try { chunk.close(); } catch (Exception ignored) {}
-        }
-        zoneRenderChunks.clear();
-        if (zoneTextureLoader != null) {
-            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
-            zoneTextureLoader = null;
-        }
+        disposeZoneRenderChunks();
 
         if (initialized && ffxiRoot != null && Files.isDirectory(ffxiRoot)) {
             try {
@@ -265,15 +293,35 @@ public class WorldScene implements AutoCloseable {
                             new Matrix4f(inst.modelMatrix()),
                             inst.invertCull(),
                             inst.discardThreshold(),
-                            inst.zoneObjectIndex()
+                            inst.zoneObjectIndex(),
+                            inst.effectParams(),
+                            inst.pointLightIndices(),
+                            inst.environmentLink()
                     ));
+                }
+                for (var entry : loadedZone.weatherSkyEffectsByTag().entrySet()) {
+                    List<ZoneRenderChunk> skyChunks = new ArrayList<>(entry.getValue().size());
+                    for (LoadedZone.ZoneChunkInstance inst : entry.getValue()) {
+                        skyChunks.add(new ZoneRenderChunk(
+                                new ZoneMeshBuffer(inst.chunk()),
+                                new Matrix4f(inst.modelMatrix()),
+                                inst.invertCull(),
+                                inst.discardThreshold(),
+                                inst.zoneObjectIndex(),
+                                inst.effectParams(),
+                                inst.pointLightIndices(),
+                                inst.environmentLink()
+                        ));
+                    }
+                    weatherSkyRenderChunks.put(entry.getKey(), skyChunks);
                 }
                 if (loadedZone.collisionSystem() != null && collisionRenderer != null) {
                     var collisionTris = loadedZone.collisionSystem().getAllWorldTriangles();
                     collisionRenderer.upload(collisionTris);
                 }
-                log.info("WorldScene: Loaded zone #{}: {} chunk instances, {} textures",
-                        zoneId, zoneRenderChunks.size(), loadedZone.textureSources().size());
+                log.info("WorldScene: Loaded zone #{}: {} chunk instances, {} textures, {} point lights, {} weather sky tags",
+                        zoneId, zoneRenderChunks.size(), loadedZone.textureSources().size(),
+                        loadedZone.pointLights().size(), weatherSkyRenderChunks.size());
             } catch (Exception e) {
                 log.error("Failed loading authentic zone #{}", zoneId, e);
             }
@@ -338,6 +386,7 @@ public class WorldScene implements AutoCloseable {
      * Steps animations, weather particles, sky dome mesh, camera tracking, and environmental time.
      */
     public void update(float dt, VanadielTime time) {
+        this.elapsedSeconds += Math.max(0.0f, dt);
         if (camera.getMode() == CameraMode.THIRD_PERSON) {
             if (localPlayerActor != null) {
                 camera.setTarget(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ());
@@ -393,28 +442,37 @@ public class WorldScene implements AutoCloseable {
         VanadielTime vTime = manualTimeOverride
                 ? VanadielTime.ofHour(manualTimeHour)
                 : VanadielTime.now();
-        float hour = vTime.getHourFraction();
-        float sunAngle = (float) ((hour / 24.0f) * 2.0 * Math.PI);
-        Vector3f sunDir = new Vector3f((float) Math.sin(sunAngle), (float) Math.cos(sunAngle), 0.25f).normalize();
-        Vector3f moonDir = new Vector3f(-sunDir.x, -sunDir.y, -0.25f).normalize();
-        Vector3f activeLightDir = sunDir.y < 0.0f ? sunDir : moonDir;
+        float minuteOfDay = vTime.getHourFraction() * 60.0f;
+        float wrappedMinute = ((minuteOfDay % 1440.0f) + 1440.0f) % 1440.0f;
+        float normalizedClock = wrappedMinute / 1440.0f;
+        String weatherTag = (weatherPreset != null && weatherPreset.id() != null)
+                ? weatherPreset.id().toLowerCase(Locale.ROOT)
+                : "fine";
 
-        float dayFactor = (hour >= 6.0f && hour <= 18.0f) ? 1.0f
-                : ((hour > 18.0f && hour < 20.0f) ? 1.0f - 0.65f * ((hour - 18.0f) / 2.0f)
-                : ((hour >= 20.0f || hour <= 4.0f) ? 0.35f
-                : 0.35f + 0.65f * ((hour - 4.0f) / 2.0f)));
+        ZoneEnvironmentTable envTable = (loadedZone != null) ? loadedZone.environmentTable() : null;
+        ZoneEnvironmentTable.ResolvedEnvironment zoneEnv = (envTable != null && !envTable.isEmpty())
+                ? envTable.resolve(weatherTag, wrappedMinute, null)
+                        .orElseGet(() -> ZoneEnvironmentTable.fromFallbackPreset(weatherPreset, wrappedMinute))
+                : ZoneEnvironmentTable.fromFallbackPreset(weatherPreset, wrappedMinute);
 
+        Vector3f cameraWorldPos = new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
         Vector3f shadowTarget = (localPlayerActor != null)
                 ? new Vector3f(localPlayerActor.getX(), localPlayerActor.getY(), localPlayerActor.getZ())
-                : new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ());
+                : new Vector3f(cameraWorldPos);
 
-        // 1. Directional Shadow Pass (binds chunk diffuse texture on unit 0 so alpha-cutout shadows work)
+        // 1. Optional Directional Shadow Pass (non-retail override; disabled by default)
         boolean shadowsActive = enableShadows && shadowRenderer != null && !zoneRenderChunks.isEmpty();
         if (shadowsActive) {
-            shadowRenderer.computeLightSpaceMatrix(activeLightDir, shadowTarget, 60.0f, 10.0f, 150.0f);
+            Vector3f activeDir = (zoneEnv.bgLight0Color().lengthSquared() >= zoneEnv.bgLight1Color().lengthSquared())
+                    ? zoneEnv.bgLight0Dir()
+                    : zoneEnv.bgLight1Dir();
+            shadowRenderer.computeLightSpaceMatrix(activeDir, shadowTarget, 60.0f, 10.0f, 150.0f);
             shadowRenderer.beginShadowPass();
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             for (ZoneRenderChunk chunk : zoneRenderChunks) {
+                if (chunk.isEffect() || chunk.buffer().renderBlend()) {
+                    continue;
+                }
                 if (zoneTextureLoader != null) {
                     GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(chunk.buffer().textureName()));
                 }
@@ -424,21 +482,29 @@ public class WorldScene implements AutoCloseable {
             shadowRenderer.endShadowPass(w, h);
         }
 
-        // 2. SSAO Geometry & Blur Passes (uses SsaoRenderer's internal G-buffer shader and chunk matrices)
+        // 2. Optional SSAO Geometry & Blur Passes (disabled by default)
         boolean ssaoActive = enableSsao && ssaoRenderer != null && !zoneRenderChunks.isEmpty();
         if (ssaoActive) {
             ssaoRenderer.resize(w, h);
             ssaoRenderer.beginGeometryPass(pMat, vMat);
             for (ZoneRenderChunk chunk : zoneRenderChunks) {
-                if (chunk.buffer().renderBlend()) {
+                if (chunk.isEffect() || chunk.buffer().renderBlend()) {
                     continue;
                 }
                 if (!ZoneFrustumCuller.isChunkVisible(chunk.zoneObjectIndex(), indexedZoneObjectIds, visibleZoneObjectIds)) {
                     continue;
                 }
+                if (chunk.invertCull()) {
+                    GL11.glDisable(GL11.GL_CULL_FACE);
+                } else {
+                    GL11.glEnable(GL11.GL_CULL_FACE);
+                    GL11.glFrontFace(chunk.modelMatrix().determinant() < 0.0f ? GL11.GL_CW : GL11.GL_CCW);
+                }
                 ssaoRenderer.setGeometryModelMatrix(chunk.modelMatrix());
                 chunk.buffer().draw();
             }
+            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glFrontFace(GL11.GL_CCW);
             ssaoRenderer.computeSsao(pMat, 3.5f, 0.025f, 1.6f, true);
         }
 
@@ -448,11 +514,10 @@ public class WorldScene implements AutoCloseable {
         float bgR = clearR;
         float bgG = clearG;
         float bgB = clearB;
-        if (showSkyDome && weatherPreset != null) {
-            float skyBrightness = dayFactor * weatherPreset.diffuseMultiplier();
-            bgR = Math.min(1.0f, weatherPreset.clearColor().x * skyBrightness);
-            bgG = Math.min(1.0f, weatherPreset.clearColor().y * skyBrightness);
-            bgB = Math.min(1.0f, weatherPreset.clearColor().z * skyBrightness);
+        if (showSkyDome) {
+            bgR = zoneEnv.clearColor().x;
+            bgG = zoneEnv.clearColor().y;
+            bgB = zoneEnv.clearColor().z;
         }
         GL11.glClearColor(bgR, bgG, bgB, 1.0f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
@@ -460,48 +525,43 @@ public class WorldScene implements AutoCloseable {
         GL11.glDepthFunc(GL11.GL_LEQUAL);
         GL11.glDepthMask(true);
 
-        // 4. Atmospheric Sky Dome Pass
-        if (showSkyDome && skyDome != null) {
-            if (weatherPreset != null && weatherPreset != lastSkyDomePreset) {
-                skyDome.updateMesh(weatherPreset);
-                lastSkyDomePreset = weatherPreset;
+        // 4. Retail Atmospheric Sky Dome & Celestial S05 Sky Layers
+        if (showSkyDome) {
+            if (skyDome != null && zoneEnv.hasDome()) {
+                boolean skyNeedsUpdate = (currentZoneId != lastSkyZoneId)
+                        || !weatherTag.equals(lastSkyWeatherTag)
+                        || (weatherPreset != lastSkyDomePreset)
+                        || Float.isNaN(lastSkyUpdateMinute)
+                        || Math.abs(wrappedMinute - lastSkyUpdateMinute) > 0.25f;
+                if (skyNeedsUpdate) {
+                    skyDome.updateFromEnvironment(zoneEnv);
+                    lastSkyZoneId = currentZoneId;
+                    lastSkyWeatherTag = weatherTag;
+                    lastSkyDomePreset = weatherPreset;
+                    lastSkyUpdateMinute = wrappedMinute;
+                }
+                skyDome.render(pMat, vMat, cameraWorldPos, 1.0f);
             }
-            float brightness = dayFactor * weatherPreset.diffuseMultiplier();
-            skyDome.render(pMat, vMat, new Vector3f(camera.getEyeX(), camera.getEyeY(), camera.getEyeZ()), brightness);
+            renderWeatherSkyLayers(pMat, vMat, cameraWorldPos, zoneEnv, normalizedClock, weatherTag, w, h);
         }
 
-        // 5. Zone Geometry Multi-Pass (Opaque & Alpha-Test Pass 0, Blended Pass 1)
+        List<ZonePointLight> pointLights = (loadedZone != null) ? loadedZone.pointLights() : List.of();
+        float[] pointLightIntensities = new float[pointLights.size()];
+        for (int i = 0; i < pointLights.size(); i++) {
+            pointLightIntensities[i] = pointLights.get(i).evaluateIntensity(normalizedClock);
+        }
+
+        float lightningBoost = (weatherParticleSystem != null && weatherParticleSystem.isLightningActive())
+                ? weatherParticleSystem.getLightningIntensity()
+                : 0.0f;
+
+        // 5. Zone Geometry Multi-Pass (Opaque & Alpha-Test Pass 0, Blended Pass 1, S05 Effects & Lamps)
         if (showVisualZone && zoneShader != null && zoneTextureLoader != null && !zoneRenderChunks.isEmpty()) {
             zoneShader.bind();
-
-            float lightningBoost = (weatherParticleSystem != null && weatherParticleSystem.isLightningActive())
-                    ? weatherParticleSystem.getLightningIntensity()
-                    : 0.0f;
-            float diffMult = weatherPreset.diffuseMultiplier() * dayFactor + lightningBoost;
-            Vector3f sunColor = new Vector3f(
-                    weatherPreset.sunColor().x * diffMult,
-                    weatherPreset.sunColor().y * diffMult,
-                    weatherPreset.sunColor().z * diffMult
-            );
-            float ambMult = Math.max(0.35f, dayFactor);
-            Vector3f ambientColor = new Vector3f(
-                    Math.max(0.45f, weatherPreset.ambientColor().x * ambMult * 2.0f),
-                    Math.max(0.45f, weatherPreset.ambientColor().y * ambMult * 2.0f),
-                    Math.max(0.48f, weatherPreset.ambientColor().z * ambMult * 2.0f)
-            );
             Matrix4f lightSpaceMat = shadowsActive ? shadowRenderer.getLightSpaceMatrix() : null;
-
-            zoneShader.setEnvironment(
-                    activeLightDir,
-                    sunColor,
-                    ambientColor,
-                    lightSpaceMat,
-                    shadowsActive,
-                    ssaoActive,
-                    w,
-                    h
-            );
-            zoneShader.setFog(enableFog, weatherPreset.fogNear(), weatherPreset.fogFar(), weatherPreset.fogColor());
+            zoneShader.setCameraWorldPos(cameraWorldPos);
+            bindZoneShaderEnvironment(zoneEnv, lightSpaceMat, shadowsActive, ssaoActive, lightningBoost, w, h);
+            zoneShader.resetSceneryState();
 
             if (shadowsActive) {
                 GL13.glActiveTexture(GL13.GL_TEXTURE2);
@@ -513,19 +573,24 @@ public class WorldScene implements AutoCloseable {
             }
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
+            String boundEnvLink = "";
             int drawnChunks = 0;
             int culledChunks = 0;
             for (int pass = 0; pass < 2; pass++) {
                 boolean blendedPass = (pass == 1);
+                zoneShader.setOpaquePass(!blendedPass);
                 GL11.glDepthMask(!blendedPass);
                 if (blendedPass) {
                     GL11.glEnable(GL11.GL_BLEND);
                     GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                    GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+                    GL11.glPolygonOffset(-1.0f, -1.0f);
                 } else {
                     GL11.glDisable(GL11.GL_BLEND);
+                    GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
                 }
                 for (ZoneRenderChunk chunk : zoneRenderChunks) {
-                    if (chunk.buffer().renderBlend() != blendedPass) {
+                    if (chunk.isEffect() || chunk.buffer().renderBlend() != blendedPass) {
                         continue;
                     }
                     if (!ZoneFrustumCuller.isChunkVisible(chunk.zoneObjectIndex(), indexedZoneObjectIds, visibleZoneObjectIds)) {
@@ -533,6 +598,17 @@ public class WorldScene implements AutoCloseable {
                         continue;
                     }
                     drawnChunks++;
+
+                    String envLink = chunk.environmentLink();
+                    if (!envLink.equals(boundEnvLink)) {
+                        boundEnvLink = envLink;
+                        ZoneEnvironmentTable.ResolvedEnvironment chunkEnv = (!envLink.isEmpty() && envTable != null && !envTable.isEmpty())
+                                ? envTable.resolve(weatherTag, wrappedMinute, envLink).orElse(zoneEnv)
+                                : zoneEnv;
+                        bindZoneShaderEnvironment(chunkEnv, lightSpaceMat, shadowsActive, ssaoActive, lightningBoost, w, h);
+                    }
+
+                    uploadChunkPointLights(chunk, pointLights, pointLightIntensities);
                     zoneShader.setDiscardThreshold(chunk.discardThreshold());
                     zoneShader.setMatrices(pMat, vMat, chunk.modelMatrix());
 
@@ -548,25 +624,68 @@ public class WorldScene implements AutoCloseable {
                     chunk.buffer().draw();
                 }
             }
+            GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+            zoneShader.clearPointLights();
+            if (!boundEnvLink.isEmpty()) {
+                bindZoneShaderEnvironment(zoneEnv, lightSpaceMat, shadowsActive, ssaoActive, lightningBoost, w, h);
+            }
+
+            drawnChunks += renderAmbientZoneEffects(pMat, vMat, cameraWorldPos, zoneEnv, normalizedClock);
+
             this.lastDrawnZoneChunkCount = drawnChunks;
             this.lastCulledZoneChunkCount = culledChunks;
+            GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
             GL11.glDisable(GL11.GL_BLEND);
+            GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
             GL11.glDepthMask(true);
             GL11.glEnable(GL11.GL_CULL_FACE);
             GL11.glFrontFace(GL11.GL_CCW);
+            zoneShader.setOpaquePass(false);
+            zoneShader.resetSceneryState();
+            zoneShader.setFog(enableFog, zoneEnv.fogStart(), zoneEnv.fogEnd(), zoneEnv.fogColor());
         } else {
             this.lastDrawnZoneChunkCount = 0;
             this.lastCulledZoneChunkCount = 0;
         }
 
-        // 6. Animated Skinned Character Actors Pass
+        // 6. Animated Skinned Character Actors Pass (Retail S2F actor lighting, floor lamp & fog)
         if (showCharacterModels && characterShader != null) {
             for (SceneActor actor : actors.values()) {
+                if (!actor.isVisible()) {
+                    continue;
+                }
+                configureActorLighting(actor, envTable, zoneEnv, weatherTag, wrappedMinute, pointLights, pointLightIntensities);
                 actor.render(characterShader, pMat, vMat);
             }
         }
 
-        // 7. Collision Wireframe / Cylinder Markers Pass
+        // 7. Retail Actor Ground Shadows Pass (Skinned Silhouettes / kage_tex on 3x3 collision cells)
+        if (enableActorShadows
+                && actorShadowMode != RetailActorShadowRenderer.ShadowMode.OFF
+                && showCharacterModels
+                && actorShadowRenderer != null
+                && loadedZone != null
+                && loadedZone.collisionSystem() != null
+                && !actors.isEmpty()) {
+            actorShadowRenderer.renderShadows(
+                    targetFbo,
+                    w,
+                    h,
+                    pMat,
+                    vMat,
+                    cameraWorldPos,
+                    actors.values(),
+                    characterShader,
+                    loadedZone.collisionSystem().collisionMap(),
+                    pointLights,
+                    pointLightIntensities,
+                    zoneEnv,
+                    actorShadowMode
+            );
+        }
+
+        // 8. Collision Wireframe / Cylinder Markers Pass
         if (collisionRenderer != null) {
             if (showCollisionMesh) {
                 collisionRenderer.render(proj, view, true);
@@ -582,7 +701,7 @@ public class WorldScene implements AutoCloseable {
             }
         }
 
-        // 8. Weather Particles Pass
+        // 9. Weather Particles Pass
         if (showWeather && weatherParticleSystem != null) {
             weatherParticleSystem.render(pMat, vMat, weatherPreset);
         }
@@ -705,15 +824,7 @@ public class WorldScene implements AutoCloseable {
         }
         characterAssetCache.close();
 
-        for (ZoneRenderChunk chunk : zoneRenderChunks) {
-            try { chunk.close(); } catch (Exception ignored) {}
-        }
-        zoneRenderChunks.clear();
-
-        if (zoneTextureLoader != null) {
-            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
-            zoneTextureLoader = null;
-        }
+        disposeZoneRenderChunks();
         if (zoneShader != null) {
             try { zoneShader.close(); } catch (Exception ignored) {}
             zoneShader = null;
@@ -721,6 +832,10 @@ public class WorldScene implements AutoCloseable {
         if (characterShader != null) {
             try { characterShader.close(); } catch (Exception ignored) {}
             characterShader = null;
+        }
+        if (actorShadowRenderer != null) {
+            try { actorShadowRenderer.close(); } catch (Exception ignored) {}
+            actorShadowRenderer = null;
         }
         if (collisionRenderer != null) {
             try { collisionRenderer.close(); } catch (Exception ignored) {}
@@ -747,11 +862,408 @@ public class WorldScene implements AutoCloseable {
             fontMojiGlRenderer = null;
         }
         this.lastSkyDomePreset = null;
+        this.lastSkyUpdateMinute = Float.NaN;
+        this.lastSkyWeatherTag = "";
+        this.lastSkyZoneId = -1;
         this.zoneSpaceTreeRoot = null;
         this.indexedZoneObjectIds = null;
         this.lastDrawnZoneChunkCount = 0;
         this.lastCulledZoneChunkCount = 0;
         this.initialized = false;
         log.info("Disposed WorldScene GPU resources");
+    }
+
+    private void disposeZoneRenderChunks() {
+        for (ZoneRenderChunk chunk : zoneRenderChunks) {
+            try { chunk.close(); } catch (Exception ignored) {}
+        }
+        zoneRenderChunks.clear();
+        for (List<ZoneRenderChunk> skyChunks : weatherSkyRenderChunks.values()) {
+            for (ZoneRenderChunk chunk : skyChunks) {
+                try { chunk.close(); } catch (Exception ignored) {}
+            }
+        }
+        weatherSkyRenderChunks.clear();
+        if (zoneTextureLoader != null) {
+            try { zoneTextureLoader.close(); } catch (Exception ignored) {}
+            zoneTextureLoader = null;
+        }
+    }
+
+    private void bindZoneShaderEnvironment(
+            ZoneEnvironmentTable.ResolvedEnvironment env,
+            Matrix4f lightSpaceMat,
+            boolean shadowsActive,
+            boolean ssaoActive,
+            float lightningBoost,
+            int viewportWidth,
+            int viewportHeight
+    ) {
+        Vector3f l0Color = (lightningBoost > 0.0f)
+                ? new Vector3f(env.bgLight0Color()).add(lightningBoost, lightningBoost, lightningBoost)
+                : env.bgLight0Color();
+        zoneShader.setRetailEnvironment(
+                env.bgLight0Dir(),
+                l0Color,
+                env.bgLight1Dir(),
+                env.bgLight1Color(),
+                env.bgAmbientColor(),
+                lightSpaceMat,
+                shadowsActive,
+                ssaoActive,
+                viewportWidth,
+                viewportHeight
+        );
+        zoneShader.setFog(enableFog, env.fogStart(), env.fogEnd(), env.fogColor());
+    }
+
+    private void uploadChunkPointLights(
+            ZoneRenderChunk chunk,
+            List<ZonePointLight> pointLights,
+            float[] pointLightIntensities
+    ) {
+        if (pointLights.isEmpty() || !chunk.hasPointLights()) {
+            zoneShader.clearPointLights();
+            return;
+        }
+        int plCount = 0;
+        for (int slot = 0; slot < 4; slot++) {
+            int plIdx = chunk.pointLightIndex(slot);
+            if (plIdx < 0 || plIdx >= pointLights.size()) {
+                continue;
+            }
+            float intensity = pointLightIntensities[plIdx];
+            ZonePointLight pl = pointLights.get(plIdx);
+            if (intensity <= 0.0001f || pl.range() <= 0.0f) {
+                continue;
+            }
+            int base = plCount * 4;
+            chunkPlPosRange[base] = pl.position().x;
+            chunkPlPosRange[base + 1] = pl.position().y;
+            chunkPlPosRange[base + 2] = pl.position().z;
+            chunkPlPosRange[base + 3] = pl.range();
+            chunkPlColorIntensity[base] = pl.color().x;
+            chunkPlColorIntensity[base + 1] = pl.color().y;
+            chunkPlColorIntensity[base + 2] = pl.color().z;
+            chunkPlColorIntensity[base + 3] = intensity;
+            plCount++;
+        }
+        zoneShader.setPointLights(plCount, chunkPlPosRange, chunkPlColorIntensity);
+    }
+
+    private void configureActorLighting(
+            SceneActor actor,
+            ZoneEnvironmentTable envTable,
+            ZoneEnvironmentTable.ResolvedEnvironment zoneEnv,
+            String weatherTag,
+            float wrappedMinute,
+            List<ZonePointLight> pointLights,
+            float[] pointLightIntensities
+    ) {
+        if (loadedZone == null) {
+            characterShader.bind();
+            characterShader.setActorLighting(false, null, null, null, null, 0.0f, null, 0.0f);
+            characterShader.setFog(false, 0.0f, 1.0f, null);
+            return;
+        }
+
+        CollisionTransform floorTx = (loadedZone.collisionSystem() != null)
+                ? loadedZone.collisionSystem().findFloorTransform(actor.getX(), actor.getY(), actor.getZ())
+                : null;
+        ZoneEnvironmentTable.ResolvedEnvironment actorEnv = (floorTx != null
+                && !floorTx.environmentId().isEmpty()
+                && envTable != null && !envTable.isEmpty())
+                ? envTable.resolve(weatherTag, wrappedMinute, floorTx.environmentId()).orElse(zoneEnv)
+                : zoneEnv;
+
+        float bestWeight = 0.0f;
+        ZonePointLight bestLamp = null;
+        float bestIntensity = 0.0f;
+        if (floorTx != null && !pointLights.isEmpty()) {
+            for (int slot = 0; slot < 4; slot++) {
+                int idx = floorTx.pointLightIndex(slot);
+                if (idx < 0 || idx >= pointLights.size()) {
+                    continue;
+                }
+                float intensity = pointLightIntensities[idx];
+                ZonePointLight pl = pointLights.get(idx);
+                if (intensity <= 0.0001f || pl.range() <= 0.0f) {
+                    continue;
+                }
+                float dx = pl.position().x - actor.getX();
+                float dy = pl.position().y - actor.getY();
+                float dz = pl.position().z - actor.getZ();
+                float d2 = dx * dx + dy * dy + dz * dz;
+                if (Math.sqrt(d2) > pl.range()) {
+                    continue;
+                }
+                float att2 = 1.0f / intensity;
+                float wt = 1.0f / Math.max(d2 * att2, 1e-4f);
+                if (wt > bestWeight) {
+                    bestWeight = wt;
+                    bestLamp = pl;
+                    bestIntensity = intensity;
+                }
+            }
+        }
+
+        characterShader.bind();
+        characterShader.setActorLighting(
+                true,
+                actorEnv.actorLightDir(),
+                actorEnv.actorLightColor(),
+                actorEnv.actorAmbientColor(),
+                bestLamp != null ? bestLamp.position() : null,
+                bestLamp != null ? bestLamp.range() : 0.0f,
+                bestLamp != null ? bestLamp.color() : null,
+                bestIntensity
+        );
+        characterShader.setFog(enableFog, actorEnv.fogStart(), actorEnv.fogEnd(), actorEnv.fogColor());
+    }
+
+    private void renderWeatherSkyLayers(
+            Matrix4f pMat,
+            Matrix4f vMat,
+            Vector3f cameraWorldPos,
+            ZoneEnvironmentTable.ResolvedEnvironment zoneEnv,
+            float normalizedClock,
+            String weatherTag,
+            int viewportWidth,
+            int viewportHeight
+    ) {
+        if (zoneShader == null || zoneTextureLoader == null || weatherSkyRenderChunks.isEmpty()) {
+            return;
+        }
+        List<ZoneRenderChunk> skyChunks = weatherSkyRenderChunks.get(weatherTag);
+        if (skyChunks == null || skyChunks.isEmpty()) {
+            skyChunks = weatherSkyRenderChunks.get("suny");
+        }
+        if (skyChunks == null || skyChunks.isEmpty()) {
+            skyChunks = weatherSkyRenderChunks.get("fine");
+        }
+        if (skyChunks == null || skyChunks.isEmpty()) {
+            return;
+        }
+
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(false);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+
+        zoneShader.bind();
+        bindZoneShaderEnvironment(zoneEnv, null, false, false, 0.0f, viewportWidth, viewportHeight);
+        zoneShader.clearPointLights();
+        zoneShader.setFog(false, zoneEnv.fogStart(), zoneEnv.fogEnd(), zoneEnv.fogColor());
+        zoneShader.setCameraWorldPos(cameraWorldPos);
+        zoneShader.setOpaquePass(false);
+        zoneShader.setDiscardThreshold(0.0f);
+
+        float elapsedFrames = elapsedSeconds * 60.0f;
+        Vector3f baseTranslation = new Vector3f();
+
+        for (ZoneRenderChunk chunk : skyChunks) {
+            ZoneEffectParams ep = chunk.effectParams();
+            ep.evaluateLiveColor(normalizedClock, liveEffectRgba);
+            if (liveEffectRgba.w <= 0.001f) {
+                continue;
+            }
+            if (ep.blendMode() == ZoneEffectParams.BlendMode.ADDITIVE
+                    && (liveEffectRgba.x + liveEffectRgba.y + liveEffectRgba.z) <= 0.001f) {
+                continue;
+            }
+
+            Matrix4f baseModel = new Matrix4f(chunk.modelMatrix());
+            baseModel.getTranslation(baseTranslation);
+            if (ep.attachType() == ZoneEffectGeneratorResource.ATTACH_TYPE_SUN) {
+                if (zoneEnv.sunTravelDir().y < -0.15f) {
+                    continue;
+                }
+                baseModel.setTranslation(
+                        cameraWorldPos.x - zoneEnv.sunTravelDir().x * 1000.0f,
+                        cameraWorldPos.y - zoneEnv.sunTravelDir().y * 1000.0f,
+                        cameraWorldPos.z - zoneEnv.sunTravelDir().z * 1000.0f
+                );
+            } else if (ep.attachType() == ZoneEffectGeneratorResource.ATTACH_TYPE_MOON) {
+                if (zoneEnv.moonTravelDir().y < -0.15f) {
+                    continue;
+                }
+                baseModel.setTranslation(
+                        cameraWorldPos.x - zoneEnv.moonTravelDir().x * 900.0f,
+                        cameraWorldPos.y - zoneEnv.moonTravelDir().y * 900.0f,
+                        cameraWorldPos.z - zoneEnv.moonTravelDir().z * 900.0f
+                );
+            } else if (ep.followCamera()) {
+                baseModel.setTranslation(
+                        baseTranslation.x + cameraWorldPos.x,
+                        baseTranslation.y + cameraWorldPos.y,
+                        baseTranslation.z + cameraWorldPos.z
+                );
+            } else {
+                continue;
+            }
+
+            configureEffectBlendState(ep);
+            GL11.glDepthMask(false);
+            zoneShader.setTexCoordOffset(ep.uvScrollU() * elapsedFrames, ep.uvScrollV() * elapsedFrames);
+
+            String texName = chunk.buffer().textureName();
+            boolean hasTexture = texName != null && !texName.isBlank() && !texName.equalsIgnoreCase("none");
+            zoneShader.setEffectState(
+                    ep.shaderEffectMode(),
+                    hasTexture,
+                    ep.ignoreTextureAlpha(),
+                    false,
+                    liveEffectRgba.x,
+                    liveEffectRgba.y,
+                    liveEffectRgba.z,
+                    liveEffectRgba.w,
+                    0.0f, 0.0f, 0.0f, 0.0f
+            );
+
+            Matrix4f drawModel = resolveEffectModelMatrix(baseModel, ep.billboardMode(), cameraWorldPos, vMat);
+            zoneShader.setMatrices(pMat, vMat, drawModel);
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            if (hasTexture) {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(texName));
+            }
+            chunk.buffer().draw();
+        }
+
+        GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        zoneShader.resetSceneryState();
+    }
+
+    private int renderAmbientZoneEffects(
+            Matrix4f pMat,
+            Matrix4f vMat,
+            Vector3f cameraWorldPos,
+            ZoneEnvironmentTable.ResolvedEnvironment zoneEnv,
+            float normalizedClock
+    ) {
+        List<ZoneRenderChunk> effectChunks = new ArrayList<>();
+        for (ZoneRenderChunk chunk : zoneRenderChunks) {
+            if (chunk.isEffect()) {
+                effectChunks.add(chunk);
+            }
+        }
+        if (effectChunks.isEmpty()) {
+            return 0;
+        }
+        effectChunks.sort(java.util.Comparator.comparingInt(c -> c.effectParams().blendMode().subPassOrder()));
+
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        zoneShader.setOpaquePass(false);
+        float elapsedFrames = elapsedSeconds * 60.0f;
+        int count = 0;
+
+        for (ZoneRenderChunk chunk : effectChunks) {
+            ZoneEffectParams ep = chunk.effectParams();
+            ep.evaluateLiveColor(normalizedClock, liveEffectRgba);
+            if (liveEffectRgba.w <= 0.001f) {
+                continue;
+            }
+            configureEffectBlendState(ep);
+            zoneShader.setFog(enableFog && ep.fogEnabled(), zoneEnv.fogStart(), zoneEnv.fogEnd(), zoneEnv.fogColor());
+            zoneShader.setTexCoordOffset(ep.uvScrollU() * elapsedFrames, ep.uvScrollV() * elapsedFrames);
+
+            String texName = chunk.buffer().textureName();
+            boolean hasTexture = texName != null && !texName.isBlank() && !texName.equalsIgnoreCase("none");
+            zoneShader.setEffectState(
+                    ep.shaderEffectMode(),
+                    hasTexture,
+                    ep.ignoreTextureAlpha(),
+                    ep.specularEnabled(),
+                    liveEffectRgba.x,
+                    liveEffectRgba.y,
+                    liveEffectRgba.z,
+                    liveEffectRgba.w,
+                    ep.specularR(),
+                    ep.specularG(),
+                    ep.specularB(),
+                    ep.specularA()
+            );
+            zoneShader.setDiscardThreshold(chunk.discardThreshold());
+
+            Matrix4f drawModel = resolveEffectModelMatrix(chunk.modelMatrix(), ep.billboardMode(), cameraWorldPos, vMat);
+            zoneShader.setMatrices(pMat, vMat, drawModel);
+            if (hasTexture) {
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, zoneTextureLoader.textureId(texName));
+            }
+            chunk.buffer().draw();
+            count++;
+        }
+        return count;
+    }
+
+    private static void configureEffectBlendState(ZoneEffectParams ep) {
+        switch (ep.blendMode()) {
+            case OPAQUE -> {
+                GL11.glDisable(GL11.GL_BLEND);
+                GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+                GL11.glDepthMask(true);
+            }
+            case ALPHA -> {
+                GL11.glEnable(GL11.GL_BLEND);
+                GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GL11.glDepthMask(ep.depthWrite());
+            }
+            case ZERO_INV_SRC -> {
+                GL11.glEnable(GL11.GL_BLEND);
+                GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+                GL11.glBlendFunc(GL11.GL_ZERO, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                GL11.glDepthMask(ep.depthWrite());
+            }
+            case ADDITIVE -> {
+                GL11.glEnable(GL11.GL_BLEND);
+                GL14.glBlendEquation(GL14.GL_FUNC_ADD);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+                GL11.glDepthMask(ep.depthWrite());
+            }
+            case SUBTRACTIVE -> {
+                GL11.glEnable(GL11.GL_BLEND);
+                GL14.glBlendEquation(GL14.GL_FUNC_REVERSE_SUBTRACT);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+                GL11.glDepthMask(ep.depthWrite());
+            }
+        }
+    }
+
+    static Matrix4f resolveEffectModelMatrix(
+            Matrix4f baseModel,
+            ZoneEffectParams.BillboardMode billboardMode,
+            Vector3f cameraWorldPos,
+            Matrix4f vMat
+    ) {
+        if (billboardMode == ZoneEffectParams.BillboardMode.NONE) {
+            return baseModel;
+        }
+        Vector3f pos = new Vector3f();
+        Vector3f scl = new Vector3f();
+        baseModel.getTranslation(pos);
+        if (billboardMode == ZoneEffectParams.BillboardMode.CAMERA) {
+            float dx = cameraWorldPos.x - pos.x;
+            float dy = cameraWorldPos.y - pos.y;
+            float dz = cameraWorldPos.z - pos.z;
+            if (dx * dx + dy * dy + dz * dz <= 1e-12f) {
+                return baseModel;
+            }
+            float lenXZ = (float) Math.hypot(dx, dz);
+            float yaw = (float) -Math.atan2(dz, dx);
+            float pitch = (float) Math.atan2(dy, lenXZ);
+            Matrix4f local3x3 = new Matrix4f(baseModel).setTranslation(0.0f, 0.0f, 0.0f);
+            return new Matrix4f().translate(pos).rotateY(yaw).rotateZ(pitch).mul(local3x3);
+        }
+        baseModel.getScale(scl);
+        if (billboardMode == ZoneEffectParams.BillboardMode.XZ) {
+            float yaw = (float) Math.atan2(cameraWorldPos.x - pos.x, cameraWorldPos.z - pos.z);
+            return new Matrix4f().translate(pos).rotateY(yaw).scale(scl);
+        }
+        Matrix4f billRot = new Matrix4f(vMat).setTranslation(0.0f, 0.0f, 0.0f).transpose();
+        return new Matrix4f().translate(pos).mul(billRot).scale(scl);
     }
 }

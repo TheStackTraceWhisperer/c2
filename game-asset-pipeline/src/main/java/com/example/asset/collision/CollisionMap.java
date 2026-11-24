@@ -252,6 +252,32 @@ public final class CollisionMap {
             float maxDistance,
             boolean ignoreWalls
     ) {
+        return raycastFloorInternal(position, rayHeightOffset, maxDistance, ignoreWalls)
+                .map(FloorHitResult::hit);
+    }
+
+    /**
+     * Casts a downward floor ray matching {@link #raycastFloor(Vector3f, float, float, boolean)} and
+     * returns the {@link CollisionTransform} attached to the closest non-wall floor triangle hit.
+     */
+    public Optional<CollisionTransform> findFloorTransform(
+            Vector3f position,
+            float rayHeightOffset,
+            float maxDistance
+    ) {
+        return raycastFloorInternal(position, rayHeightOffset, maxDistance, true)
+                .map(FloorHitResult::transform);
+    }
+
+    private record FloorHitResult(RayHit hit, CollisionTransform transform) {
+    }
+
+    private Optional<FloorHitResult> raycastFloorInternal(
+            Vector3f position,
+            float rayHeightOffset,
+            float maxDistance,
+            boolean ignoreWalls
+    ) {
         if (grid == null || position == null
                 || !Float.isFinite(position.x()) || !Float.isFinite(position.y()) || !Float.isFinite(position.z())
                 || !Float.isFinite(rayHeightOffset) || Float.isNaN(maxDistance) || maxDistance < 0.0f) {
@@ -269,6 +295,7 @@ public final class CollisionMap {
 
         Set<CollisionObject> seenObjects = Collections.newSetFromMap(new IdentityHashMap<>());
         RayHit closestHit = null;
+        CollisionTransform closestTransform = null;
 
         for (CollisionObjectGroup group : groups) {
             for (CollisionObject obj : group.collisionObjects()) {
@@ -289,13 +316,14 @@ public final class CollisionMap {
                     if (hit.isPresent()) {
                         if (closestHit == null || hit.get().distance() < closestHit.distance()) {
                             closestHit = hit.get();
+                            closestTransform = obj.transform();
                         }
                     }
                 }
             }
         }
 
-        return Optional.ofNullable(closestHit);
+        return closestHit != null ? Optional.of(new FloorHitResult(closestHit, closestTransform)) : Optional.empty();
     }
 
     /**

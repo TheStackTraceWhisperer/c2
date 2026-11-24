@@ -14,6 +14,8 @@ import com.ffxi.model.SkeletonResource;
 import com.ffxi.model.TextureResource;
 import com.ffxi.model.WeightedMeshResource;
 import com.ffxi.model.ZoneDefResource;
+import com.ffxi.model.ZoneEffectGeneratorResource;
+import com.ffxi.model.ZoneEnvironmentResource;
 import com.ffxi.model.ZoneMeshResource;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -413,5 +415,201 @@ class DatParserTest {
         DatResourceGraph recovered = DatParser.parseResourceGraph(new ByteReader(combined, "recovered.dat"));
         assertThat(recovered.rootDirectory().children()).hasSize(1);
         assertThat(recovered.rootDirectory().children().get(0).sectionId()).isEqualTo("TEX9");
+    }
+
+    @Test
+    void parsesS2fEnvironmentAndS05PointLightAndCelestialFields() {
+        // S2F_Environment (0xAC payload)
+        ByteArrayOutputStream env = new ByteArrayOutputStream();
+        env.write(1); // flags = 1 (indoor)
+        for (int i = 1; i < 0x0C; i++) env.write(0);
+        // actor group (0x0C..0x28): sun, moon (signed dir), ambient, fog, fogEnd, fogStart, lightScale
+        env.write(200); env.write(150); env.write(100); env.write(255);
+        env.write((byte) 0); env.write((byte) -127); env.write((byte) 0); env.write(255);
+        env.write(90); env.write(95); env.write(105); env.write(255);
+        env.write(30); env.write(40); env.write(50); env.write(255);
+        leFloat(env, 120.0f);
+        leFloat(env, 20.0f);
+        leFloat(env, 1.25f);
+        le32(env, 0); // 0x28..0x2C
+        // bg group (0x2C..0x48)
+        env.write(210); env.write(205); env.write(190); env.write(255);
+        env.write((byte) 0); env.write((byte) 127); env.write((byte) 0); env.write(255);
+        env.write(110); env.write(115); env.write(125); env.write(255);
+        env.write(50); env.write(60); env.write(70); env.write(255);
+        leFloat(env, 300.0f);
+        leFloat(env, 50.0f);
+        leFloat(env, 1.7f);
+        le32(env, 0); // 0x48..0x4C
+        // clear (0x4C..0x50)
+        env.write(12); env.write(24); env.write(48); env.write(255);
+        leFloat(env, 0f); // 0x50
+        leFloat(env, 0f); // 0x54
+        leFloat(env, 450.0f); // drawDist 0x58
+        env.write(0); env.write(0); env.write(24); env.write(0); // 0x5C..0x60: hasDome=true (b5e=24), spokeCount=24
+        le32(env, 0); // 0x60
+        le32(env, 0); // 0x64
+        leFloat(env, 950.0f); // skyRadius 0x68
+        for (int i = 0; i < 8; i++) {
+            env.write(10 + i * 10);
+            env.write(20 + i * 10);
+            env.write(30 + i * 10);
+            env.write(255);
+        }
+        for (int i = 0; i < 8; i++) {
+            leFloat(env, i / 7.0f);
+        }
+
+        // S05 PointLight with ltype=0x47, attachType=14, op 0x58, op 0x6C/0x49, op 0x2D/0x1B
+        ByteArrayOutputStream sec2 = new ByteArrayOutputStream();
+        // op 0x01: size = 9 dwords (36B)
+        le32(sec2, 0x01 | (9 << 8));
+        le16(sec2, 0x0004); // billboardFlags (followCamera)
+        le16(sec2, 0);
+        le32(sec2, 0);
+        fixedAscii(sec2, "ptlt", 4);
+        le32(sec2, 0);
+        leFloat(sec2, 10.0f);
+        leFloat(sec2, -3.0f);
+        leFloat(sec2, 20.0f);
+        sec2.write(0);
+        sec2.write(0x47); // LINKED_DATA_TYPE_POINT_LIGHT
+        le16(sec2, 0);
+        // op 0x58: size = 5 dwords (20B)
+        le32(sec2, 0x58 | (5 << 8));
+        leFloat(sec2, 18.0f);
+        leFloat(sec2, 1.5f);
+        leFloat(sec2, 1.0f); // rangeMult = 2^1 = 2.0
+        leFloat(sec2, 0.0f); // thetaMult = 2^0 = 1.0
+        // op 0x6C: size = 3 dwords (12B), alloc = 1
+        le32(sec2, 0x6C | (3 << 8) | (1 << 13));
+        le32(sec2, 0);
+        fixedAscii(sec2, "pttm", 4);
+        // op 0x2D: size = 3 dwords (12B), alloc = 2
+        le32(sec2, 0x2D | (3 << 8) | (2 << 13));
+        le32(sec2, 0);
+        fixedAscii(sec2, "spaf", 4);
+        // end
+        le32(sec2, 0);
+
+        ByteArrayOutputStream sec3 = new ByteArrayOutputStream();
+        le32(sec3, 0x1B | (1 << 8) | (2 << 13));
+        le32(sec3, 0x49 | (1 << 8) | (1 << 13));
+        le32(sec3, 0);
+
+        ByteArrayOutputStream pgen = new ByteArrayOutputStream();
+        le16(pgen, 14); // attachType = SUN (14)
+        le16(pgen, 0);
+        while (pgen.size() < 0x69) {
+            pgen.write(0);
+        }
+        pgen.write(0x10); // autoRun bit at sectionStart + 0x79 (payload + 0x69)
+        while (pgen.size() < 0x70) {
+            pgen.write(0);
+        }
+        // offsets at sectionStart + 0x80 (= payload + 0x70), payload starts at sectionStart + 0x10
+        int sec2Rel = 0x90;
+        int sec3Rel = sec2Rel + sec2.size();
+        le32(pgen, 0x90); // section1Offset (empty)
+        le32(pgen, sec2Rel);
+        le32(pgen, sec3Rel);
+        le32(pgen, sec3Rel + sec3.size()); // section4Offset
+        pgen.writeBytes(sec2.toByteArray());
+        pgen.writeBytes(sec3.toByteArray());
+
+        byte[] dat = concat(
+                section("1200", SectionType.S2F_Environment.getCode(), env.toByteArray()),
+                section("pl01", SectionType.S05_ParticleGenerator.getCode(), pgen.toByteArray())
+        );
+
+        DatResourceGraph graph = DatParser.parseResourceGraph(new ByteReader(dat, "env_pgen.dat"));
+        assertThat(graph.rootDirectory().children()).hasSize(2);
+
+        ZoneEnvironmentResource parsedEnv = (ZoneEnvironmentResource) graph.rootDirectory().children().get(0);
+        assertThat(parsedEnv.isIndoor()).isTrue();
+        assertThat(parsedEnv.hasDome()).isTrue();
+        assertThat(parsedEnv.spokeCount()).isEqualTo(24);
+        assertThat(parsedEnv.bgGroup().lightScale()).isEqualTo(1.7f);
+        assertThat(parsedEnv.skyR(7)).isEqualTo(80);
+        assertThat(parsedEnv.skyStop(7)).isEqualTo(1.0f);
+
+        ZoneEffectGeneratorResource parsedGen = (ZoneEffectGeneratorResource) graph.rootDirectory().children().get(1);
+        assertThat(parsedGen.isPointLight()).isTrue();
+        assertThat(parsedGen.attachType()).isEqualTo(ZoneEffectGeneratorResource.ATTACH_TYPE_SUN);
+        assertThat(parsedGen.followCamera()).isTrue();
+        assertThat(parsedGen.pointLightRange()).isEqualTo(18.0f);
+        assertThat(parsedGen.pointLightRangeMultiplier()).isEqualTo(2.0f);
+        assertThat(parsedGen.todPointLightThetaKeyFrameId()).isEqualTo("pttm");
+        assertThat(parsedGen.lifeAlphaKeyFrameId()).isEqualTo("spaf");
+    }
+
+    @Test
+    void zoneDefMapsZeroPointLightSlotToMinusOneAndOneToZero() {
+        // 0 objects -> let's craft 1 ZoneObject with pointLights = [0, 1, 2, 0]
+        ByteArrayOutputStream zdef = new ByteArrayOutputStream();
+        le32(zdef, 0); // mode 0
+        le32(zdef, 1); // 1 object
+        le32(zdef, 0); // collision offset
+        zdef.write(1); zdef.write(1); zdef.write(4); zdef.write(4);
+        int objStart = 0x20;
+        int objSize = 0x64;
+        int cullOffset = objStart + objSize; // 0x84
+        int treeOffset = cullOffset + 8;     // 0x8C
+        int lightsOffset = treeOffset + 128; // 0x10C
+        le32(zdef, treeOffset);
+        le32(zdef, cullOffset);
+        le32(zdef, lightsOffset);
+        le32(zdef, 0);
+        // ZoneObject (0x64 bytes)
+        fixedAscii(zdef, "obj0", 0x10);
+        for (int i = 0; i < 9; i++) leFloat(zdef, 0f); // pos/rot/scale
+        fixedAscii(zdef, "", 4); // effectLink
+        leFloat(zdef, 100f); leFloat(zdef, 200f); leFloat(zdef, 400f);
+        le32(zdef, 0); // flags0..3
+        le32(zdef, 0); // cullingTableOffset
+        fixedAscii(zdef, "ev01", 4); // envLink
+        le32(zdef, 0); // fileIdLink
+        le32(zdef, 0); // pointLight0 -> -1 (none)
+        le32(zdef, 1); // pointLight1 -> 0
+        le32(zdef, 2); // pointLight2 -> 1
+        le32(zdef, 0); // pointLight3 -> -1 (none)
+        // culling table (empty)
+        le32(zdef, 0); le32(zdef, 0);
+        // tree node (128B)
+        for (int i = 0; i < 24; i++) leFloat(zdef, 0f);
+        for (int i = 0; i < 8; i++) le32(zdef, 0);
+        // point lights terminator
+        le32(zdef, 0);
+
+        byte[] dat = section("ZDF1", SectionType.S1C_ZoneDef.getCode(), zdef.toByteArray());
+        DatResourceGraph graph = DatParser.parseResourceGraph(new ByteReader(dat, "zdef-lights.dat"));
+        ZoneDefResource res = (ZoneDefResource) graph.rootDirectory().children().get(0);
+        assertThat(res.zoneObjects()).hasSize(1);
+        var zo = res.zoneObjects().get(0);
+        assertThat(zo.environmentLink()).isEqualTo("ev01");
+        assertThat(zo.pointLight0()).isEqualTo(-1);
+        assertThat(zo.pointLight1()).isEqualTo(0);
+        assertThat(zo.pointLight2()).isEqualTo(1);
+        assertThat(zo.pointLight3()).isEqualTo(-1);
+    }
+
+    @Test
+    void distinguishesRetailCameraFacingFlag00C0FromXyzBillboard0001() {
+        var cameraFacing = new ZoneEffectGeneratorResource(
+                "sun1", "S05", 0, 0, true, 0x00C0, 0, "suns", 0x0B,
+                null, null, null, 0, false, 128, 128, 128, 128,
+                -1, -1, false, 0, 0, 0, 0, "", "", "", "", 0f, 0f
+        );
+        assertThat(cameraFacing.billboardCamera()).isTrue();
+        assertThat(cameraFacing.billboardXYZ()).isFalse();
+        assertThat(cameraFacing.billboardXZ()).isFalse();
+
+        var xyzBillboard = new ZoneEffectGeneratorResource(
+                "flr1", "S05", 0, 0, true, 0x0001, 0, "mesh", 0x0B,
+                null, null, null, 0, false, 128, 128, 128, 128,
+                -1, -1, false, 0, 0, 0, 0, "", "", "", "", 0f, 0f
+        );
+        assertThat(xyzBillboard.billboardCamera()).isFalse();
+        assertThat(xyzBillboard.billboardXYZ()).isTrue();
     }
 }

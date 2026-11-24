@@ -38,19 +38,6 @@ class CharacterCreationValidationTest {
     }
 
     @Test
-    void testFacePermutationEncoding() {
-        // 8 face styles (1-8), 2 variants (A = false, B = true) => 0..15
-        for (int face = 1; face <= 8; face++) {
-            int faceA = (face - 1);
-            int faceB = (face - 1) + 8;
-            assertEquals(face - 1, faceA);
-            assertEquals(face + 7, faceB);
-            assertTrue(faceA >= 0 && faceA <= 7);
-            assertTrue(faceB >= 8 && faceB <= 15);
-        }
-    }
-
-    @Test
     void testNationLabels() {
         assertEquals("San d'Oria", NationId.toLabel(NationId.SAN_D_ORIA));
         assertEquals("Bastok", NationId.toLabel(NationId.BASTOK));

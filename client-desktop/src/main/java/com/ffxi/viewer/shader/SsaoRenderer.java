@@ -46,7 +46,12 @@ public final class SsaoRenderer implements AutoCloseable {
             layout (location = 0) out vec4 gNormalOut;
 
             void main() {
-                gNormalOut = vec4(normalize(vViewNormal), 1.0);
+                float len = length(vViewNormal);
+                vec3 n = len > 1e-4 ? (vViewNormal / len) : vec3(0.0, 0.0, 1.0);
+                if (!gl_FrontFacing) {
+                    n = -n;
+                }
+                gNormalOut = vec4(n, 1.0);
             }
             """;
 
@@ -95,12 +100,23 @@ public final class SsaoRenderer implements AutoCloseable {
                 }
 
                 vec3 fragPos = reconstructViewPos(vTexCoord, depth);
-                vec3 normal = normalize(texture(gNormal, vTexCoord).xyz);
+                vec3 rawNormal = texture(gNormal, vTexCoord).xyz;
+                float normLen = length(rawNormal);
+                if (normLen < 1e-4) {
+                    FragColor = 1.0;
+                    return;
+                }
+                vec3 normal = rawNormal / normLen;
 
                 vec2 noiseScale = uScreenSize / 4.0;
-                vec3 randomVec = normalize(texture(texNoise, vTexCoord * noiseScale).xyz);
-
-                vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+                vec3 randomVec = texture(texNoise, vTexCoord * noiseScale).xyz;
+                vec3 projTangent = randomVec - normal * dot(randomVec, normal);
+                if (dot(projTangent, projTangent) < 1e-5) {
+                    projTangent = abs(normal.z) < 0.9
+                            ? cross(normal, vec3(0.0, 0.0, 1.0))
+                            : cross(normal, vec3(1.0, 0.0, 0.0));
+                }
+                vec3 tangent = normalize(projTangent);
                 vec3 bitangent = cross(normal, tangent);
                 mat3 TBN = mat3(tangent, bitangent, normal);
 

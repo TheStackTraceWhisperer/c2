@@ -178,4 +178,37 @@ class WorldSceneTest {
             assertTrue(hasEntrance, "Zone 230 must contain at least one retail zone entrance");
         }
     }
+
+    @Test
+    @DisplayName("WorldScene.resolveEffectModelMatrix aligns local +X toward camera for BillboardMode.CAMERA")
+    void testCameraOrientationModeAlignsLocalXAxisTowardCamera() {
+        Vector3f camPos = new Vector3f(12.0f, -5.0f, 34.0f);
+        Matrix4f viewMat = new Matrix4f();
+        float scale = 70.0f;
+
+        Vector3f[] positions = {
+                new Vector3f(camPos.x + 1000.0f, camPos.y, camPos.z),          // East horizon (dawn)
+                new Vector3f(camPos.x - 600.0f, camPos.y - 500.0f, camPos.z + 250.0f), // Elevated dusk/sky
+                new Vector3f(camPos.x, camPos.y - 1000.0f, camPos.z)           // Overhead zenith (noon, +Y down so sun is at camY - 1000)
+        };
+
+        for (Vector3f objPos : positions) {
+            Matrix4f baseModel = new Matrix4f().translation(objPos).scale(scale);
+            Matrix4f resolved = WorldScene.resolveEffectModelMatrix(
+                    baseModel,
+                    com.ffxi.viewer.renderer.ZoneEffectParams.BillboardMode.CAMERA,
+                    camPos,
+                    viewMat
+            );
+            Vector3f tip = resolved.transformPosition(new Vector3f(1.0f, 0.0f, 0.0f));
+            Vector3f actualAxis = tip.sub(objPos, new Vector3f());
+            assertTrue(Float.isFinite(actualAxis.x) && Float.isFinite(actualAxis.y) && Float.isFinite(actualAxis.z));
+            assertEquals(scale, actualAxis.length(), 1e-2f, "Scale must be preserved");
+            Vector3f expectedDir = new Vector3f(camPos).sub(objPos).normalize();
+            actualAxis.normalize();
+            assertEquals(expectedDir.x, actualAxis.x, 1e-4f);
+            assertEquals(expectedDir.y, actualAxis.y, 1e-4f);
+            assertEquals(expectedDir.z, actualAxis.z, 1e-4f);
+        }
+    }
 }

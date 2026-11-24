@@ -70,6 +70,9 @@ public class InGameMapPanel implements AutoCloseable {
     @Setter
     private boolean visible = false;
 
+    private float windowPosX = 260.0f;
+    private float windowPosY = 40.0f;
+
     private ZoneMapTable zoneMapTable;
     private FileTableManager fileTableManager;
     private final Map<Long, Integer> zoneGlTextures = new HashMap<>();
@@ -77,6 +80,16 @@ public class InGameMapPanel implements AutoCloseable {
 
     private int activeZoneId = -1;
     private int activeSubZoneId = 0;
+
+    public void setWindowPosition(float x, float y) {
+        this.windowPosX = x;
+        this.windowPosY = y;
+    }
+
+    public boolean hasLoadedTexture(int zoneId, int subZoneId) {
+        long mapKey = (((long) zoneId) << 32) | (subZoneId & 0xFFFFFFFFL);
+        return zoneGlTextures.getOrDefault(mapKey, 0) > 0;
+    }
 
     public void toggle() {
         this.visible = !this.visible;
@@ -125,7 +138,7 @@ public class InGameMapPanel implements AutoCloseable {
         Integer texId = zoneGlTextures.get(mapKey);
         String zoneName = ZoneNameRegistry.getZoneName(zoneId);
 
-        ImGui.setNextWindowPos(260, 40, ImGuiCond.Once);
+        ImGui.setNextWindowPos(windowPosX, windowPosY, ImGuiCond.Once);
         ImGui.setNextWindowSize(640, 720, ImGuiCond.Once);
 
         int flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse;

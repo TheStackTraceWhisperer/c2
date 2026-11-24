@@ -215,6 +215,18 @@ public class DatParser {
                     node = parseSkeletonAnimationSection(header, workingReader);
                     currentDirectory.addChild(node);
                 }
+                case S19_ParticleKeyFrameData -> {
+                    node = parseParticleKeyFrameSection(header, workingReader);
+                    currentDirectory.addChild(node);
+                }
+                case S05_ParticleGenerator -> {
+                    node = parseParticleGeneratorSection(header, workingReader);
+                    currentDirectory.addChild(node);
+                }
+                case S2F_Environment -> {
+                    node = parseEnvironmentSection(header, workingReader);
+                    if (node != null) currentDirectory.addChild(node);
+                }
                 default -> {
                     // Skip unsupported sections in graph mode for now.
                     node = null;
@@ -1213,7 +1225,7 @@ public class DatParser {
     }
 
     private static int mapZonePointLight(int index) {
-        return index > 0 ? index - 1 : index;
+        return index > 0 ? index - 1 : -1;
     }
 
     private static ZoneCullingTables parseZoneCullingTables(ByteReader byteReader, int sectionEnd, String sectionId) {
@@ -1497,6 +1509,385 @@ public class DatParser {
                 new ZoneMeshChunk(textureName, renderBlend, invertCull, sectionIsTriStrip, vertices, indices),
                 byteReader.getPosition()
         );
+    }
+
+    private static ParticleKeyFrameResource parseParticleKeyFrameSection(SectionHeader header, ByteReader byteReader) {
+        int sectionEnd = getSectionEnd(header, byteReader);
+        byteReader.setPosition(header.getDataStartPosition());
+        List<ParticleKeyFrameResource.Entry> entries = new ArrayList<>();
+        while (canRead(byteReader, sectionEnd, 8) && entries.size() < 4096) {
+            float time = byteReader.nextFloat();
+            float value = byteReader.nextFloat();
+            entries.add(new ParticleKeyFrameResource.Entry(time, value));
+            if (time == 1.0f) {
+                break;
+            }
+        }
+        return new ParticleKeyFrameResource(
+                header.getSectionId(),
+                sectionTypeName(header),
+                header.getSectionStartPosition(),
+                header.getSectionSize(),
+                entries
+        );
+    }
+
+    private static ZoneEnvironmentResource parseEnvironmentSection(SectionHeader header, ByteReader byteReader) {
+        int dataStart = header.getDataStartPosition();
+        int sectionEnd = getSectionEnd(header, byteReader);
+        if (dataStart < 0 || (long) dataStart + ZoneEnvironmentResource.PAYLOAD_SIZE > sectionEnd) {
+            log.debug("[{}] Skipping truncated S2F_Environment section at 0x{}",
+                    header.getSectionId(), Integer.toHexString(header.getSectionStartPosition()));
+            return null;
+        }
+
+        byteReader.setPosition(dataStart);
+        int flags = byteReader.next8();
+
+        byteReader.setPosition(dataStart + 0x0C);
+        ZoneEnvironmentResource.LightGroup actorGroup = readEnvironmentLightGroup(byteReader);
+
+        byteReader.setPosition(dataStart + 0x2C);
+        ZoneEnvironmentResource.LightGroup bgGroup = readEnvironmentLightGroup(byteReader);
+
+        byteReader.setPosition(dataStart + 0x4C);
+        int clearR = byteReader.next8();
+        int clearG = byteReader.next8();
+        int clearB = byteReader.next8();
+        int clearA = byteReader.next8();
+
+        byteReader.setPosition(dataStart + 0x58);
+        float drawDist = byteReader.nextFloat();
+
+        byteReader.setPosition(dataStart + 0x5C);
+        byteReader.next8();
+        byteReader.next8();
+        int b5e = byteReader.next8();
+        int b5f = byteReader.next8();
+        boolean hasDome = b5e > 2;
+        int spokeCount = b5e | (b5f << 8);
+
+        byteReader.setPosition(dataStart + 0x68);
+        float skyRadius = byteReader.nextFloat();
+
+        byteReader.setPosition(dataStart + 0x6C);
+        int[] skyRgba = new int[ZoneEnvironmentResource.SKY_SLICE_COUNT * 4];
+        for (int i = 0; i < skyRgba.length; i++) {
+            skyRgba[i] = byteReader.next8();
+        }
+
+        byteReader.setPosition(dataStart + 0x8C);
+        float[] skyStops = new float[ZoneEnvironmentResource.SKY_SLICE_COUNT];
+        for (int i = 0; i < skyStops.length; i++) {
+            skyStops[i] = byteReader.nextFloat();
+        }
+
+        return new ZoneEnvironmentResource(
+                header.getSectionId(),
+                sectionTypeName(header),
+                header.getSectionStartPosition(),
+                header.getSectionSize(),
+                flags,
+                actorGroup,
+                bgGroup,
+                clearR,
+                clearG,
+                clearB,
+                clearA,
+                drawDist,
+                hasDome,
+                spokeCount,
+                skyRadius,
+                skyRgba,
+                skyStops
+        );
+    }
+
+    private static ZoneEnvironmentResource.LightGroup readEnvironmentLightGroup(ByteReader byteReader) {
+        int sunR = byteReader.next8();
+        int sunG = byteReader.next8();
+        int sunB = byteReader.next8();
+        int sunA = byteReader.next8();
+        int moonR = byteReader.next8();
+        int moonG = byteReader.next8();
+        int moonB = byteReader.next8();
+        int moonA = byteReader.next8();
+        int ambientR = byteReader.next8();
+        int ambientG = byteReader.next8();
+        int ambientB = byteReader.next8();
+        int ambientA = byteReader.next8();
+        int fogR = byteReader.next8();
+        int fogG = byteReader.next8();
+        int fogB = byteReader.next8();
+        int fogA = byteReader.next8();
+        float fogEnd = byteReader.nextFloat();
+        float fogStart = byteReader.nextFloat();
+        float lightScale = byteReader.nextFloat();
+        return new ZoneEnvironmentResource.LightGroup(
+                sunR, sunG, sunB, sunA,
+                moonR, moonG, moonB, moonA,
+                ambientR, ambientG, ambientB, ambientA,
+                fogR, fogG, fogB, fogA,
+                fogEnd, fogStart, lightScale
+        );
+    }
+
+    private static ZoneEffectGeneratorResource parseParticleGeneratorSection(SectionHeader header, ByteReader byteReader) {
+        int sectionStart = header.getSectionStartPosition();
+        int sectionEnd = getSectionEnd(header, byteReader);
+        requireCanReadAt(sectionStart, sectionEnd, 0x90, "particle generator header", header.getSectionId());
+
+        byteReader.setPosition(header.getDataStartPosition());
+        int attachType = byteReader.next16() & 0x0F;
+
+        byteReader.setPosition(sectionStart + 0x79);
+        boolean autoRun = (byteReader.next8() & 0x10) != 0;
+
+        byteReader.setPosition(sectionStart + 0x80);
+        byteReader.next32(); // section1Offset
+        int section2Offset = byteReader.next32();
+        int section3Offset = byteReader.next32();
+
+        ParticleGenState state = new ParticleGenState();
+        if (section2Offset >= 0x90 && sectionStart + section2Offset < sectionEnd) {
+            parseParticleGenSec2(byteReader, sectionStart + section2Offset, sectionEnd, state);
+        }
+        if (section3Offset >= 0x90 && sectionStart + section3Offset < sectionEnd) {
+            parseParticleGenSec3(byteReader, sectionStart + section3Offset, sectionEnd, state);
+        }
+
+        return new ZoneEffectGeneratorResource(
+                header.getSectionId(),
+                sectionTypeName(header),
+                sectionStart,
+                header.getSectionSize(),
+                autoRun,
+                attachType,
+                state.billboardFlags,
+                state.renderStateFlags,
+                state.linkedDataId,
+                state.linkedDataType,
+                state.basePosition,
+                state.baseRotation,
+                state.baseScale,
+                state.maxLifeSpan,
+                state.hasInitialVelocity,
+                state.hasColor,
+                state.colorR,
+                state.colorG,
+                state.colorB,
+                state.colorA,
+                state.blendFuncByte,
+                state.alphaOverride,
+                state.hasSpecularParams,
+                state.specularR,
+                state.specularG,
+                state.specularB,
+                state.specularA,
+                state.lifeAlphaKeyFrameId,
+                state.todRKeyFrameId,
+                state.todGKeyFrameId,
+                state.todBKeyFrameId,
+                state.todAKeyFrameId,
+                state.hasPointLightParams,
+                state.pointLightRange,
+                state.pointLightTheta,
+                state.pointLightRangeMultiplier,
+                state.pointLightThetaMultiplier,
+                state.todPointLightThetaKeyFrameId,
+                state.uvScrollU,
+                state.uvScrollV
+        );
+    }
+
+    private static float mapPointLightMultiplier(float base) {
+        if (base >= 0.0f) {
+            return (float) Math.pow(2.0, base);
+        }
+        if (base >= -1.0f) {
+            return 1.0f + base;
+        }
+        return 0.0f;
+    }
+
+    private static void parseParticleGenSec2(ByteReader byteReader, int startPos, int sectionEnd, ParticleGenState state) {
+        int pos = startPos;
+        while (pos + 4 <= sectionEnd) {
+            byteReader.setPosition(pos);
+            int opCodeConfig = byteReader.next32();
+            int opCode = opCodeConfig & 0xFF;
+            int opCodeSize = (opCodeConfig >>> 8) & 0x1F;
+            int allocationOffset = opCodeConfig >>> 13;
+            if (opCode == 0x00 || opCodeSize == 0) {
+                break;
+            }
+            int nextPos = pos + opCodeSize * 4;
+            if (nextPos > sectionEnd) {
+                break;
+            }
+            switch (opCode) {
+                case 0x01 -> {
+                    if (canRead(byteReader, nextPos, 32)) {
+                        state.billboardFlags = byteReader.next16();
+                        state.renderStateFlags = byteReader.next16();
+                        byteReader.next32();
+                        state.linkedDataId = readFixedString(byteReader, nextPos, 4);
+                        byteReader.next32();
+                        state.basePosition = readVec3f(byteReader);
+                        byteReader.next8();
+                        state.linkedDataType = byteReader.next8();
+                        state.maxLifeSpan = byteReader.next16();
+                    }
+                }
+                case 0x02, 0x03 -> {
+                    if (canRead(byteReader, nextPos, 12)) {
+                        float vx = byteReader.nextFloat();
+                        float vy = byteReader.nextFloat();
+                        float vz = byteReader.nextFloat();
+                        if (Math.abs(vx) > 1e-6f || Math.abs(vy) > 1e-6f || Math.abs(vz) > 1e-6f) {
+                            state.hasInitialVelocity = true;
+                        }
+                    }
+                }
+                case 0x09 -> {
+                    if (canRead(byteReader, nextPos, 12)) {
+                        state.baseRotation = readVec3f(byteReader);
+                    }
+                }
+                case 0x0F -> {
+                    if (canRead(byteReader, nextPos, 12)) {
+                        state.baseScale = readVec3f(byteReader);
+                    }
+                }
+                case 0x16 -> {
+                    if (canRead(byteReader, nextPos, 4)) {
+                        state.hasColor = true;
+                        state.colorR = byteReader.next8();
+                        state.colorG = byteReader.next8();
+                        state.colorB = byteReader.next8();
+                        state.colorA = byteReader.next8();
+                    }
+                }
+                case 0x1E -> {
+                    if (canRead(byteReader, nextPos, 2)) {
+                        int p0 = byteReader.next8();
+                        int p1 = byteReader.next8();
+                        state.blendFuncByte = p0;
+                        if ((p0 & 0x20) != 0) {
+                            state.alphaOverride = Math.min(0xFF, p1 * 2);
+                        }
+                    }
+                }
+                case 0x2D, 0x60, 0x61, 0x62, 0x63, 0x6C -> {
+                    if (canRead(byteReader, nextPos, 8)) {
+                        byteReader.next32();
+                        String kfId = readFixedString(byteReader, nextPos, 4);
+                        if (!kfId.isEmpty()) {
+                            state.keyFrameByAlloc.put(allocationOffset, kfId);
+                            if (opCode == 0x2D && state.lifeAlphaKeyFrameId.isEmpty()) state.lifeAlphaKeyFrameId = kfId;
+                            else if (opCode == 0x60 && state.todRKeyFrameId.isEmpty()) state.todRKeyFrameId = kfId;
+                            else if (opCode == 0x61 && state.todGKeyFrameId.isEmpty()) state.todGKeyFrameId = kfId;
+                            else if (opCode == 0x62 && state.todBKeyFrameId.isEmpty()) state.todBKeyFrameId = kfId;
+                            else if (opCode == 0x63 && state.todAKeyFrameId.isEmpty()) state.todAKeyFrameId = kfId;
+                            else if (opCode == 0x6C && state.todPointLightThetaKeyFrameId.isEmpty()) state.todPointLightThetaKeyFrameId = kfId;
+                        }
+                    }
+                }
+                case 0x55 -> {
+                    if (pos + 4 + 32 <= nextPos) {
+                        byteReader.setPosition(pos + 4 + 28);
+                        state.hasSpecularParams = true;
+                        state.specularR = byteReader.next8();
+                        state.specularG = byteReader.next8();
+                        state.specularB = byteReader.next8();
+                        state.specularA = byteReader.next8();
+                    }
+                }
+                case 0x58 -> {
+                    if (canRead(byteReader, nextPos, 16)) {
+                        state.hasPointLightParams = true;
+                        state.pointLightRange = byteReader.nextFloat();
+                        state.pointLightTheta = byteReader.nextFloat();
+                        state.pointLightRangeMultiplier = mapPointLightMultiplier(byteReader.nextFloat());
+                        state.pointLightThetaMultiplier = mapPointLightMultiplier(byteReader.nextFloat());
+                    }
+                }
+                default -> { }
+            }
+            pos = nextPos;
+        }
+    }
+
+    private static void parseParticleGenSec3(ByteReader byteReader, int startPos, int sectionEnd, ParticleGenState state) {
+        int pos = startPos;
+        while (pos + 4 <= sectionEnd) {
+            byteReader.setPosition(pos);
+            int opCodeConfig = byteReader.next32();
+            int opCode = opCodeConfig & 0xFF;
+            int opCodeSize = (opCodeConfig >>> 8) & 0x1F;
+            int allocationOffset = opCodeConfig >>> 13;
+            if (opCode == 0x00 || opCodeSize == 0) {
+                break;
+            }
+            int nextPos = pos + opCodeSize * 4;
+            if (nextPos > sectionEnd) {
+                break;
+            }
+            switch (opCode) {
+                case 0x1B -> state.lifeAlphaKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.lifeAlphaKeyFrameId);
+                case 0x27 -> {
+                    if (canRead(byteReader, nextPos, 4)) state.uvScrollU = byteReader.nextFloat();
+                }
+                case 0x28 -> {
+                    if (canRead(byteReader, nextPos, 4)) state.uvScrollV = byteReader.nextFloat();
+                }
+                case 0x3C -> state.todRKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.todRKeyFrameId);
+                case 0x3D -> state.todGKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.todGKeyFrameId);
+                case 0x3E -> state.todBKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.todBKeyFrameId);
+                case 0x3F -> state.todAKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.todAKeyFrameId);
+                case 0x49 -> state.todPointLightThetaKeyFrameId = state.keyFrameByAlloc.getOrDefault(allocationOffset, state.todPointLightThetaKeyFrameId);
+                default -> { }
+            }
+            pos = nextPos;
+        }
+    }
+
+    private static final class ParticleGenState {
+        int billboardFlags;
+        int renderStateFlags;
+        String linkedDataId = "";
+        int linkedDataType;
+        Vec3f basePosition = new Vec3f(0.0f, 0.0f, 0.0f);
+        Vec3f baseRotation = new Vec3f(0.0f, 0.0f, 0.0f);
+        Vec3f baseScale = new Vec3f(1.0f, 1.0f, 1.0f);
+        int maxLifeSpan;
+        boolean hasInitialVelocity;
+        boolean hasColor;
+        int colorR = 128;
+        int colorG = 128;
+        int colorB = 128;
+        int colorA = 128;
+        int blendFuncByte = -1;
+        int alphaOverride = -1;
+        boolean hasSpecularParams;
+        int specularR;
+        int specularG;
+        int specularB;
+        int specularA;
+        final java.util.Map<Integer, String> keyFrameByAlloc = new java.util.HashMap<>();
+        String lifeAlphaKeyFrameId = "";
+        String todRKeyFrameId = "";
+        String todGKeyFrameId = "";
+        String todBKeyFrameId = "";
+        String todAKeyFrameId = "";
+        boolean hasPointLightParams;
+        float pointLightRange;
+        float pointLightTheta;
+        float pointLightRangeMultiplier = 1.0f;
+        float pointLightThetaMultiplier = 1.0f;
+        String todPointLightThetaKeyFrameId = "";
+        float uvScrollU;
+        float uvScrollV;
     }
 
     private static String sanitizeZeroTerminatedPrefix(String value) {

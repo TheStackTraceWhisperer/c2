@@ -45,7 +45,7 @@ public final class ShadowMapRenderer implements AutoCloseable {
 
             void main() {
                 if (uAlphaThreshold > 0.0) {
-                    float alpha = texture(uDiffuseTexture, vTexCoord).a;
+                    float alpha = clamp(texture(uDiffuseTexture, vTexCoord).a * 2.0, 0.0, 1.0);
                     if (alpha < uAlphaThreshold) {
                         discard;
                     }

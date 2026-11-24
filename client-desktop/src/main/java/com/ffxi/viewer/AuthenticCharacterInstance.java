@@ -3,6 +3,7 @@ package com.ffxi.viewer;
 import com.ffxi.model.SkeletonBoundingBox;
 import com.ffxi.model.SkeletonJointReference;
 import com.ffxi.model.SkeletonMeshMesh;
+import com.ffxi.model.SkeletonMeshVertex;
 import com.ffxi.model.SkeletonResource;
 import com.ffxi.model.Vec3f;
 import com.ffxi.viewer.model.LoadedCharacter;
@@ -11,6 +12,7 @@ import com.ffxi.viewer.renderer.CharacterShader;
 import com.ffxi.viewer.renderer.CharacterTextureLoader;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
@@ -33,6 +35,9 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
     public static final int JOINT_REF_LEFT_HAND = 126;
     public static final int JOINT_REF_RIGHT_HAND = 127;
 
+    public record WorldBounds(float minX, float maxX, float minY, float maxY, float minZ, float maxZ) {
+    }
+
     private final LoadedCharacter character;
     private final List<CharacterMeshBuffer> meshBuffers;
     private final CharacterTextureLoader textureLoader;
@@ -40,6 +45,7 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
     private final boolean ownsGpuResources;
     private final Runnable onCloseCallback;
     private float discardThreshold = 0.20f;
+    private Matrix4f[] poseOverride;
     private boolean closed;
 
     public AuthenticCharacterInstance(LoadedCharacter character) {
@@ -104,6 +110,14 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
         return closed;
     }
 
+    public void setPoseOverride(Matrix4f[] jointMatrices) {
+        this.poseOverride = jointMatrices;
+    }
+
+    public void clearPoseOverride() {
+        this.poseOverride = null;
+    }
+
     public void update(float dt, int movementFlags, float horizontalSpeed) {
         locomotion.update(dt, movementFlags, horizontalSpeed);
     }
@@ -120,7 +134,88 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
         if (closed || shader == null || meshBuffers.isEmpty()) {
             return;
         }
-        renderPose(shader, proj, view, locomotion.computePoseMatrices(), posX, posY, posZ, yawDegrees);
+        Matrix4f[] activePose = (poseOverride != null && poseOverride.length > 0)
+                ? poseOverride
+                : locomotion.computePoseMatrices();
+        renderPose(shader, proj, view, activePose, posX, posY, posZ, yawDegrees);
+    }
+
+    /**
+     * Computes the world-space axis-aligned bounding box of this character in its active pose
+     * ({@code poseOverride} if set, otherwise {@link AuthenticLocomotionController#computePoseMatrices()}).
+     */
+    public WorldBounds computePosedWorldBounds(float posX, float posY, float posZ, float yawDegrees) {
+        Matrix4f[] joints = (poseOverride != null && poseOverride.length > 0)
+                ? poseOverride
+                : locomotion.computePoseMatrices();
+
+        float scale = character.effectiveScale();
+        Matrix4f modelMat = new Matrix4f()
+                .translate(posX, posY - character.feetLocalY() * scale, posZ)
+                .rotateY((float) Math.toRadians(yawDegrees - 90.0f))
+                .scale(scale);
+
+        float minX = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        float minZ = Float.POSITIVE_INFINITY;
+        float maxZ = Float.NEGATIVE_INFINITY;
+
+        if (joints != null && joints.length > 0) {
+            Vector4f v0 = new Vector4f();
+            Vector4f v1 = new Vector4f();
+            for (SkeletonMeshMesh mesh : character.meshes()) {
+                for (SkeletonMeshVertex v : mesh.resolvedVertices()) {
+                    float w0 = v.joint0Weight();
+                    int j0 = clampJointIndex(v.jointIndex0(), joints.length);
+                    int j1 = clampJointIndex(v.jointIndex1(), joints.length);
+
+                    Vec3f p0 = v.p0();
+                    Vec3f p1 = v.p1();
+                    float p0x = p0 != null ? p0.x() : 0.0f;
+                    float p0y = p0 != null ? p0.y() : 0.0f;
+                    float p0z = p0 != null ? p0.z() : 0.0f;
+                    float p1x = p1 != null ? p1.x() : 0.0f;
+                    float p1y = p1 != null ? p1.y() : 0.0f;
+                    float p1z = p1 != null ? p1.z() : 0.0f;
+
+                    v0.set(p0x, p0y, p0z, w0);
+                    joints[j0].transform(v0);
+                    v1.set(p1x, p1y, p1z, 1.0f - w0);
+                    joints[j1].transform(v1);
+                    v0.add(v1);
+                    modelMat.transform(v0);
+
+                    if (Float.isFinite(v0.x) && Float.isFinite(v0.y) && Float.isFinite(v0.z)) {
+                        minX = Math.min(minX, v0.x);
+                        maxX = Math.max(maxX, v0.x);
+                        minY = Math.min(minY, v0.y);
+                        maxY = Math.max(maxY, v0.y);
+                        minZ = Math.min(minZ, v0.z);
+                        maxZ = Math.max(maxZ, v0.z);
+                    }
+                }
+            }
+        }
+
+        if (!Float.isFinite(minX)) {
+            float halfRadius = Math.max(0.25f, character.radius() * scale);
+            float height = Math.max(0.5f, character.feetOffsetY() * 2.0f * scale);
+            return new WorldBounds(
+                    posX - halfRadius, posX + halfRadius,
+                    posY - height, posY,
+                    posZ - halfRadius, posZ + halfRadius
+            );
+        }
+        return new WorldBounds(minX, maxX, minY, maxY, minZ, maxZ);
+    }
+
+    private static int clampJointIndex(Integer jointIndex, int jointCount) {
+        if (jointIndex == null || jointCount <= 0) {
+            return 0;
+        }
+        return Math.max(0, Math.min(jointCount - 1, jointIndex));
     }
 
     public void renderPose(
@@ -162,6 +257,57 @@ public final class AuthenticCharacterInstance implements AutoCloseable {
             meshBuffer.draw();
         }
         GL11.glFrontFace(GL11.GL_CCW);
+    }
+
+    /**
+     * Renders the skinned character flat-white from a light-space projection for retail silhouette ground shadows.
+     */
+    public void renderSilhouette(
+            CharacterShader shader,
+            Matrix4f lightProj,
+            Matrix4f lightView,
+            float posX,
+            float posY,
+            float posZ,
+            float yawDegrees
+    ) {
+        if (closed || shader == null || meshBuffers.isEmpty()) {
+            return;
+        }
+        Matrix4f[] activePose = (poseOverride != null && poseOverride.length > 0)
+                ? poseOverride
+                : locomotion.computePoseMatrices();
+        if (activePose == null || activePose.length == 0) {
+            return;
+        }
+
+        shader.bind();
+        float scale = character.effectiveScale();
+        Matrix4f charModelMat = new Matrix4f()
+                .translate(posX, posY - character.feetLocalY() * scale, posZ)
+                .rotateY((float) Math.toRadians(yawDegrees - 90.0f))
+                .scale(scale);
+
+        shader.setMatrices(lightProj, lightView, charModelMat);
+        shader.setDiscardThreshold(discardThreshold);
+        shader.setSilhouetteMode(true);
+        shader.uploadJointMatrices(activePose);
+
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthMask(false);
+        GL11.glDisable(GL11.GL_CULL_FACE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+
+        for (CharacterMeshBuffer meshBuffer : meshBuffers) {
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureLoader.textureId(meshBuffer.textureName()));
+            meshBuffer.draw();
+        }
+
+        shader.setSilhouetteMode(false);
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glFrontFace(GL11.GL_CCW);
+        GL11.glDepthMask(true);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
     }
 
     /**

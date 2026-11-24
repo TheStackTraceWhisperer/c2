@@ -28,6 +28,10 @@ public class ImGuiService implements IService {
 
     @Override
     public void start() {
+        start(windowService.getHandle());
+    }
+
+    public void start(long windowHandle) {
         ImGui.createContext();
         try {
             ImGuiIO io = ImGui.getIO();
@@ -35,7 +39,7 @@ public class ImGuiService implements IService {
 
             implGlfw = new ImGuiImplGlfw();
             implGl3 = new ImGuiImplGl3();
-            implGlfw.init(windowService.getHandle(), true);
+            implGlfw.init(windowHandle, true);
             implGl3.init("#version 460");
             initialized = true;
             log.info("Dear ImGui initialized");
@@ -48,6 +52,14 @@ public class ImGuiService implements IService {
     @Override
     public void update() {
         implGlfw.newFrame();
+        ImGui.newFrame();
+    }
+
+    public void beginFrame(int displayWidth, int displayHeight) {
+        implGlfw.newFrame();
+        ImGuiIO io = ImGui.getIO();
+        io.setDisplaySize(Math.max(1, displayWidth), Math.max(1, displayHeight));
+        io.setDisplayFramebufferScale(1.0f, 1.0f);
         ImGui.newFrame();
     }
 

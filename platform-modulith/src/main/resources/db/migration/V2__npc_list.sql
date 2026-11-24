@@ -27,7 +27,7 @@ CREATE TABLE game.npc_list (
     entity_flags  INT NOT NULL DEFAULT 0,
     animation_sub SMALLINT NOT NULL DEFAULT 0,
     name_prefix   SMALLINT NOT NULL DEFAULT 0,
-    moving        SMALLINT NOT NULL DEFAULT 0,
+    moving        INT NOT NULL DEFAULT 0,
     look_type     VARCHAR(32),
     race_id       SMALLINT NOT NULL DEFAULT 0,
     face_id       SMALLINT NOT NULL DEFAULT 0,

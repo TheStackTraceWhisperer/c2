@@ -27,7 +27,7 @@ public record NpcRecord(
     short animationSub,
     @MappedProperty("name_prefix")
     short namePrefix,
-    short moving,
+    int moving,
     @Nullable
     @MappedProperty("look_type")
     String lookType,

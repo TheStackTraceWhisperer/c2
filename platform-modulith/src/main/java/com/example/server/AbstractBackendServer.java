@@ -1,9 +1,13 @@
 package com.example.server;
 
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.dto.PingMessage;
 import com.example.common.handler.InboundDispatchHandler;
 import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ProtocolConstants;
+import com.example.server.codec.BackendForySerializationProvider;
 import com.example.server.protocol.BackendEnvelopeCodec;
+import com.example.server.protocol.SessionDisconnectedEvent;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -41,6 +45,7 @@ public abstract class AbstractBackendServer {
 
   public void start() throws Exception {
     group = new NioEventLoopGroup(1);
+    group.next().submit(this::warmupCodecs).sync();
 
     SelfSignedCertificate cert = new SelfSignedCertificate();
     QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
@@ -79,6 +84,13 @@ public abstract class AbstractBackendServer {
       .channel();
 
     log.info("[{}-SERVER] listening on QUIC UDP {}:{}", serviceName, bindHost, port);
+  }
+
+  protected void warmupCodecs() {
+    byte[] pingBytes = ForySerializationProvider.get().serialize(new PingMessage(0L, "warmup"));
+    ForySerializationProvider.get().deserialize(pingBytes);
+    byte[] ctrlBytes = BackendForySerializationProvider.get().serialize(new SessionDisconnectedEvent(0L, 0L));
+    BackendForySerializationProvider.get().deserialize(ctrlBytes);
   }
 
   @PreDestroy

@@ -59,6 +59,10 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
     client.close();
     assertThat(client.isConnected()).isFalse();
 
+    await().atMost(5, TimeUnit.SECONDS).until(() ->
+      activeSessionRepository.findByAccountId(TEST_ACCOUNT_ID).isEmpty()
+    );
+
     client.connect().sync();
     assertThat(client.isConnected()).isTrue();
 

@@ -181,13 +181,23 @@ public class QuicClient implements AutoCloseable {
           localQuic.createStream(QuicStreamType.BIDIRECTIONAL, new ChannelInitializer<QuicStreamChannel>() {
             @Override
             protected void initChannel(QuicStreamChannel ch) {
+              ch.config().setAllowHalfClosure(false);
               ch.pipeline().addLast(
                 new LengthFieldBasedFrameDecoder(ProtocolConstants.MAX_FRAME_LENGTH, 0, 4, 0, 4),
                 new LengthFieldPrepender(4),
                 new ClientEnvelopeCodec(),
                 new ClientEnvelopePayloadDecoder(),
                 new ClientMessageEncoder(),
-                new InboundDispatchHandler(router)
+                new InboundDispatchHandler(router),
+                new ChannelInboundHandlerAdapter() {
+                  @Override
+                  public void channelInactive(ChannelHandlerContext ctx) {
+                    if (localQuic.isActive()) {
+                      localQuic.close();
+                    }
+                    ctx.fireChannelInactive();
+                  }
+                }
               );
             }
           }).addListener((Future<QuicStreamChannel> streamFuture) -> {

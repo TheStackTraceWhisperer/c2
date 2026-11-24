@@ -12,19 +12,35 @@ build_modulith_image() {
   ./mvnw clean package -pl platform-modulith -am -DskipTests -Dpackaging=docker
 }
 
+ensure_docker() {
+  if ! command -v docker &> /dev/null; then
+    echo "[prereq] ERROR: 'docker' command not found. Install Docker Engine (e.g. docker.io) first." >&2
+    return 1
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "[prereq] ERROR: Docker daemon is not reachable by user '$(id -un)'." >&2
+    return 1
+  fi
+}
+
 ensure_k8s_tools() {
+  mkdir -p "${HOME}/.local/bin"
+  export PATH="${HOME}/.local/bin:${PATH}"
+
   if ! command -v k3d &> /dev/null; then
-    echo "[prereq] Installing k3d..."
-    curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.9.0 bash
+    echo "[prereq] Installing k3d into ${HOME}/.local/bin..."
+    curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | K3D_INSTALL_DIR="${HOME}/.local/bin" USE_SUDO="false" TAG=v5.9.0 bash
   fi
 
   if ! command -v kubectl &> /dev/null; then
-    echo "[prereq] Installing kubectl..."
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    chmod +x kubectl
-    mkdir -p ~/.local/bin
-    mv kubectl ~/.local/bin/
-    export PATH="${HOME}/.local/bin:${PATH}"
+    echo "[prereq] Installing kubectl into ${HOME}/.local/bin..."
+    local tmp_kubectl
+    tmp_kubectl="$(mktemp)"
+    local stable_ver
+    stable_ver="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+    curl -fsSL -o "${tmp_kubectl}" "https://dl.k8s.io/release/${stable_ver}/bin/linux/amd64/kubectl"
+    chmod +x "${tmp_kubectl}"
+    mv "${tmp_kubectl}" "${HOME}/.local/bin/kubectl"
   fi
 }
 
@@ -67,10 +83,10 @@ subjects:
 EOF
 
   echo "[k8s] Waiting for Kubernetes Dashboard deployment..."
-  kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=60s
+  kubectl rollout status deployment/kubernetes-dashboard -n kubernetes-dashboard --timeout=120s
 
   pkill -f "kubectl port-forward.*kubernetes-dashboard.*${DASHBOARD_PORT}" || true
-  nohup kubectl port-forward --address 0.0.0.0 -n kubernetes-dashboard svc/kubernetes-dashboard "${DASHBOARD_PORT}:443" > /dev/null 2>&1 &
+  nohup kubectl port-forward --address 0.0.0.0 -n kubernetes-dashboard svc/kubernetes-dashboard "${DASHBOARD_PORT}:443" </dev/null >/dev/null 2>&1 &
   sleep 2
 
   DASHBOARD_TOKEN=$(kubectl -n kubernetes-dashboard create token admin-user --duration=24h)
@@ -101,10 +117,12 @@ import_modulith_image() {
   fi
 
   local node
+  local imported_images
   for node in ${nodes}; do
     echo "[k3d] Loading platform-modulith:latest into node '${node}'..."
     docker save platform-modulith:latest | docker exec -i "${node}" ctr -n k8s.io images import -
-    if ! docker exec "${node}" ctr -n k8s.io images ls -q | grep -q "platform-modulith:latest"; then
+    imported_images="$(docker exec "${node}" ctr -n k8s.io images ls -q)"
+    if ! grep -q "platform-modulith:latest" <<< "${imported_images}"; then
       echo "[k3d] ERROR: Image platform-modulith:latest not found in node '${node}' after import." >&2
       return 1
     fi
@@ -120,29 +138,33 @@ deploy_platform_manifests() {
   kubectl apply -f k8s/03-services.yaml
   kubectl apply -f k8s/04-gateway.yaml
 
+  echo "[k8s] Pausing mmo-operator and cleaning up stale dynamic world/zone pods..."
+  kubectl scale deployment/mmo-operator --replicas=0
+  kubectl wait --for=delete pod -l app=mmo-operator --timeout=60s >/dev/null 2>&1 || true
+  kubectl delete pod -l 'app.mmo/component in (world,zone)' --ignore-not-found=true --wait=true --timeout=60s
+
   echo "[k8s] Restarting PostgreSQL and waiting for it to be ready..."
   kubectl rollout restart deployment/postgres
-  kubectl rollout status deployment/postgres --timeout=90s
-
-  echo "[k8s] Cleaning up stale dynamic world/zone pods (if any)..."
-  kubectl delete pod -l 'app.mmo/component in (world,zone)' --ignore-not-found=true --wait=true
+  kubectl rollout status deployment/postgres --timeout=180s
 
   echo "[k8s] Triggering rolling restart of static platform deployments..."
-  kubectl rollout restart deployment/mmo-operator \
-    deployment/login-service \
+  kubectl rollout restart deployment/login-service \
     deployment/lobby-service \
     deployment/gateway
 
   echo "[k8s] Waiting for static cluster deployments to be ready..."
-  kubectl rollout status deployment/mmo-operator --timeout=90s
-  kubectl rollout status deployment/login-service --timeout=90s
-  kubectl rollout status deployment/lobby-service --timeout=90s
-  kubectl rollout status deployment/gateway --timeout=90s
+  kubectl rollout status deployment/login-service --timeout=240s
+  kubectl rollout status deployment/lobby-service --timeout=240s
+  kubectl rollout status deployment/gateway --timeout=240s
+
+  echo "[k8s] Starting mmo-operator and waiting for it to be ready..."
+  kubectl scale deployment/mmo-operator --replicas=1
+  kubectl rollout status deployment/mmo-operator --timeout=240s
 }
 
 wait_for_pod() {
   local pod_name="$1"
-  local retries=45
+  local retries=60
   echo -n "Waiting for pod ${pod_name} to appear and become Ready..."
   until kubectl get pod "${pod_name}" >/dev/null 2>&1; do
     sleep 1
@@ -152,8 +174,24 @@ wait_for_pod() {
       return 1
     fi
   done
-  kubectl wait --for=condition=Ready "pod/${pod_name}" --timeout=90s
+  kubectl wait --for=condition=Ready "pod/${pod_name}" --timeout=360s
   echo " READY."
+}
+
+wait_for_tcp_port() {
+  local host="$1"
+  local port="$2"
+  local retries="${3:-30}"
+  echo -n "Waiting for TCP endpoint ${host}:${port}..."
+  until python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.5); s.connect(('${host}', int('${port}'))); s.close()" >/dev/null 2>&1; do
+    sleep 1
+    retries=$((retries - 1))
+    if [ $retries -le 0 ]; then
+      echo " TIMEOUT (Unreachable)"
+      return 1
+    fi
+  done
+  echo " REACHABLE."
 }
 
 print_dashboard_banner() {

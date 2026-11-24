@@ -4,6 +4,10 @@ import com.example.client.ClientConfiguration;
 import com.example.client.QuicClient;
 import com.example.client.handler.*;
 import com.example.client.state.ClientState;
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.dto.PingMessage;
+import com.example.login.dto.LoginRequest;
+import com.example.login.dto.LoginResponse;
 import com.example.server.repository.AccountJdbcRepository;
 import com.example.server.repository.ActiveSessionJdbcRepository;
 import com.example.server.repository.CharacterJdbcRepository;
@@ -24,6 +28,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.util.Map.entry;
 
@@ -39,6 +44,9 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
   public static final long TEST_ACCOUNT_ID_2 = 92668752L;
   public static final String TEST_USERNAME_2 = "player2";
   public static final String TEST_PASSWORD_2 = "secret456";
+
+  /** Argon2id (64 MiB, t=3) login verification needs extra headroom on constrained 2-vCPU hosts. */
+  protected static final long LOGIN_TIMEOUT_SECONDS = 15L;
 
   @Value("${app.gateway.host:127.0.0.1}")
   private String gatewayHost;
@@ -78,10 +86,18 @@ public abstract class BaseIntegrationTest implements TestPropertyProvider {
   @Inject
   protected DataSource dataSource;
 
+  private static final AtomicBoolean CLIENT_FORY_WARMED = new AtomicBoolean(false);
+
   protected QuicClient client;
 
   @BeforeEach
   protected void setUpBase() throws Exception {
+    if (CLIENT_FORY_WARMED.compareAndSet(false, true)) {
+      var fory = ForySerializationProvider.get();
+      fory.deserialize(fory.serialize(new PingMessage(0L, "warmup")));
+      fory.deserialize(fory.serialize(new LoginRequest("warmup", "warmup")));
+      fory.deserialize(fory.serialize(new LoginResponse(true, 0L, "warmup", "")));
+    }
     seedDatabase();
 
     ClientConfiguration clientConfig = () -> new ClientConfiguration.GatewayEndpoint() {

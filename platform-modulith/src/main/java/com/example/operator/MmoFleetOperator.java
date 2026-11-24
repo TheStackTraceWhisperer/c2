@@ -250,6 +250,7 @@ public class MmoFleetOperator {
       .endHttpGet()
       .withInitialDelaySeconds(2)
       .withPeriodSeconds(2)
+      .withTimeoutSeconds(5)
       .withFailureThreshold(30)
       .endReadinessProbe()
       .addNewEnvFrom()
@@ -314,9 +315,9 @@ public class MmoFleetOperator {
       .withPath("/health")
       .withNewPort(8080)
       .endHttpGet()
-
       .withInitialDelaySeconds(2)
       .withPeriodSeconds(2)
+      .withTimeoutSeconds(5)
       .withFailureThreshold(30)
       .endReadinessProbe()
       .addNewEnvFrom()

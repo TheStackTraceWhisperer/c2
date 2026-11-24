@@ -32,7 +32,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
   @DisplayName("Concurrency Guard: Concurrent login attempt with same account is rejected")
   void testConcurrentAccountLoginRejected() throws Exception {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
@@ -48,7 +48,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
 
       client2.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
 
-      LoginResponse response = duplicateLoginFuture.get(5, TimeUnit.SECONDS);
+      LoginResponse response = duplicateLoginFuture.get(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       assertThat(response.success()).isFalse();
       assertThat(response.errorMessage()).isEqualTo("Account is already logged in");
     } finally {
@@ -60,7 +60,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
   @DisplayName("Lifecycle: Authenticate -> Create Windurst Character -> Query Character List")
   void testCharacterCreationAndList() throws Exception {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
@@ -110,7 +110,7 @@ public class PlayerJourneyIT extends BaseIntegrationTest {
     );
 
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 

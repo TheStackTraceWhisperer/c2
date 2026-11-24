@@ -1158,7 +1158,7 @@ public class LiveServerClientSnapshotIT {
             int entityFlags = Integer.parseInt(m.group(9));
             short animationSub = (short) Integer.parseInt(m.group(10));
             short namePrefix = (short) Integer.parseInt(m.group(11));
-            short moving = (short) Integer.parseInt(m.group(12));
+            int moving = Integer.parseInt(m.group(12));
             String lookType = m.group(13);
             short raceId = (short) Integer.parseInt(m.group(14));
             short faceId = (short) Integer.parseInt(m.group(15));

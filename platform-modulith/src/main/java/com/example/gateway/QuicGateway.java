@@ -1,5 +1,7 @@
 package com.example.gateway;
 
+import com.example.common.codec.ForySerializationProvider;
+import com.example.common.dto.GatewayErrorResponse;
 import com.example.common.handler.IndexedPacketRouter;
 import com.example.common.protocol.ClientEnvelopeCodec;
 import com.example.common.protocol.MessageType;
@@ -14,6 +16,7 @@ import com.example.gateway.session.SessionIdGenerator;
 import com.example.server.codec.BackendForySerializationProvider;
 import com.example.server.protocol.BackendEnvelope;
 import com.example.server.protocol.SessionDisconnectedEvent;
+import com.example.server.protocol.SetSessionAuthStateControlMessage;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import io.netty.bootstrap.Bootstrap;
@@ -63,6 +66,13 @@ public class QuicGateway {
 
     sessionIdGenerator = new SessionIdGenerator(properties.getNodeId());
     group = new NioEventLoopGroup(2);
+    group.next().submit(() -> {
+      var backendFory = BackendForySerializationProvider.get();
+      backendFory.deserialize(backendFory.serialize(new SetSessionAuthStateControlMessage(true, 0L)));
+      backendFory.deserialize(backendFory.serialize(new SessionDisconnectedEvent(0L, 0L)));
+      var clientFory = ForySerializationProvider.get();
+      clientFory.deserialize(clientFory.serialize(new GatewayErrorResponse((short) 0, (short) 0, (short) 0, "warmup")));
+    }).sync();
     connectionManager.init(group);
 
     SelfSignedCertificate cert = new SelfSignedCertificate();

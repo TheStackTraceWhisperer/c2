@@ -136,6 +136,10 @@ class MmoFleetOperatorTest {
     assertThat(worldContainer.getResources().getLimits())
       .containsEntry("cpu", new Quantity("500m"))
       .containsEntry("memory", new Quantity("512Mi"));
+    assertThat(worldContainer.getReadinessProbe()).isNotNull();
+    assertThat(worldContainer.getReadinessProbe().getHttpGet()).isNotNull();
+    assertThat(worldContainer.getReadinessProbe().getHttpGet().getPath()).isEqualTo("/health");
+    assertThat(worldContainer.getReadinessProbe().getHttpGet().getPort().getIntVal()).isEqualTo(8080);
 
     assertThat(worldContainer.getVolumeMounts())
       .extracting(VolumeMount::getName, VolumeMount::getMountPath, VolumeMount::getReadOnly)
@@ -162,6 +166,10 @@ class MmoFleetOperatorTest {
     assertThat(zoneContainer.getResources()).isNotNull();
     assertThat(zoneContainer.getResources().getRequests()).containsKey("cpu").containsKey("memory");
     assertThat(zoneContainer.getResources().getLimits()).containsKey("cpu").containsKey("memory");
+    assertThat(zoneContainer.getReadinessProbe()).isNotNull();
+    assertThat(zoneContainer.getReadinessProbe().getHttpGet()).isNotNull();
+    assertThat(zoneContainer.getReadinessProbe().getHttpGet().getPath()).isEqualTo("/health");
+    assertThat(zoneContainer.getReadinessProbe().getHttpGet().getPort().getIntVal()).isEqualTo(8080);
   }
 
   @Test

@@ -10,8 +10,9 @@ source "${SCRIPT_DIR}/_cluster-common.sh"
 
 echo "=== Kubernetes k3d E2E Cluster Harness ==="
 
-build_modulith_image
+ensure_docker
 ensure_k8s_tools
+build_modulith_image
 ensure_k3d_cluster
 deploy_kubernetes_dashboard
 print_dashboard_banner
@@ -36,6 +37,12 @@ dump_pod_logs() {
     echo ""
     echo "=== OPERATOR LOGS ==="
     kubectl logs deployment/mmo-operator --tail=200 || true
+    echo ""
+    echo "=== WORLD-1 LOGS ==="
+    kubectl logs pod/world-1 --tail=100 || true
+    echo ""
+    echo "=== ZONE 230 LOGS ==="
+    kubectl logs pod/w1-inst-1-z230 --tail=100 || true
   } > "${POD_LOG_FILE}" 2>&1
 }
 
@@ -64,11 +71,12 @@ wait_for_pod "w1-inst-3-z234"
 wait_for_pod "w1-inst-4-z235"
 wait_for_pod "w1-inst-5-z238"
 wait_for_pod "w1-inst-6-z239"
+wait_for_tcp_port 127.0.0.1 "${DB_PORT}"
 
 # Run Integration Test Suite against live k3d endpoints
 echo "[test] Executing Integration Test Suite (IT) against live k3d cluster..."
 ./mvnw test -pl platform-modulith -am \
-  -Dtest=com.example.*IT \
+  -Dtest="com.example.**.*IT" \
   -Dsurefire.failIfNoSpecifiedTests=false \
   -Dapp.gateway.host=127.0.0.1 \
   -Dapp.gateway.port=${GATEWAY_PORT} \

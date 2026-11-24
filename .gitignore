@@ -20,3 +20,4 @@ references/
 *.[dD][aA][tT]
 **/dats/
 cache/
+e2e-pods.log

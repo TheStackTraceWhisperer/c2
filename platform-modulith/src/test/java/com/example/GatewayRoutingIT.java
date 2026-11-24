@@ -40,7 +40,7 @@ public class GatewayRoutingIT extends BaseIntegrationTest {
   @DisplayName("Resumption: Disconnected client reconnects with JWT token and resumes world state")
   void testSessionReconnectionAndResumption() throws Exception {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 

@@ -10,8 +10,9 @@ source "${SCRIPT_DIR}/_cluster-common.sh"
 
 echo "=== Starting MMO Cluster (k3d) ==="
 
-build_modulith_image
+ensure_docker
 ensure_k8s_tools
+build_modulith_image
 ensure_k3d_cluster
 deploy_kubernetes_dashboard
 ensure_jwt_secret "false"

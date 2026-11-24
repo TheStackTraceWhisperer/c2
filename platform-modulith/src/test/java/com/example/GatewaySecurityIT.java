@@ -57,7 +57,7 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
     );
 
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
@@ -82,7 +82,7 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
     );
 
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
@@ -103,7 +103,7 @@ public class GatewaySecurityIT extends BaseIntegrationTest {
   @DisplayName("Safeguards: Gateway rejects and closes QuicChannel when receiving oversized frame")
   void testOversizedPayloadRejectedAtEdge() throws Exception {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 

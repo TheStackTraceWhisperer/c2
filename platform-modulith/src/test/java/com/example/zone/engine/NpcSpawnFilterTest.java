@@ -315,9 +315,8 @@ class NpcSpawnFilterTest {
           int entityFlags = Integer.parseInt(m.group(9));
           short animationSub = Short.parseShort(m.group(10));
           short namePrefix = Short.parseShort(m.group(11));
-          int movingUnsigned = Integer.parseInt(m.group(12));
-          assertThat(movingUnsigned).isBetween(0, 65535);
-          short moving = (short) movingUnsigned;
+          int moving = Integer.parseInt(m.group(12));
+          assertThat(moving).isBetween(0, 65535);
           String rawLookType = m.group(13);
           String lookType = "NULL".equals(rawLookType)
               ? null

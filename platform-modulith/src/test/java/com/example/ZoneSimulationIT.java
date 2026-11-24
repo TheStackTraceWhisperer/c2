@@ -33,7 +33,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
   @DisplayName("Persistence Checkpoint: Moving in S. San d'Oria (230) persists dirty state to PostgreSQL")
   void testMovementPersistedToPostgresOnDisconnect() throws Exception {
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() ->
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() ->
       client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED
     );
 
@@ -71,7 +71,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
   void testMultiplayerSpatialAoIBroadcast() throws Exception {
     // 1. Client A (Account 1: admin, Character 1001: Elvaan WAR at 66.0, -1.0, -40.0)
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
     client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
     client.send(new JoinWorldRequest(client.getState().getAuthToken()));
@@ -89,7 +89,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
 
     try {
       clientB.send(new LoginRequest(TEST_USERNAME_2, TEST_PASSWORD_2));
-      await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+      await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
       clientB.send(new SelectCharacterRequest(clientB.getState().getAuthToken(), 1002L));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
       clientB.send(new JoinWorldRequest(clientB.getState().getAuthToken()));
@@ -120,7 +120,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
   void testConcurrentMultiPlayerSessionCharacterIsolation() throws Exception {
     // 1. Setup Session A (Account 1 -> Character 1001)
     client.send(new LoginRequest(TEST_USERNAME, TEST_PASSWORD));
-    await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+    await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
     client.send(new SelectCharacterRequest(client.getState().getAuthToken(), 1001L));
     await().atMost(5, TimeUnit.SECONDS).until(() -> client.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
     client.send(new JoinWorldRequest(client.getState().getAuthToken()));
@@ -133,7 +133,7 @@ public class ZoneSimulationIT extends BaseIntegrationTest {
 
     try {
       clientB.send(new LoginRequest(TEST_USERNAME_2, TEST_PASSWORD_2));
-      await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
+      await().atMost(LOGIN_TIMEOUT_SECONDS, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.AUTHENTICATED);
       clientB.send(new SelectCharacterRequest(clientB.getState().getAuthToken(), 1002L));
       await().atMost(5, TimeUnit.SECONDS).until(() -> clientB.getState().getConnectionState() == ClientConnectionState.IN_WORLD);
       clientB.send(new JoinWorldRequest(clientB.getState().getAuthToken()));
